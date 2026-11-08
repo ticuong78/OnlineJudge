@@ -124,10 +124,59 @@ pnpm dev:frontend
 - AI: đặt `ANTHROPIC_API_KEY` trong `src/backend/.env`. Model chọn riêng cho từng việc: `CLAUDE_MODEL` cho đọc đề (mặc định `claude-sonnet-5-5`), `CLAUDE_TESTGEN_MODEL` cho gợi ý test (mặc định bằng `CLAUDE_MODEL`) và `CLAUDE_REVIEW_MODEL` cho kiểm tra dùng AI (mặc định `claude-haiku-5-5`, rẻ vì chạy trên từng bài nộp). Khi để trống key, đọc đề dùng bộ đọc theo mẫu và bỏ qua kiểm tra dùng AI. Với Sonnet/Opus, lệnh gọi bật sẵn *refusal fallback* phía server (`fallbacks: "default"`); Haiku không hỗ trợ nên không gửi tham số này.
 - Giáo viên tạo lớp và đặt mã lớp ở trang **Lớp**. Học sinh dùng mã đó để xin vào lớp (khi đăng ký hoặc ở trang **Lớp của tôi**), rồi giáo viên duyệt ở trang lớp.
 - Sau khi cập nhật mã engine, build lại image runner: `pnpm runner:build` (engine không khởi động với image cũ).
-- Dữ liệu mẫu để thử giao diện: khi Postgres, Redis và engine đang chạy, chạy `pnpm --filter @oj/backend seed`. Lệnh tạo 3 giáo viên (`gv.lan` là VIP, `gv.minh`, `gv.hoa`), 12 học sinh `hs01`…`hs12` (đuôi `@oj.local`), lớp, ngân hàng bài, đề, phiên đang mở, sắp mở và đã đóng, bảng tin, các bài nộp được chấm thật và một cảnh báo đạo văn. Mật khẩu chung nằm trong `SEED_PASSWORD` của `src/backend/src/seed.ts`. Lệnh chỉ chạy một lần. Trước khi kết nối tới bất cứ đâu, lệnh đọc `.env` như backend và từ chối khi `NODE_ENV=production` hoặc khi `DATABASE_URL`/`REDIS_URL` không trỏ tới máy này.
+- Dữ liệu mẫu để thử giao diện: xem mục **Dữ liệu mẫu (seed)** ngay dưới đây.
 - Không có Docker? Có thể chạy engine với `SANDBOX=local`: code chạy thẳng trên máy, **không cách ly**, chỉ dùng để thử.
 
-Kiểm thử:
+### Dữ liệu mẫu (seed)
+
+Seed tạo đủ dữ liệu để thử mọi vai trò: 4 lớp, 9 bài, 5 đề, các phiên đang mở, sắp mở, đã đóng và một bài thi tính
+giờ, 56 bài nộp được **chấm thật**, bảng tin, yêu cầu vào lớp chờ duyệt, một cặp bài bị cảnh báo đạo văn, và 2 tổ chức
+(trung tâm "Sao Mai" đang hoạt động, một trường đã hết hạn).
+
+1. **Máy đã có dữ liệu phát triển cũ** (ví dụ vừa pull bản mới): xóa dữ liệu cũ trước, nếu không seed sẽ chèn thêm vào
+   dữ liệu cũ. Lệnh này **xóa toàn bộ dữ liệu phát triển** của dự án (Postgres và Redis ở cổng 5432/6379); dừng backend
+   và engine trước:
+
+   ```bash
+   docker compose down -v
+   ```
+
+   ```bash
+   pnpm infra:up
+   ```
+
+2. Bật **engine** (`pnpm dev:engine`): seed chờ engine chấm từng bài nộp, thiếu engine thì seed dừng giữa chừng. Rồi chạy:
+
+   ```bash
+   pnpm --filter @oj/backend seed
+   ```
+
+   Seed chỉ chạy một lần: chạy lại sẽ báo "Already seeded" và không thay đổi gì. Muốn làm lại từ đầu, quay lại bước 1.
+   Seed từ chối chạy khi `NODE_ENV=production` hoặc khi `DATABASE_URL`/`REDIS_URL` không trỏ tới máy này.
+
+3. Đăng nhập ở http://localhost:3000. Giáo viên và học sinh dùng chung mật khẩu `seed12345` (`SEED_PASSWORD` trong
+   `src/backend/src/seed.ts`); admin dùng `ADMIN_EMAIL`/`ADMIN_PASSWORD` trong `src/backend/.env`
+   (mặc định `admin@oj.local` / `admin12345`).
+
+| Tài khoản | Dùng để thử |
+|---|---|
+| `admin@oj.local` | Quản trị: người dùng, VIP, lời mời giáo viên, tổ chức |
+| `gv.lan@oj.local` | Giáo viên **VIP**, quản lý trung tâm Sao Mai: tính năng AI, lớp 10A1, quản lý tổ chức |
+| `gv.minh@oj.local` | Giáo viên trong trung tâm: lớp 11B2 (cảnh báo đạo văn, bài thi tính giờ), lớp `SAOMAI-HSG` |
+| `gv.hoa@oj.local` | Giáo viên có lớp đã lưu trữ, tổ chức hết hạn, lời mời vào trung tâm đang chờ |
+| `hs01@oj.local` | Học sinh lớp 10A1 và 11B2, có đủ loại kết quả và học bạ |
+| `hs09@oj.local` | Học sinh có bài thi giữa kỳ đang mở nhưng chưa bắt đầu |
+| `hs12@oj.local` | Học sinh chưa có lớp, đang chờ duyệt vào 10A1 |
+
+Danh sách đầy đủ (`hs01`…`hs12`, lời mời qua email cho `gv.tuan`, `gv.phuong`), tệp mẫu để tải lên và code để nộp thử
+(thư mục `samples/`: đề `.docx`/`.pdf`, bài đúng, sai, quá thời gian, lỗi biên dịch, cặp bài chép nhau), cách đặt lại dữ
+liệu và cách xử lý lỗi thường gặp: xem [docs/testing/local-setup.md](docs/testing/local-setup.md). Kịch bản kiểm thử
+từng vai trò (UAT): [docs/testing/test-plan.md](docs/testing/test-plan.md).
+
+Mã xác thực và liên kết mời (khi để trống `SMTP_HOST`) được in trong log của backend: tìm khối bắt đầu bằng
+`To: <email>`.
+
+### Kiểm thử
 
 ```bash
 pnpm test
@@ -153,7 +202,7 @@ Kiểm thử tích hợp và end-to-end chỉ dùng **cơ sở dữ liệu tạm
 - **Phiên đăng nhập**: token gắn với mật khẩu hiện tại. Đổi hay đặt lại mật khẩu, hoặc xóa tài khoản, là mọi token cũ hết hiệu lực ngay. Vai trò và tên luôn lấy từ tài khoản, không tin nội dung token.
 - **Cấu hình**: không có khóa bí mật nào biết trước. Thiếu `JWT_SECRET` thì production không khởi động, còn môi trường phát triển dùng khóa ngẫu nhiên; khóa ngắn hoặc giá trị mẫu bị từ chối ở mọi môi trường.
 - **Sau reverse proxy** (nginx, Caddy, load balancer): đặt `TRUST_PROXY=<số proxy đứng trước API>` (thường là `1`), nếu không backend thấy mọi người cùng một IP (của proxy) và giới hạn tần suất sẽ chặn nhầm cả trường. Không đặt `TRUST_PROXY=true`: khi đó ai cũng giả được IP bằng header `X-Forwarded-For` (với `NODE_ENV=production` backend từ chối khởi động).
-- **Nâng cấp từ bản cũ**: mọi token cũ hết hiệu lực (người dùng đăng nhập lại một lần); cột `submissions.queuedAt` được thêm tự động khi `DB_SYNC=true` (nếu tắt `DB_SYNC`, chạy `ALTER TABLE submissions ADD COLUMN "queuedAt" timestamptz;`); `.env` cũ còn `JWT_SECRET=change-me…` phải đổi.
+- **Nâng cấp từ bản cũ**: build lại image sandbox (`pnpm runner:build`; engine không chạy với image cũ); các bảng và cột mới (tổ chức, thành viên, `pairKey` của cảnh báo đạo văn…) được tạo tự động khi `DB_SYNC=true`; mọi token cũ hết hiệu lực (người dùng đăng nhập lại một lần); cột `submissions.queuedAt` được thêm tự động khi `DB_SYNC=true` (nếu tắt `DB_SYNC`, chạy `ALTER TABLE submissions ADD COLUMN "queuedAt" timestamptz;`); `.env` cũ còn `JWT_SECRET=change-me…` phải đổi.
 
 ## Triển khai
 
@@ -162,5 +211,10 @@ Kiểm thử tích hợp và end-to-end chỉ dùng **cơ sở dữ liệu tạm
 
 ## Tài liệu
 
+- Hướng dẫn sử dụng cho từng vai trò: [docs/guide/user-manual.md](docs/guide/user-manual.md)
+- Chạy và kiểm thử trên máy (tài khoản mẫu, tệp mẫu, đặt lại dữ liệu): [docs/testing/local-setup.md](docs/testing/local-setup.md)
+- Kế hoạch kiểm thử và kịch bản UAT: [docs/testing/test-plan.md](docs/testing/test-plan.md)
+- Tổng quan kỹ thuật, sản phẩm và các vấn đề đã biết: [docs/technical-overview.md](docs/technical-overview.md)
 - REST API: [docs/API.md](docs/API.md)
 - Thiết kế giao diện: [src/frontend/DESIGN.md](src/frontend/DESIGN.md)
+- Quy tắc làm việc trong mã nguồn: [CLAUDE.md](CLAUDE.md); đặc tả từng thay đổi: [docs/specs/](docs/specs/); quyết định kiến trúc: [docs/adr/](docs/adr/)
