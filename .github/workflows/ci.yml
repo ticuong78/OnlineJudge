@@ -1,0 +1,85 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Throwaway databases so the PostgreSQL and Redis integration suites run here instead of being skipped.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: oj
+          POSTGRES_PASSWORD: oj
+          POSTGRES_DB: online_judge
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U oj" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:shared
+      - run: pnpm typecheck
+      # The sandbox image, so the engine's live Docker tests run here; without it they skip themselves.
+      - run: pnpm runner:build
+      - run: pnpm test
+        env:
+          TEST_DATABASE_URL: postgres://oj:oj@localhost:5432/online_judge
+          TEST_REDIS_URL: redis://localhost:6379
+
+  # End-to-end: the compiled backend over HTTP, then the browser against a production build of the frontend.
+  # Throwaway services on the test ports (see docker-compose.test.yml); the engine is not started (submissions are
+  # admitted and queued, not judged).
+  e2e:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: oj
+          POSTGRES_PASSWORD: oj
+          POSTGRES_DB: online_judge_test
+        ports: ['55432:5432']
+        options: >-
+          --health-cmd "pg_isready -U oj" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['56379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e:api
+      - run: pnpm test:e2e:browser
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

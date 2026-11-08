@@ -6,6 +6,17 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@oj/frontend", "dev"],
       "port": 3000
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@oj/backend", "dev"],
+      "port": 4000
+    },
+    {
+      "name": "engine",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@oj/engine", "dev"]
     }
   ]
 }

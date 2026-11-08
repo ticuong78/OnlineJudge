@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install)",
+      "Bash(pnpm build:shared)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm test)",
+      "Bash(pnpm -r typecheck)",
+      "Bash(pnpm -r test)",
+      "Bash(pnpm --filter *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git branch *)"
+    ],
+    "deny": [
+      "Read(./src/backend/.env)",
+      "Read(**/.env)",
+      "Read(**/.env.local)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(docker rm *)",
+      "Bash(docker system prune*)"
+    ]
+  }
+}
