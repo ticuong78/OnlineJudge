@@ -1,7 +1,7 @@
 'use client';
 
 import type { BankScope, ProblemSummaryDto, SourceRefDto } from '@oj/contracts';
-import { Globe2, Lock } from 'lucide-react';
+import { Building2, Globe2, Lock } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
@@ -31,13 +31,22 @@ export function BankTabs() {
   );
 }
 
-/** "Của tôi / Công khai / Tất cả" switch. */
-export function ScopeSwitch({ value, onChange }: { value: BankScope; onChange: (s: BankScope) => void }) {
-  const { isAdmin } = useAuth();
+/** "Của tôi / Công khai / Tổ chức / Tất cả" switch. `withOrganization`: problems only, for teachers in an organization. */
+export function ScopeSwitch({
+  value,
+  onChange,
+  withOrganization = false,
+}: {
+  value: BankScope;
+  onChange: (s: BankScope) => void;
+  withOrganization?: boolean;
+}) {
+  const { user, isAdmin } = useAuth();
   const options: { v: BankScope; label: string }[] = [
     { v: 'mine', label: 'Của tôi' },
     { v: 'public', label: 'Công khai' },
   ];
+  if (withOrganization && user?.role === 'TEACHER' && user.organizations.length > 0) options.push({ v: 'organization', label: 'Tổ chức' });
   if (isAdmin) options.push({ v: 'all', label: 'Tất cả' });
   return (
     <div className="inline-flex rounded-control bg-slate-100 p-1 text-sm" role="radiogroup" aria-label="Phạm vi">
@@ -60,7 +69,15 @@ export function ScopeSwitch({ value, onChange }: { value: BankScope; onChange: (
   );
 }
 
-export function SharingBadge({ isPublic }: { isPublic: boolean }) {
+export function SharingBadge({ isPublic, organizationCount = 0 }: { isPublic: boolean; organizationCount?: number }) {
+  if (!isPublic && organizationCount > 0) {
+    return (
+      <Badge className="bg-ink-50 text-ink-700 ring-1 ring-ink-200">
+        <Building2 className="mr-1 h-3 w-3" aria-hidden="true" />
+        <span>Trong tổ chức</span>
+      </Badge>
+    );
+  }
   return isPublic ? (
     <Badge className="bg-chalk-50 text-chalk-700 ring-1 ring-chalk-200">
       <Globe2 className="mr-1 h-3 w-3" aria-hidden="true" />

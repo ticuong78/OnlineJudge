@@ -5,6 +5,7 @@ import type {
   ProblemSetDto,
   ProblemSummaryDto,
   SessionDto,
+  ProblemSetType,
   SessionSource,
   SessionSettingsDto,
   SessionState,
@@ -14,7 +15,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { api, ApiError, errorMessage } from '@/lib/api';
-import { DEFAULT_SETTINGS } from '@/lib/exam';
+import { DEFAULT_SETTINGS, defaultSettingsFor } from '@/lib/exam';
 import { formatRemaining, isClosingSoon, SessionStateLabels, sessionHref } from '@/lib/sessions';
 import { useAsync } from '@/lib/use-async';
 import { cn, formatDateTime, isoToLocalInput, localInputToIso } from '@/lib/utils';
@@ -175,7 +176,11 @@ export function SessionList({
               {managerProgress ? (
                 <ClassCompletion sessionId={s.id} highlightIfSoon={soon} />
               ) : (
-                s.myProgress?.resultsHidden ? (
+                s.needsStart ? (
+                  <span className="text-sm font-medium text-mark-700">
+                    Chưa bắt đầu{s.settings.durationMinutes ? `, ${s.settings.durationMinutes} phút` : ''}
+                  </span>
+                ) : s.myProgress?.resultsHidden ? (
                   <span className="text-sm text-slate-500">Kết quả hiện sau khi phiên đóng</span>
                 ) : (
                 <span className="flex items-center gap-2">
@@ -269,12 +274,15 @@ export function CreateSessionDialog({
   defaultTitle,
   defaultClassId,
   lockClass,
+  setType,
 }: {
   open: boolean;
   onClose: () => void;
   source: SessionSource | null;
   defaultTitle: string;
   defaultClassId?: string | null;
+  /** Type of the set being assigned: exam and test sets start from exam settings (OJ-11). */
+  setType?: ProblemSetType;
   /** Hide the class choice (e.g. when assigning from a class page). */
   lockClass?: boolean;
 }) {
@@ -295,7 +303,7 @@ export function CreateSessionDialog({
 
   useEffect(() => {
     if (!open) return;
-    setSettings(DEFAULT_SETTINGS);
+    setSettings(defaultSettingsFor(setType));
     setTitle(defaultTitle);
     setDescription('');
     setOpensAt('');
@@ -303,7 +311,7 @@ export function CreateSessionDialog({
     setError(null);
     setExistingId(null);
     setTarget(defaultClassId ?? '');
-  }, [open, defaultTitle, defaultClassId]);
+  }, [open, defaultTitle, defaultClassId, setType]);
 
   useEffect(() => {
     if (open && !target && !defaultClassId && active.length > 0) setTarget(active[0].id);
@@ -390,6 +398,12 @@ export function CreateSessionDialog({
         </Field>
         <MarkdownField label="Lời dặn (không bắt buộc)" value={description} onChange={setDescription} rows={3} />
         <TimeFields opensAt={opensAt} closesAt={closesAt} setOpensAt={setOpensAt} setClosesAt={setClosesAt} />
+        {(setType === 'EXAM' || setType === 'TEST') && (
+          <p className="text-xs text-slate-500">
+            Đã điền sẵn cài đặt cho {setType === 'EXAM' ? 'đề thi' : 'đề kiểm tra'} (tính giờ, giới hạn lần nộp, kiểm tra đạo
+            văn). Sửa trong mục bên dưới nếu cần.
+          </p>
+        )}
         <SessionSettingsFields value={settings} onChange={setSettings} />
         {error && (
           <InlineAlert>

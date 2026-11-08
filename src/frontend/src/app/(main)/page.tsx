@@ -13,6 +13,7 @@ import {
   School,
   Send,
   ShieldAlert,
+  Timer,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -20,15 +21,17 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Container } from '@/components/app-shell';
 import { ClassCode, PendingRequestsBadge } from '@/components/classes';
+import { OrganizationInvitationsInbox } from '@/components/organization-invitations';
 import { ProgressCells, SessionList } from '@/components/sessions';
 import { ThreadList } from '@/components/threads';
 import { Card, InlineAlert, LoadingState } from '@/components/ui';
 import { api } from '@/lib/api';
 import { RoleLabels, useAuth } from '@/lib/auth';
 import { splitStudentClasses } from '@/lib/classes';
-import { isClosingSoon, solveHref, sortSessions } from '@/lib/sessions';
+import { isClosingSoon, solveHref, sortSessions, studentOpenSessions } from '@/lib/sessions';
 import { useAsync } from '@/lib/use-async';
-import { LAST_PROBLEM_KEY, storageGet, type LastProblem } from '@/lib/utils';
+import type { LastProblem } from '@/lib/utils';
+import { readLastProblem } from '@/lib/last-problem';
 
 interface QuickAction {
   href: string;
@@ -143,6 +146,7 @@ function StaffHome() {
 
   return (
     <>
+      <OrganizationInvitationsInbox />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
         <div className="space-y-4">
           <PrimaryAction a={actions[0]} />
@@ -188,27 +192,28 @@ function StaffHome() {
 }
 
 function StudentHome() {
+  const { user } = useAuth();
   const classes = useAsync(() => api.listClasses(), []);
   const sessions = useAsync(() => api.listSessions(), []);
   const progress = useAsync(() => api.myProgress(), []);
-  const [last, setLast] = useState<LastProblem | null>(null);
+  const [remembered, setRemembered] = useState<LastProblem | null>(null);
   useEffect(() => {
-    try {
-      const raw = storageGet(LAST_PROBLEM_KEY);
-      const v = raw ? (JSON.parse(raw) as LastProblem) : null;
-      if (v?.sessionId && v.key) setLast(v);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+    if (user) setRemembered(readLastProblem(user.id));
+  }, [user]);
+  // Offered only while that session is still open for this student (K-2); otherwise the next open session.
+  const last = remembered && sessions.data?.some((s) => s.id === remembered.sessionId && s.state === 'OPEN' && s.canSubmit) ? remembered : null;
 
   const requests = useAsync(() => api.myMembershipRequests(), []);
   const current = splitStudentClasses(classes.data ?? []).current;
   const pending = (requests.data ?? []).filter((r) => r.status === 'PENDING');
-  const open = sortSessions((sessions.data ?? []).filter((s) => s.state === 'OPEN' && s.canSubmit && !s.myProgress?.completed));
+  // Timed exams waiting for "Bắt đầu làm bài" are listed first and take the main card (OJ-11).
+  const open = studentOpenSessions(sessions.data ?? []);
+  const exam = open.find((s) => s.needsStart);
   const nextUp = open[0];
 
-  const primary: QuickAction = last
+  const primary: QuickAction = exam
+    ? { href: `/sessions/${exam.id}`, title: 'Vào thi', desc: `${exam.title}: ${exam.settings.durationMinutes ?? ''} phút từ lúc bấm bắt đầu`, icon: Timer }
+    : last
     ? { href: solveHref(last.sessionId, last.key), title: 'Làm tiếp', desc: `${last.title}${last.sessionTitle ? `, ${last.sessionTitle}` : ''}`, icon: PlayCircle }
     : nextUp
       ? { href: `/sessions/${nextUp.id}`, title: 'Làm bài', desc: nextUp.title, icon: PlayCircle }

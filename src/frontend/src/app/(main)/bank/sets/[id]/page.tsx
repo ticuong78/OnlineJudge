@@ -59,7 +59,7 @@ function ShareCard({ set, onChange }: { set: ProblemSetDto; onChange: (s: Proble
       )}
       <Button variant="secondary" className="mt-3" onClick={toggle} loading={busy}>
         {set.isPublic ? <Lock className="h-4 w-4" /> : <Globe2 className="h-4 w-4" />}
-        {set.isPublic ? 'Chuyển về riêng tư' : 'Công khai đề'}
+        <span key={set.isPublic ? 'public' : 'private'}>{set.isPublic ? 'Chuyển về riêng tư' : 'Công khai đề'}</span>
       </Button>
     </Card>
   );
@@ -227,6 +227,7 @@ export default function BankSetPage() {
           onClose={() => setAssigning(false)}
           source={{ kind: 'SET', setId: set.id }}
           defaultTitle={set.title}
+          setType={set.type}
         />
         <ConfirmDialog
           open={confirmDelete}

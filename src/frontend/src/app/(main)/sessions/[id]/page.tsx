@@ -30,7 +30,7 @@ import { useAuth } from '@/lib/auth';
 import { integritySummary, isExamLike, timerTarget } from '@/lib/exam';
 import { cannotSubmitReason, solveHref } from '@/lib/sessions';
 import { useAsync } from '@/lib/use-async';
-import { cn, formatPoints } from '@/lib/utils';
+import { cn, earnedPoints, formatPoints } from '@/lib/utils';
 
 export default function SessionPage() {
   const { id } = useParams<{ id: string }>();
@@ -198,10 +198,11 @@ export default function SessionPage() {
                       : isSolved
                         ? 'Đã giải ✓'
                         : b !== undefined
-                          ? `Cao nhất ${b}/100`
+                          ? // In this problem's points, as on the teacher's results board (b is a percentage).
+                            `Cao nhất ${formatPoints(earnedPoints(b, p.points))}/${formatPoints(p.points)} điểm`
                           : 'Chưa làm'}
                   </span>
-                  {limit && !s.canManage && (
+                  {limit && !s.canManage && s.state === 'OPEN' && (
                     <span className="text-xs text-slate-500 tabular-nums">
                       Còn {Math.max(0, limit - n)}/{limit} lần nộp
                     </span>

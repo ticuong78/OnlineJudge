@@ -122,7 +122,16 @@ export function ClassFormModal({
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [teacherId, setTeacherId] = useState('');
+  const [organizationId, setOrganizationId] = useState('');
   const [codeTouched, setCodeTouched] = useState(false);
+  const myOrganizations = user?.organizations ?? [];
+  // OJ-8: an org admin may hand an organization class to another member of the organization.
+  const orgOfClass = initial?.organization?.id ?? null;
+  const orgAdminOfClass = !isAdmin && !!orgOfClass && myOrganizations.some((o) => o.organizationId === orgOfClass && o.role === 'ADMIN');
+  const orgMembers = useAsync(
+    () => (open && orgAdminOfClass && orgOfClass ? api.getOrganization(orgOfClass).then((o) => o.members) : Promise.resolve([])),
+    [open, orgAdminOfClass, orgOfClass],
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -131,6 +140,7 @@ export function ClassFormModal({
     setName(initial?.name ?? '');
     setCode(initial?.code ?? '');
     setTeacherId(initial?.teacherId ?? user?.id ?? '');
+    setOrganizationId('');
     setCodeTouched(!!initial);
     setError(null);
   }, [open, initial, user?.id]);
@@ -143,7 +153,8 @@ export function ClassFormModal({
     setSaving(true);
     try {
       const body: UpsertClassroomRequest = { name: name.trim(), code };
-      if (isAdmin) body.teacherId = teacherId || null;
+      if (isAdmin || orgAdminOfClass) body.teacherId = teacherId || null;
+      if (!initial && organizationId) body.organizationId = organizationId;
       const c = initial ? await api.updateClass(initial.id, body) : await api.createClass(body);
       toast.success(initial ? 'Đã lưu lớp' : `Đã tạo lớp ${c.name}`);
       onSaved(c);
@@ -196,6 +207,33 @@ export function ClassFormModal({
         {isAdmin && (
           <Field label="Giáo viên phụ trách">
             <TeacherSelect value={teacherId} onChange={setTeacherId} />
+          </Field>
+        )}
+        {orgAdminOfClass && (
+          <Field label="Giáo viên phụ trách" hint={`Chọn một giáo viên của ${initial?.organization?.name}.`}>
+            <select className={inputClass} value={teacherId} onChange={(e) => setTeacherId(e.target.value)}>
+              {(orgMembers.data ?? []).map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.displayName}
+                </option>
+              ))}
+              {!orgMembers.data?.some((m) => m.userId === teacherId) && <option value={teacherId}>{initial?.teacherName}</option>}
+            </select>
+          </Field>
+        )}
+        {!initial && !isAdmin && myOrganizations.length > 0 && (
+          <Field
+            label="Lớp thuộc"
+            hint="Lớp của tổ chức do quản lý tổ chức cùng quản lý và thuộc về tổ chức khi bạn rời đi. Lớp cá nhân chỉ bạn quản lý."
+          >
+            <select className={inputClass} value={organizationId} onChange={(e) => setOrganizationId(e.target.value)}>
+              <option value="">Cá nhân</option>
+              {myOrganizations.map((o) => (
+                <option key={o.organizationId} value={o.organizationId}>
+                  {o.organizationName}
+                </option>
+              ))}
+            </select>
           </Field>
         )}
         {error && <InlineAlert>{error}</InlineAlert>}

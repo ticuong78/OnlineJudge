@@ -347,7 +347,14 @@ export default function UsersPage() {
                 <tbody className="divide-y divide-slate-100">
                   {users.map((u) => (
                     <tr key={u.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-2.5 font-medium text-slate-800">{u.displayName}</td>
+                      <td className="px-4 py-2.5">
+                        <div className="font-medium text-slate-800">{u.displayName}</div>
+                        {u.organizations.length > 0 && (
+                          <div className="text-xs text-slate-500">
+                            {u.organizations.map((o) => `${o.organizationName}${o.role === 'ADMIN' ? ' (quản lý)' : ''}`).join(', ')}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-2.5 text-slate-600">{u.email}</td>
                       <td className="px-4 py-2.5 whitespace-nowrap text-slate-600 tabular-nums">
                         {u.phone ? <a href={`tel:${u.phone}`} className="hover:text-ink-700">{u.phone}</a> : '—'}
@@ -374,7 +381,9 @@ export default function UsersPage() {
                             title={u.vip ? 'Chuyển về tài khoản thường (không dùng được AI)' : 'Nâng cấp VIP để dùng các tính năng AI'}
                           >
                             <Crown className="h-4 w-4" />
-                            {u.vip ? 'Bỏ VIP' : 'Nâng cấp VIP'}
+                            {/* Keyed: a new element per state. Browser translation swaps text nodes for its own, so an
+                                updated text node would stay hidden behind the old translated label. */}
+                            <span key={u.vip ? 'vip' : 'regular'}>{u.vip ? 'Bỏ VIP' : 'Nâng cấp VIP'}</span>
                           </Button>
                         )}
                         {u.role !== 'ADMIN' && (

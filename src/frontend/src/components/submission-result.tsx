@@ -4,7 +4,7 @@ import { VerdictLabels, type SubmissionDetailDto } from '@oj/contracts';
 import { CheckCircle2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api, errorMessage } from '@/lib/api';
-import { cn, formatMemory, formatTime } from '@/lib/utils';
+import { cn, formatMemory, formatTime, scoreLabel } from '@/lib/utils';
 import { Spinner, VerdictBadge } from './ui';
 
 /** Polls GET /submissions/:id every ~1s until status === 'DONE'. */
@@ -84,16 +84,20 @@ export function TestResultsTable({ sub }: { sub: SubmissionDetailDto }) {
   );
 }
 
-/** The teacher's mark: score written by hand and circled, in red pen (or chalk green for full marks). */
-export function ScoreMark({ score, animateKey }: { score: number; animateKey: string }) {
+/**
+ * The teacher's mark: score written by hand and circled, in red pen (or chalk green for full marks).
+ * `points`: the problem's worth in the session; the mark then shows points earned, else a percentage (K-1).
+ */
+export function ScoreMark({ score, animateKey, points }: { score: number; animateKey: string; points?: number | null }) {
   const full = score >= 100;
+  const label = scoreLabel(score, points);
   const color = full ? 'var(--color-chalk)' : 'var(--color-mark)';
   return (
     <div
       key={animateKey}
       className="relative flex h-[76px] w-[104px] shrink-0 items-center justify-center"
       role="img"
-      aria-label={`${score} trên 100 điểm`}
+      aria-label={label.spoken}
     >
       <svg viewBox="0 0 104 76" className="absolute inset-0 h-full w-full" aria-hidden="true">
         <path
@@ -105,8 +109,9 @@ export function ScoreMark({ score, animateKey }: { score: number; animateKey: st
           strokeLinecap="round"
         />
       </svg>
-      <span className="score-digits font-hand text-[44px] leading-none" style={{ color }}>
-        {score}
+      <span className="score-digits flex items-baseline font-hand leading-none" style={{ color }}>
+        <span className={label.value.length > 3 ? 'text-[30px]' : 'text-[44px]'}>{label.value}</span>
+        <span className="text-[16px]">{label.unit}</span>
       </span>
     </div>
   );
@@ -177,7 +182,7 @@ function headline(sub: SubmissionDetailDto): { text: string; hint?: string } {
   }
 }
 
-export function SubmissionSummary({ sub, compact }: { sub: SubmissionDetailDto; compact?: boolean }) {
+export function SubmissionSummary({ sub, compact, points }: { sub: SubmissionDetailDto; compact?: boolean; points?: number | null }) {
   const done = sub.status === 'DONE';
   if (!done) {
     return (
@@ -210,7 +215,7 @@ export function SubmissionSummary({ sub, compact }: { sub: SubmissionDetailDto; 
   return (
     <div className="space-y-4" aria-live="polite">
       <div className="flex items-center gap-4">
-        <ScoreMark score={sub.score} animateKey={sub.id} />
+        <ScoreMark score={sub.score} animateKey={sub.id} points={points} />
         <div className="min-w-0 space-y-2">
           <p className={cn('text-lg leading-snug font-semibold', good ? 'text-chalk-700' : 'text-mark-700')}>{h.text}</p>
           {h.hint && <p className="text-sm text-slate-600">{h.hint}</p>}

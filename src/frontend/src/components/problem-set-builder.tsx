@@ -98,7 +98,7 @@ function ProblemPicker({ selected, onAdd }: { selected: Set<string>; onAdd: (i: 
                     }
                   >
                     {added ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                    {added ? 'Đã thêm' : 'Thêm'}
+                    <span key={added ? 'added' : 'add'}>{added ? 'Đã thêm' : 'Thêm'}</span>
                   </Button>
                 </li>
               );

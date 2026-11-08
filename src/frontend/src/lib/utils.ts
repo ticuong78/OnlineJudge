@@ -45,6 +45,35 @@ export function formatPoints(n: number) {
   return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, '');
 }
 
+/**
+ * Points earned on a problem from its best score (a percentage), rounded to 2 decimals exactly like the
+ * backend's results board (session.service.ts), so a student and their teacher always see the same number.
+ */
+export function earnedPoints(bestPercent: number, problemPoints: number) {
+  return Math.round(bestPercent * problemPoints) / 100;
+}
+
+/**
+ * How to show a submission's score (a percentage). With the problem's points known: the points earned out of them, the
+ * same number as the problem list and the results board ("36/60"). Otherwise an explicit percentage ("60%"), never a
+ * bare number that reads like points (K-1).
+ */
+export function scoreLabel(percent: number, problemPoints?: number | null): { value: string; unit: string; spoken: string } {
+  if (problemPoints === undefined || problemPoints === null) {
+    const value = formatPoints(percent);
+    return { value, unit: '%', spoken: `${value}% số điểm` };
+  }
+  const value = formatPoints(earnedPoints(percent, problemPoints));
+  const of = formatPoints(problemPoints);
+  return { value, unit: `/${of}`, spoken: `${value} trên ${of} điểm` };
+}
+
+/** A plan's last day (YYYY-MM-DD) as dd/mm/yyyy, without any time-zone shift. */
+export function formatPlanDate(date: string) {
+  const [y, m, d] = date.split('-');
+  return y && m && d ? `${d}/${m}/${y}` : date;
+}
+
 /** ISO string -> value for <input type="datetime-local"> (local time). */
 export function isoToLocalInput(iso: string | null | undefined) {
   if (!iso) return '';
@@ -152,4 +181,3 @@ export interface LastProblem {
   title: string;
   sessionTitle?: string;
 }
-export const LAST_PROBLEM_KEY = 'oj:lastSessionProblem';

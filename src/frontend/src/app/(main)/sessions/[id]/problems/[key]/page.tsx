@@ -18,7 +18,9 @@ import { api, errorMessage } from '@/lib/api';
 import { allowedLanguages, timerTarget } from '@/lib/exam';
 import { cannotSubmitReason, sessionHref, solveHref } from '@/lib/sessions';
 import { useAsync } from '@/lib/use-async';
-import { cn, CodeTemplates, LAST_PROBLEM_KEY, MonacoLanguage, storageGet, storageSet, type LastProblem } from '@/lib/utils';
+import { cn, CodeTemplates, MonacoLanguage, storageGet, storageSet, type LastProblem } from '@/lib/utils';
+import { forgetLastProblem, writeLastProblem } from '@/lib/last-problem';
+import { useAuth } from '@/lib/auth';
 
 const LANG_KEY = 'oj:lang';
 const draftKey = (sessionId: string, key: string, lang: Language) => `oj:draft:${sessionId}:${key}:${lang}`;
@@ -44,6 +46,7 @@ export default function SolvePage() {
   const params = useParams<{ id: string; key: string }>();
   const sessionId = params.id;
   const key = decodeURIComponent(params.key);
+  const { user } = useAuth();
   const toast = useToast();
   const router = useRouter();
 
@@ -85,23 +88,16 @@ export default function SolvePage() {
   }, [sessionId, key, allowedKey, !!session.data]);
 
   useEffect(() => {
-    if (problem.data && session.data) {
+    if (problem.data && session.data && user) {
       const last: LastProblem = { sessionId, key, title: problem.data.title, sessionTitle: session.data.title };
-      storageSet(LAST_PROBLEM_KEY, JSON.stringify(last));
+      writeLastProblem(user.id, last);
     }
-  }, [problem.data, session.data, sessionId, key]);
+  }, [problem.data, session.data, sessionId, key, user]);
 
   // If this problem can no longer be opened, drop it from the dashboard's "Làm tiếp" shortcut.
   useEffect(() => {
-    if (!problem.error) return;
-    try {
-      const raw = storageGet(LAST_PROBLEM_KEY);
-      const last = raw ? (JSON.parse(raw) as LastProblem) : null;
-      if (last?.sessionId === sessionId && last.key === key) window.localStorage.removeItem(LAST_PROBLEM_KEY);
-    } catch {
-      /* ignore */
-    }
-  }, [problem.error, sessionId, key]);
+    if (problem.error && user) forgetLastProblem(user.id, sessionId, key);
+  }, [problem.error, sessionId, key, user]);
 
   // A finished judgement may change "solved": refresh the session and my submissions.
   useEffect(() => {
@@ -275,7 +271,7 @@ export default function SolvePage() {
             <span className="hidden sm:inline">Mã mẫu</span>
           </Button>
           <div className="ml-auto flex items-center gap-2">
-            {limit && !s.canManage && (
+            {limit && !s.canManage && s.state === 'OPEN' && (
               <span className={cn('text-xs tabular-nums', used >= limit ? 'text-mark-700' : 'text-slate-500')}>
                 Còn {Math.max(0, limit - used)}/{limit} lần nộp
               </span>
@@ -324,7 +320,7 @@ export default function SolvePage() {
               </div>
             </div>
             {result ? (
-              <SubmissionSummary sub={result} compact />
+              <SubmissionSummary sub={result} compact points={problem.data?.points} />
             ) : pollError ? (
               <p className="text-sm text-mark-600">{pollError}</p>
             ) : (

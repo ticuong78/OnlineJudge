@@ -163,7 +163,8 @@ export function SuggestionSwitch({
           />
         </button>
         {loading ? <Spinner className="h-3.5 w-3.5" /> : <Wand2 className="h-3.5 w-3.5 text-ink-600" />}
-        {loading ? 'AI đang viết…' : text}
+        {/* In an element, not a bare text node next to the icon: survives browser translation (see Button in ui.tsx). */}
+        <span>{loading ? 'AI đang viết…' : text}</span>
       </label>
       {on && !loading && regenerate && (
         <button

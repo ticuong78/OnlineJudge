@@ -26,10 +26,10 @@ function ProblemCell({ rec, p }: { rec: Rec; p: Rec['problems'][number] }) {
         p.solved ? 'border-chalk-600 bg-chalk-600 text-white' : tried ? 'border-mark-300 bg-white text-mark-600' : 'border-rule bg-white text-slate-300',
       )}
     >
-      {p.solved ? '' : tried ? p.bestScore : ''}
+      {p.solved ? '' : tried ? `${Math.round(p.bestScore)}%` : ''}
     </span>
   );
-  const title = `${p.title}: ${p.solved ? `đã giải${p.solvedAt ? ` ngày ${formatDate(p.solvedAt)}` : ''}` : tried ? `cao nhất ${p.bestScore}/100` : 'chưa làm'}`;
+  const title = `${p.title}: ${p.solved ? `đã giải${p.solvedAt ? ` ngày ${formatDate(p.solvedAt)}` : ''}` : tried ? `cao nhất ${formatPoints(p.bestScore)}% số điểm` : 'chưa làm'}`;
   return rec.available ? (
     <Link href={solveHref(rec.sessionId, p.key)} title={title} aria-label={title} className="focus-visible:outline-2">
       {cell}

@@ -133,7 +133,7 @@ function ProblemPage() {
   );
   const subtitle = (
     <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
-      <SharingBadge isPublic={data.sharing.isPublic} />
+      <SharingBadge isPublic={data.sharing.isPublic} organizationCount={data.sharing.organizationIds.length} />
       <span>Của {data.ownerName}</span>
       <CopiedFrom src={data.copiedFrom} />
     </span>

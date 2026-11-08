@@ -49,4 +49,15 @@ export function sortSessions(list: SessionDto[]) {
   });
 }
 
+/**
+ * What a student still has to do among open sessions: those they can submit to now, plus timed exams waiting for
+ * "Bắt đầu làm bài" (they cannot submit yet, but missing them is the costly mistake, so they come first). Finished
+ * sessions and timed attempts that ran out are left out.
+ */
+export function studentOpenSessions(list: SessionDto[]): SessionDto[] {
+  const todo = list.filter((s) => s.state === 'OPEN' && (s.canSubmit || s.needsStart) && !s.myProgress?.completed);
+  const sorted = sortSessions(todo);
+  return [...sorted.filter((s) => s.needsStart), ...sorted.filter((s) => !s.needsStart)];
+}
+
 export const DAY_MS = DAY;

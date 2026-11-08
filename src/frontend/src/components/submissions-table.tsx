@@ -3,7 +3,7 @@
 import { LanguageLabels, type SubmissionDto } from '@oj/contracts';
 import Link from 'next/link';
 import { sessionHref, solveHref } from '@/lib/sessions';
-import { cn, formatDateTime, formatMemory, formatTime } from '@/lib/utils';
+import { cn, formatDateTime, formatMemory, formatTime, formatPoints } from '@/lib/utils';
 import { Badge, VerdictBadge } from './ui';
 
 export function SubmissionsTable({
@@ -60,7 +60,7 @@ export function SubmissionsTable({
                   )}
                 </Link>
               </td>
-              <td className="px-4 py-2.5 text-right font-medium">{s.status === 'DONE' && !s.resultsHidden ? s.score : '—'}</td>
+              <td className="px-4 py-2.5 text-right font-medium">{s.status === 'DONE' && !s.resultsHidden ? `${formatPoints(s.score)}%` : '—'}</td>
               <td className="hidden px-4 py-2.5 text-slate-600 sm:table-cell">{LanguageLabels[s.language] ?? s.language}</td>
               <td className="hidden px-4 py-2.5 text-right text-slate-600 md:table-cell">{formatTime(s.maxTimeMs)}</td>
               <td className="hidden px-4 py-2.5 text-right text-slate-600 md:table-cell">{formatMemory(s.maxMemoryKb)}</td>

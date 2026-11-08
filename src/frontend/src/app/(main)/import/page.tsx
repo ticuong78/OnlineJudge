@@ -213,7 +213,7 @@ function DraftCard({
           className="flex items-center gap-1 text-sm text-slate-600 hover:text-ink-600"
         >
           {d.open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          {d.open ? 'Thu gọn' : 'Chỉnh sửa chi tiết'}
+          <span key={d.open ? 'open' : 'closed'}>{d.open ? 'Thu gọn' : 'Chỉnh sửa chi tiết'}</span>
         </button>
         <SuggestionSwitch
           label={`Dùng gợi ý của AI cho tất cả các mục của bài ${index + 1}`}

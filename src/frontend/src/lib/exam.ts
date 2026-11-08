@@ -1,4 +1,4 @@
-import { LanguageLabels, Languages, type FeedbackMode, type Language, type SessionDto, type SessionSettingsDto } from '@oj/contracts';
+import { LanguageLabels, Languages, type FeedbackMode, type Language, type ProblemSetType, type SessionDto, type SessionSettingsDto } from '@oj/contracts';
 
 export const DEFAULT_SETTINGS: SessionSettingsDto = {
   durationMinutes: null,
@@ -15,6 +15,23 @@ export const TEST_PRESET: Partial<SessionSettingsDto> = {
   maxSubmissionsPerProblem: 3,
   feedback: 'SCORE_ONLY',
 };
+
+/** "Đề thi" defaults: a longer sitting, results only after the session closes. */
+const EXAM_PRESET: Partial<SessionSettingsDto> = {
+  durationMinutes: 90,
+  maxSubmissionsPerProblem: 3,
+  feedback: 'HIDDEN_UNTIL_CLOSED',
+};
+
+/**
+ * Settings the "Giao bài" form starts from. Exam and test sets get exam settings and the plagiarism check, so a hurried
+ * teacher does not run an exam that shows every hidden test's result; other sets and single problems stay open.
+ */
+export function defaultSettingsFor(type: ProblemSetType | undefined): SessionSettingsDto {
+  if (type === 'EXAM') return { ...DEFAULT_SETTINGS, ...EXAM_PRESET, checkPlagiarism: true };
+  if (type === 'TEST') return { ...DEFAULT_SETTINGS, ...TEST_PRESET, checkPlagiarism: true };
+  return DEFAULT_SETTINGS;
+}
 
 export const FeedbackLabels: Record<FeedbackMode, { label: string; hint: string }> = {
   FULL: { label: 'Đầy đủ', hint: 'Học sinh thấy kết quả từng test ngay sau khi chấm.' },

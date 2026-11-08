@@ -3,6 +3,7 @@
 import type { ProblemDetailDto, SharingDto } from '@oj/contracts';
 import { useState } from 'react';
 import { api, errorMessage } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { useToast } from './toast';
 import { Card, Spinner } from './ui';
@@ -48,19 +49,21 @@ function Toggle({
   );
 }
 
-/** The three independent sharing levels of a problem. */
+/** Public sharing (three levels) and, for teachers in organizations, sharing with each organization (OJ-8). */
 export function SharingPanel({ problem, onChange }: { problem: ProblemDetailDto; onChange: (p: ProblemDetailDto) => void }) {
   const toast = useToast();
+  const { user } = useAuth();
   const [busy, setBusy] = useState(false);
   const s = problem.sharing;
+  const myOrganizations = user?.organizations ?? [];
 
   const save = async (next: SharingDto) => {
-    if (!next.isPublic) next = { isPublic: false, publicTests: false, publicSolution: false };
+    if (!next.isPublic) next = { ...next, publicTests: false, publicSolution: false };
     setBusy(true);
     try {
       const p = await api.updateProblemSharing(problem.id, next);
       onChange(p);
-      toast.success(next.isPublic ? 'Đã lưu chia sẻ' : 'Đã chuyển bài về riêng tư');
+      toast.success(next.isPublic || next.organizationIds.length ? 'Đã lưu chia sẻ' : 'Đã chuyển bài về riêng tư');
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
@@ -97,6 +100,36 @@ export function SharingPanel({ problem, onChange }: { problem: ProblemDetailDto;
           hint="Giáo viên khác xem được hướng dẫn và code mẫu. Học sinh không bao giờ thấy lời giải."
         />
       </div>
+      {myOrganizations.length > 0 && (
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <h3 className="mb-1 text-sm font-semibold text-slate-800">Chia sẻ trong tổ chức</h3>
+          <p className="mb-3 text-xs text-slate-500">
+            Giáo viên trong tổ chức xem được toàn bộ bài (đề, test ẩn, lời giải) và lưu bản sao. Người ngoài tổ chức không thấy.
+          </p>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {myOrganizations.map((o) => {
+              const on = s.organizationIds.includes(o.organizationId);
+              return (
+                <Toggle
+                  key={o.organizationId}
+                  checked={on}
+                  disabled={busy}
+                  onChange={(v) =>
+                    save({
+                      ...s,
+                      organizationIds: v
+                        ? [...s.organizationIds, o.organizationId]
+                        : s.organizationIds.filter((id) => id !== o.organizationId),
+                    })
+                  }
+                  label={o.organizationName}
+                  hint={on ? 'Đang chia sẻ với tổ chức này.' : 'Chưa chia sẻ.'}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

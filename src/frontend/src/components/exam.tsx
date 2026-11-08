@@ -30,6 +30,11 @@ export function SessionSettingsFields({
 }) {
   const canUseAi = useCanUseAi();
   const [open, setOpen] = useState(() => isExamLike(value) || value.checkPlagiarism || value.checkAiUsage);
+  const examLike = isExamLike(value);
+  // Prefilled exam settings (OJ-11) arrive after the first render; show them rather than a closed panel.
+  useEffect(() => {
+    if (examLike) setOpen(true);
+  }, [examLike]);
   const set = <K extends keyof SessionSettingsDto>(k: K, v: SessionSettingsDto[K]) => onChange({ ...value, [k]: v });
   const allLangs = value.allowedLanguages.length === 0;
 
@@ -466,7 +471,12 @@ export function StartScreen({ session, onStarted }: { session: SessionDto; onSta
       <Button className="mt-6" onClick={() => setConfirm(true)} disabled={session.state !== 'OPEN'}>
         Bắt đầu làm bài
       </Button>
-      {session.state !== 'OPEN' && <p className="mt-2 text-sm text-amber-800">Phiên chưa mở hoặc đã đóng.</p>}
+      {session.state === 'UPCOMING' && (
+        <p className="mt-2 text-sm text-amber-800">
+          {session.opensAt ? <>Phiên mở lúc <b>{formatDateTime(session.opensAt)}</b>.</> : 'Phiên chưa mở.'}
+        </p>
+      )}
+      {session.state === 'CLOSED' && <p className="mt-2 text-sm text-amber-800">Phiên đã đóng, không nhận bài nộp mới.</p>}
       <StartConfirm open={confirm} busy={busy} minutes={minutes} onClose={() => setConfirm(false)} onStart={start} />
     </div>
   );

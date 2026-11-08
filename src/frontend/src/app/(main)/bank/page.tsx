@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { Container } from '@/components/app-shell';
 import { BankTabs, CopiedFrom, OwnerNote, ScopeSwitch, SharingBadge } from '@/components/bank';
 import { RequireRole, STAFF } from '@/components/guards';
+import { useAuth } from '@/lib/auth';
 import {
   Badge,
   Card,
@@ -27,6 +28,7 @@ const PAGE_SIZE = 20;
 const SCOPE_KEY = 'oj:bankScope';
 
 export default function BankProblemsPage() {
+  const { user } = useAuth();
   const [scope, setScopeState] = useState<BankScope>('mine');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -37,8 +39,10 @@ export default function BankProblemsPage() {
 
   useEffect(() => {
     const s = storageGet(SCOPE_KEY) as BankScope | null;
-    if (s === 'mine' || s === 'public' || s === 'all') setScopeState(s);
-  }, []);
+    if (s === 'mine' || s === 'public' || s === 'all' || (s === 'organization' && !!user?.organizations.length)) setScopeState(s);
+    // The administrator has no bank of their own: start on everything unless they chose otherwise.
+    else if (user?.role === 'ADMIN') setScopeState('all');
+  }, [user?.role, user?.organizations.length]);
   const setScope = (s: BankScope) => {
     setScopeState(s);
     storageSet(SCOPE_KEY, s);
@@ -82,7 +86,7 @@ export default function BankProblemsPage() {
 
         <Card className="mb-4 p-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-            <ScopeSwitch value={scope} onChange={setScope} />
+            <ScopeSwitch value={scope} onChange={setScope} withOrganization />
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
@@ -142,7 +146,9 @@ export default function BankProblemsPage() {
                   ? 'Không tìm thấy bài phù hợp'
                   : scope === 'mine'
                     ? 'Ngân hàng của bạn chưa có bài nào'
-                    : 'Chưa có bài công khai nào'
+                    : scope === 'organization'
+                      ? 'Chưa có bài nào được chia sẻ trong tổ chức'
+                      : 'Chưa có bài công khai nào'
               }
             >
               {scope === 'mine' && !hasFilter && (
@@ -200,7 +206,7 @@ export default function BankProblemsPage() {
                           </div>
                         </td>
                         <td className="hidden px-4 py-2.5 md:table-cell">
-                          <SharingBadge isPublic={p.sharing.isPublic} />
+                          <SharingBadge isPublic={p.sharing.isPublic} organizationCount={p.sharing.organizationIds.length} />
                         </td>
                         <td className="hidden px-4 py-2.5 text-xs text-slate-500 xl:table-cell">
                           <span className="mr-3 inline-flex items-center gap-1">

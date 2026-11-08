@@ -34,9 +34,16 @@ import { useAsync } from '@/lib/use-async';
 import { cn, formatDate, formatDateTime } from '@/lib/utils';
 
 function ClassHeader({ cls, onSaved }: { cls: ClassroomDto; onSaved: (c: ClassroomDto) => void }) {
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const toast = useToast();
   const [editing, setEditing] = useState(false);
+  const myOrganizations = user?.organizations ?? [];
+  // OJ-8: org admins hand an organization class to another member of the organization.
+  const orgAdminOfClass = !isAdmin && !!cls.organization && myOrganizations.some((o) => o.organizationId === cls.organization!.id && o.role === 'ADMIN');
+  const orgMembers = useAsync(
+    () => (editing && orgAdminOfClass ? api.getOrganization(cls.organization!.id).then((o) => o.members) : Promise.resolve([])),
+    [editing, orgAdminOfClass, cls.organization?.id],
+  );
   const [name, setName] = useState(cls.name);
   const [code, setCode] = useState(cls.code ?? '');
   const [teacherId, setTeacherId] = useState(cls.teacherId);
@@ -58,7 +65,7 @@ function ClassHeader({ cls, onSaved }: { cls: ClassroomDto; onSaved: (c: Classro
     if (!CLASS_CODE_RE.test(code)) return setError('Mã lớp cần 4 đến 20 ký tự gồm chữ, số hoặc dấu gạch ngang.');
     setSaving(true);
     try {
-      const c = await api.updateClass(cls.id, { name: name.trim(), code, ...(isAdmin ? { teacherId } : {}) });
+      const c = await api.updateClass(cls.id, { name: name.trim(), code, ...(isAdmin || orgAdminOfClass ? { teacherId } : {}) });
       onSaved(c);
       setEditing(false);
       toast.success('Đã lưu lớp');
@@ -85,6 +92,18 @@ function ClassHeader({ cls, onSaved }: { cls: ClassroomDto; onSaved: (c: Classro
                 <TeacherSelect value={teacherId} onChange={setTeacherId} />
               </Field>
             )}
+            {orgAdminOfClass && (
+              <Field label="Giáo viên phụ trách" hint={`Giáo viên của ${cls.organization!.name}.`}>
+                <select className={inputClass} value={teacherId} onChange={(e) => setTeacherId(e.target.value)}>
+                  {(orgMembers.data ?? []).map((m) => (
+                    <option key={m.userId} value={m.userId}>
+                      {m.displayName}
+                    </option>
+                  ))}
+                  {!orgMembers.data?.some((m) => m.userId === teacherId) && <option value={teacherId}>{cls.teacherName}</option>}
+                </select>
+              </Field>
+            )}
           </div>
           {error && <InlineAlert>{error}</InlineAlert>}
           <div className="flex gap-2">
@@ -109,18 +128,77 @@ function ClassHeader({ cls, onSaved }: { cls: ClassroomDto; onSaved: (c: Classro
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
         <dt className="text-slate-500">Giáo viên</dt>
         <dd className="font-medium">{cls.teacherName}</dd>
+        <dt className="text-slate-500">Thuộc</dt>
+        <dd className="font-medium">{cls.organization ? cls.organization.name : 'Lớp cá nhân'}</dd>
         <dt className="text-slate-500">Sĩ số</dt>
         <dd className="font-medium">{cls.studentCount} học sinh</dd>
         <dt className="text-slate-500">Tạo ngày</dt>
         <dd>{formatDate(cls.createdAt)}</dd>
       </dl>
       {cls.status === 'ACTIVE' && (
-        <Button variant="secondary" className="ml-auto" onClick={start}>
-          <Pencil className="h-4 w-4" />
-          Sửa lớp
-        </Button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {!cls.organization && cls.teacherId === user?.id && myOrganizations.length > 0 && (
+            <MoveToOrganization cls={cls} onMoved={onSaved} />
+          )}
+          <Button variant="secondary" onClick={start}>
+            <Pencil className="h-4 w-4" />
+            <span>Sửa lớp</span>
+          </Button>
+        </div>
       )}
     </Card>
+  );
+}
+
+/** A personal class joins one of the teacher's organizations (one way: it cannot be taken out again). */
+function MoveToOrganization({ cls, onMoved }: { cls: ClassroomDto; onMoved: (c: ClassroomDto) => void }) {
+  const { user } = useAuth();
+  const toast = useToast();
+  const orgs = user?.organizations ?? [];
+  const [target, setTarget] = useState(orgs[0]?.organizationId ?? '');
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const name = orgs.find((o) => o.organizationId === target)?.organizationName ?? '';
+  const move = async () => {
+    setBusy(true);
+    try {
+      onMoved(await api.moveClassToOrganization(cls.id, target));
+      toast.success(`Lớp đã thuộc ${name}`);
+      setConfirming(false);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <select className={cn(inputClass, 'w-auto py-1.5')} value={target} onChange={(e) => setTarget(e.target.value)} aria-label="Tổ chức">
+        {orgs.map((o) => (
+          <option key={o.organizationId} value={o.organizationId}>
+            {o.organizationName}
+          </option>
+        ))}
+      </select>
+      <Button variant="secondary" onClick={() => setConfirming(true)}>
+        <span>Chuyển vào tổ chức</span>
+      </Button>
+      <ConfirmDialog
+        open={confirming}
+        title="Chuyển lớp vào tổ chức?"
+        confirmLabel="Chuyển vào tổ chức"
+        danger={false}
+        loading={busy}
+        onClose={() => setConfirming(false)}
+        onConfirm={move}
+        message={
+          <div className="space-y-2 text-sm">
+            <p>Lớp {cls.name} sẽ thuộc {name}. Quản lý tổ chức cũng quản lý được lớp: học sinh, phiên, kết quả.</p>
+            <p>Không chuyển lớp ra khỏi tổ chức được. Khi bạn rời tổ chức, lớp ở lại tổ chức.</p>
+          </div>
+        }
+      />
+    </>
   );
 }
 
@@ -275,6 +353,9 @@ function ClassSessions({ cls }: { cls: ClassroomDto }) {
 }
 
 function LifecycleBar({ cls, onChange }: { cls: ClassroomDto; onChange: (c: ClassroomDto) => void }) {
+  const { user, isAdmin } = useAuth();
+  // Org admins archive and restore organization classes but do not delete them (OJ-8).
+  const canDelete = isAdmin || cls.teacherId === user?.id;
   const toast = useToast();
   const router = useRouter();
   const now = useNow(60_000);
@@ -380,6 +461,8 @@ function LifecycleBar({ cls, onChange }: { cls: ClassroomDto; onChange: (c: Clas
               Hủy hẹn xóa
             </Button>
           </>
+        ) : !canDelete ? (
+          <span className="text-slate-600">Chỉ giáo viên phụ trách lớp hoặc quản trị viên được xóa hẳn lớp.</span>
         ) : (
           <>
             <label className="flex items-center gap-2">
@@ -408,19 +491,21 @@ function LifecycleBar({ cls, onChange }: { cls: ClassroomDto; onChange: (c: Clas
             </Button>
           </>
         )}
-        <Button
-          size="sm"
-          variant="ghost"
-          className="ml-auto text-mark-600 hover:bg-mark-50"
-          onClick={() => {
-            setConfirmName('');
-            setDeleteError(null);
-            setDeleteOpen(true);
-          }}
-        >
-          <Trash2 className="h-4 w-4" />
-          Xóa ngay
-        </Button>
+        {canDelete && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto text-mark-600 hover:bg-mark-50"
+            onClick={() => {
+              setConfirmName('');
+              setDeleteError(null);
+              setDeleteOpen(true);
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+            <span>Xóa ngay</span>
+          </Button>
+        )}
       </div>
       <Modal
         open={deleteOpen}

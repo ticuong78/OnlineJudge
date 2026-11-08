@@ -121,7 +121,7 @@ export default function ThreadPage() {
             {t.canPin && (
               <Button variant="secondary" onClick={togglePin} loading={busy && !deleting}>
                 {t.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
-                {t.pinned ? 'Bỏ ghim' : 'Ghim'}
+                <span key={t.pinned ? 'pinned' : 'unpinned'}>{t.pinned ? 'Bỏ ghim' : 'Ghim'}</span>
               </Button>
             )}
             {t.canDelete && (

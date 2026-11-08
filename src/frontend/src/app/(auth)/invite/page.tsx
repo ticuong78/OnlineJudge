@@ -3,7 +3,7 @@
 import { MailWarning } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useState, type FormEvent } from 'react';
+import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { useToast } from '@/components/toast';
 import { Button, Card, Field, InlineAlert, inputClass, LoadingState } from '@/components/ui';
 import { OTP_LENGTH, OtpInput } from '@/components/verification';
@@ -39,11 +39,24 @@ function AcceptInvite() {
   const toast = useToast();
 
   const invite = useAsync(() => api.getInvitation(id), [id], !!id);
-  const [code, setCode] = useState(() => (params.get('code') ?? '').replace(/\D/g, '').slice(0, OTP_LENGTH));
+  const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // The code comes in the fragment (#c=), which the browser never sends to a server; links sent before that change
+  // carry it as ?code=. Either way it is read once and removed from the address bar, so it does not stay in history.
+  useEffect(() => {
+    const fromLink = new URLSearchParams(window.location.hash.slice(1)).get('c') ?? params.get('code') ?? '';
+    // Strict Mode runs this twice in development: the second run finds the address bar already cleaned and must
+    // leave the code read by the first one alone.
+    if (!fromLink) return;
+    setCode(fromLink.replace(/\D/g, '').slice(0, OTP_LENGTH));
+    window.history.replaceState(null, '', `${window.location.pathname}?id=${encodeURIComponent(id)}`);
+    // read the link once, on arrival
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!id) return <InvalidInvite message="Đường link thiếu mã lời mời." />;
   if (invite.loading) return <LoadingState label="Đang mở lời mời..." />;

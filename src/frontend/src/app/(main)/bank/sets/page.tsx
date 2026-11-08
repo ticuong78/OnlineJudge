@@ -32,7 +32,9 @@ export default function BankSetsPage() {
   useEffect(() => {
     const s = storageGet(SCOPE_KEY) as BankScope | null;
     if (s === 'mine' || s === 'public' || s === 'all') setScopeState(s);
-  }, []);
+    // The administrator has no bank of their own: start on everything unless they chose otherwise.
+    else if (user?.role === 'ADMIN') setScopeState('all');
+  }, [user?.role]);
   const setScope = (s: BankScope) => {
     setScopeState(s);
     storageSet(SCOPE_KEY, s);

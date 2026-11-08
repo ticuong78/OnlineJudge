@@ -1,4 +1,12 @@
 import type {
+  AddOrganizationMemberRequest,
+  CreateOrganizationRequest,
+  InviteToOrganizationRequest,
+  OrganizationDetailDto,
+  OrganizationDto,
+  OrganizationInvitationDto,
+  OrganizationRole,
+  UpsertOrganizationRequest,
   CreateProblemRequest,
   AcceptInvitationRequest,
   AddStudentRequest,
@@ -173,6 +181,8 @@ export interface ProblemQuery {
   search?: string;
   difficulty?: Difficulty | '';
   tag?: string;
+  /** `organization` scope: one of the viewer's organizations (all of them when absent). */
+  organizationId?: string;
   page?: number;
   pageSize?: number;
 }
@@ -214,8 +224,33 @@ export const api = {
   resendInvitation: (id: string) => request<InvitationDto>('POST', `/users/invitations/${id}/resend`),
   cancelInvitation: (id: string) => request<void>('DELETE', `/users/invitations/${id}`),
 
+  // Organizations (OJ-8)
+  listOrganizations: () => request<OrganizationDto[]>('GET', '/organizations'),
+  getOrganization: (id: string) => request<OrganizationDetailDto>('GET', `/organizations/${id}`),
+  createOrganization: (body: CreateOrganizationRequest) => request<OrganizationDetailDto>('POST', '/organizations', { body }),
+  updateOrganization: (id: string, body: UpsertOrganizationRequest) =>
+    request<OrganizationDetailDto>('PUT', `/organizations/${id}`, { body }),
+  addOrganizationMember: (id: string, body: AddOrganizationMemberRequest) =>
+    request<OrganizationDetailDto>('POST', `/organizations/${id}/members`, { body }),
+  setOrganizationRole: (id: string, userId: string, role: OrganizationRole) =>
+    request<OrganizationDetailDto>('PUT', `/organizations/${id}/members/${userId}/role`, { body: { role } }),
+  /** Removes a teacher; with the caller's own id it means leaving the organization. */
+  removeOrganizationMember: (id: string, userId: string) => request<void>('DELETE', `/organizations/${id}/members/${userId}`),
+  inviteToOrganization: (id: string, body: InviteToOrganizationRequest) =>
+    request<OrganizationInvitationDto>('POST', `/organizations/${id}/invitations`, { body }),
+  cancelOrganizationInvitation: (id: string, invitationId: string) =>
+    request<void>('DELETE', `/organizations/${id}/invitations/${invitationId}`),
+  organizationClasses: (id: string) => request<ClassroomDto[]>('GET', `/organizations/${id}/classes`),
+  myOrganizationInvitations: () => request<OrganizationInvitationDto[]>('GET', '/organization-invitations/mine'),
+  acceptOrganizationInvitation: (id: string) =>
+    request<OrganizationDto>('POST', `/organization-invitations/${id}/accept`),
+  declineOrganizationInvitation: (id: string) => request<void>('POST', `/organization-invitations/${id}/decline`),
+
   // Classes
   listClasses: () => request<ClassroomDto[]>('GET', '/classes'),
+  /** A personal class joins one of the teacher's organizations (one way). */
+  moveClassToOrganization: (id: string, organizationId: string) =>
+    request<ClassroomDto>('PUT', `/classes/${id}/organization`, { body: { organizationId } }),
   getClass: (id: string) => request<ClassroomDto>('GET', `/classes/${id}`),
   createClass: (body: UpsertClassroomRequest) => request<ClassroomDto>('POST', '/classes', { body }),
   updateClass: (id: string, body: UpsertClassroomRequest) => request<ClassroomDto>('PUT', `/classes/${id}`, { body }),

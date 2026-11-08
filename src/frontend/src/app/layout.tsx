@@ -1,10 +1,12 @@
 import type { Metadata } from 'next';
 import { Be_Vietnam_Pro, JetBrains_Mono, Patrick_Hand } from 'next/font/google';
+import Script from 'next/script';
 import 'katex/dist/katex.min.css';
 import 'highlight.js/styles/github.css';
 import './globals.css';
 import { ToastProvider } from '@/components/toast';
 import { AuthProvider } from '@/lib/auth';
+import { TRANSLATION_SAFE_DOM } from '@/lib/translation-safe-dom';
 
 // All three faces ship the Vietnamese subset so stacked diacritics render correctly.
 const ui = Be_Vietnam_Pro({
@@ -35,8 +37,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="vi" className={`${ui.variable} ${code.variable} ${hand.variable}`}>
+    // Browser translation (e.g. Chrome's "Translate to English") rewrites <html lang> and adds a class before React
+    // loads. suppressHydrationWarning covers only this element's own attributes, not its children.
+    <html lang="vi" className={`${ui.variable} ${code.variable} ${hand.variable}`} suppressHydrationWarning>
       <body className="min-h-screen font-sans antialiased">
+        {/* Before React starts: browser translation must not crash the app (see lib/translation-safe-dom.ts). */}
+        <Script id="translation-safe-dom" strategy="beforeInteractive">
+          {TRANSLATION_SAFE_DOM}
+        </Script>
         <AuthProvider>
           <ToastProvider>{children}</ToastProvider>
         </AuthProvider>

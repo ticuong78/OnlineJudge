@@ -57,7 +57,9 @@ export function Button({
       {...rest}
     >
       {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-      {children}
+      {/* Its own element (laid out as if absent): browser translation replaces bare text nodes, and React would then
+          fail to insert the spinner next to one ("insertBefore ... not a child of this node"). */}
+      <span className="contents">{children}</span>
     </button>
   );
 }

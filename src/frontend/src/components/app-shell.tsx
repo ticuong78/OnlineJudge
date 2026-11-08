@@ -1,6 +1,6 @@
 'use client';
 
-import type { Role } from '@oj/contracts';
+import type { Role, UserDto } from '@oj/contracts';
 import {
   Code2,
   Dumbbell,
@@ -12,6 +12,8 @@ import {
   Menu,
   School,
   Send,
+  ShieldAlert,
+  Building2,
   Users,
   X,
   type LucideIcon,
@@ -27,6 +29,8 @@ interface NavItem {
   label: string;
   icon: LucideIcon;
   roles?: Role[];
+  /** Extra condition on the signed-in user (e.g. teachers who belong to an organization). */
+  when?: (user: UserDto) => boolean;
 }
 
 const STAFF_ROLES: Role[] = ['ADMIN', 'TEACHER'];
@@ -38,6 +42,14 @@ const NAV: NavItem[] = [
   { href: '/practice', label: 'Luyện tập', icon: Dumbbell, roles: ['STUDENT'] },
   { href: '/progress', label: 'Học bạ', icon: NotebookPen, roles: ['STUDENT'] },
   { href: '/import', label: 'Nhập đề', icon: FileUp, roles: STAFF_ROLES },
+  { href: '/integrity', label: 'Cần xem lại', icon: ShieldAlert, roles: STAFF_ROLES },
+  {
+    href: '/organizations',
+    label: 'Tổ chức',
+    icon: Building2,
+    roles: STAFF_ROLES,
+    when: (u) => u.role === 'ADMIN' || u.organizations.length > 0,
+  },
   { href: '/submissions', label: 'Bài nộp', icon: Send },
   { href: '/admin/users', label: 'Người dùng', icon: Users, roles: ['ADMIN'] },
 ];
@@ -53,7 +65,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
-  const items = NAV.filter((i) => !i.roles || (user && i.roles.includes(user.role)));
+  const items = NAV.filter((i) => !i.roles || (user && i.roles.includes(user.role) && (!i.when || i.when(user))));
 
   const doLogout = () => {
     logout();
@@ -68,30 +80,32 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink-600 text-white">
               <Code2 className="h-4 w-4" />
             </span>
-            <span className="hidden sm:inline">Online Judge</span>
+            {/* Hidden at lg, where the full menu needs the room; back from xl. */}
+            <span className="hidden sm:inline lg:hidden xl:inline">Online Judge</span>
           </Link>
 
-          <nav className="hidden flex-1 items-center gap-1 md:flex">
+          {/* Inline from lg (1024px): with seven items (admin) the labels do not fit on one line below that. */}
+          <nav className="hidden flex-1 items-center gap-1 lg:flex">
             {items.map((i) => (
               <Link
                 key={i.href}
                 href={i.href}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+                  'flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors xl:px-3',
                   isActive(pathname, i.href)
                     ? 'bg-ink-50 text-ink-700'
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
                 )}
               >
                 <i.icon className="h-4 w-4" />
-                {i.label}
+                <span>{i.label}</span>
               </Link>
             ))}
           </nav>
 
-          <div className="ml-auto hidden items-center gap-3 md:flex">
+          <div className="ml-auto hidden items-center gap-3 lg:flex">
             {user && (
-              <div className="text-right leading-tight">
+              <div className="hidden text-right leading-tight xl:block">
                 <div className="text-sm font-medium text-slate-800">{user.displayName}</div>
                 <div className="text-xs text-slate-500">{RoleLabels[user.role]}</div>
               </div>
@@ -101,15 +115,16 @@ export function AppShell({ children }: { children: ReactNode }) {
               onClick={doLogout}
               className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
               title="Đăng xuất"
+              aria-label="Đăng xuất"
             >
               <LogOut className="h-4 w-4" />
-              Đăng xuất
+              <span className="hidden xl:inline">Đăng xuất</span>
             </button>
           </div>
 
           <button
             type="button"
-            className="ml-auto rounded-lg p-2 text-slate-600 hover:bg-slate-100 md:hidden"
+            className="ml-auto rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
             onClick={() => setOpen((o) => !o)}
             aria-label="Menu"
           >
@@ -118,7 +133,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         {open && (
-          <nav className="border-t border-slate-200 bg-white px-4 py-2 md:hidden">
+          <nav className="border-t border-slate-200 bg-white px-4 py-2 lg:hidden">
             {items.map((i) => (
               <Link
                 key={i.href}
