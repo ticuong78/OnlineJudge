@@ -5,6 +5,37 @@ import { SUBMISSION_JUDGED, type SubmissionJudgedEvent } from '../judging.events
 
 const MAX_SOURCE_BYTES = 64 * 1024;
 
+/** The backend could not hand the job to the judge (the queue was down). */
+export const ENQUEUE_FAILED_MESSAGE = 'Không gửi được bài tới máy chấm. Vui lòng thử lại sau.';
+/** The judge never returned a result (lost job, dead engine); written by the watchdog. */
+export const LOST_RESULT_MESSAGE =
+  'Hệ thống chấm bài không trả kết quả cho bài nộp này (không phải lỗi của bạn). Bạn có thể nộp lại, hoặc nhờ giáo viên chấm lại.';
+/** The result could not be stored (e.g. text the database refuses); the program produced it, so it is attributed. */
+export const RESULT_NOT_STORED_MESSAGE =
+  'Không lưu được kết quả chấm của bài này (kết quả chứa dữ liệu không hợp lệ). Hãy kiểm tra những gì chương trình in ra.';
+
+/**
+ * Where a system error (IE) came from. `infrastructure`: before any of the submitted program ran (queue down, container
+ * start, compiler missing, result lost by the system), never the submission's doing, so never an attempt. `program`:
+ * after a test had started, so the program may have caused it (a program can sometimes make the sandbox fail on purpose,
+ * e.g. only for certain hidden inputs, to probe the hidden tests without spending attempts).
+ */
+export type FaultSource = 'infrastructure' | 'program';
+
+/**
+ * `program` system errors are free up to this many per student and problem; every later one counts as an attempt, for
+ * good (decided by what is stored, not by a time window that would let probing start again the next day). Two leave
+ * room for a genuine failure during a run, which a teacher can also undo by rejudging.
+ */
+export const FREE_PROGRAM_ERRORS = 2;
+
+/** What a program controls in a result, made storable: PostgreSQL text and jsonb refuse NUL (audit F-2). */
+function storable(text: string): string;
+function storable(text: string | null): string | null;
+function storable(text: string | null): string | null {
+  return text === null ? null : text.replace(/\u0000/g, '').replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '\ufffd');
+}
+
 export class SourceCode {
   private constructor(
     readonly language: Language,
@@ -35,8 +66,12 @@ export interface SubmissionState {
   verdict: Verdict | null;
   score: number;
   compileOutput: string | null;
+  /** Set for verdict IE only; null for other verdicts and for rows from before it existed. */
+  faultSource: FaultSource | null;
   testResults: TestCaseResult[];
   createdAt: Date;
+  /** When the current judge run was handed to the queue (submission, or the latest rejudge). A result overdue from here is lost. */
+  queuedAt: Date;
   judgedAt: Date | null;
 }
 
@@ -55,6 +90,7 @@ export class Submission extends AggregateRoot {
   }
 
   static submit(input: NewSubmission): Submission {
+    const now = new Date();
     return new Submission(newId(), {
       ...input,
       judgeRun: 1,
@@ -62,8 +98,10 @@ export class Submission extends AggregateRoot {
       verdict: null,
       score: 0,
       compileOutput: null,
+      faultSource: null,
       testResults: [],
-      createdAt: new Date(),
+      createdAt: now,
+      queuedAt: now,
       judgedAt: null,
     });
   }
@@ -104,14 +142,19 @@ export class Submission extends AggregateRoot {
       verdict: null,
       score: 0,
       compileOutput: null,
+      faultSource: null,
       testResults: [],
+      queuedAt: new Date(),
       judgedAt: null,
     };
     return this.state.judgeRun;
   }
 
-  complete(verdict: Verdict, testResults: TestCaseResult[], compileOutput: string | null): void {
+  /** `faultSource` matters for IE only; an IE without one is attributed to the program (the cautious side). */
+  complete(verdict: Verdict, testResults: TestCaseResult[], compileOutput: string | null, faultSource: FaultSource | null = null): void {
     if (this.state.status === 'DONE') return;
+    testResults = testResults.map((t) => (t.message === undefined ? t : { ...t, message: storable(t.message) }));
+    compileOutput = storable(compileOutput);
     const earned = testResults.reduce((sum, t) => sum + t.points, 0);
     const total = this.state.totalPoints;
     this.state = {
@@ -120,6 +163,7 @@ export class Submission extends AggregateRoot {
       verdict,
       testResults,
       compileOutput,
+      faultSource: verdict === 'IE' ? faultSource ?? 'program' : null,
       score: verdict === 'AC' ? 100 : total > 0 ? Math.round((earned / total) * 10000) / 100 : 0,
       judgedAt: new Date(),
     };
@@ -141,6 +185,6 @@ export class Submission extends AggregateRoot {
 
   /** The queue could not accept the job. */
   failToEnqueue(reason: string): void {
-    this.complete('IE', [], reason);
+    this.complete('IE', [], reason, 'infrastructure');
   }
 }

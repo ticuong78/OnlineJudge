@@ -19,7 +19,10 @@ export class TypeOrmProblemSetRepository extends ProblemSetRepository {
   }
 
   async list(scope: BankScope, viewerId: string) {
-    const where = scope === 'mine' ? { ownerId: viewerId } : scope === 'public' ? { isPublic: true } : {};
+    // Sets are not shared with organizations (OJ-8 pilot): that scope, like any unknown one, lists nothing.
+    // Only `all` (administrator, checked by the service) means every set.
+    const where = scope === 'mine' ? { ownerId: viewerId } : scope === 'public' ? { isPublic: true } : scope === 'all' ? {} : null;
+    if (!where) return [];
     return (await this.repo.find({ where, order: { createdAt: 'DESC' } })).map(toSet);
   }
 

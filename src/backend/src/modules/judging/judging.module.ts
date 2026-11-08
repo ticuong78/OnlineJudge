@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AssessmentModule } from '../assessment/assessment.module.js';
 import { JudgingFacade } from './application/judging.facade.js';
+import { JudgeWatchdog } from './application/judge-watchdog.js';
 import { JudgingService } from './application/judging.service.js';
 import { JudgeQueue, SessionGateway } from './application/ports.js';
 import { SubmissionQueries, SubmissionRepository } from './domain/submission.repository.js';
@@ -17,6 +18,7 @@ import { RejudgeController, SubmissionsController } from './presentation/submiss
   providers: [
     JudgingService,
     JudgingFacade,
+    JudgeWatchdog,
     JudgeResultsConsumer,
     { provide: SubmissionRepository, useClass: TypeOrmSubmissionRepository },
     { provide: SubmissionQueries, useClass: TypeOrmSubmissionQueries },

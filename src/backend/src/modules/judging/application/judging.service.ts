@@ -12,7 +12,7 @@ import {
 import type { Actor } from '../../../shared/application/actor.js';
 import { EventPublisher } from '../../../shared/application/event-publisher.js';
 import { DomainError } from '../../../shared/domain/domain-error.js';
-import { SourceCode, Submission } from '../domain/submission.js';
+import { ENQUEUE_FAILED_MESSAGE, RESULT_NOT_STORED_MESSAGE, SourceCode, Submission } from '../domain/submission.js';
 import { SubmissionQueries, SubmissionRepository } from '../domain/submission.repository.js';
 import { REJUDGE_STARTED, type RejudgeStartedEvent } from '../judging.events.js';
 import { JudgeQueue, SessionGateway, type ResultVisibility, type SubmissionTarget } from './ports.js';
@@ -44,18 +44,10 @@ export class JudgingService {
   async submit(actor: Actor, input: SubmitRequest): Promise<SubmissionDto> {
     const source = SourceCode.of(input.language, input.sourceCode);
     const key = input.problemKey.toUpperCase();
-    if ((await this.submissions.countUnfinishedByUser(actor.id)) >= this.maxPending) {
-      throw DomainError.conflict('judging.too_many_pending',
-        `Bạn đang có ${this.maxPending} bài chờ chấm. Hãy đợi kết quả rồi nộp tiếp.`);
-    }
     const target = await this.sessions.prepareSubmission(actor, input.sessionId, key);
     if (target.allowedLanguages.length && !target.allowedLanguages.includes(source.language)) {
       throw DomainError.validation('judging.language_not_allowed',
         `Phiên này chỉ cho phép: ${target.allowedLanguages.map((l) => LanguageLabels[l]).join(', ')}.`);
-    }
-    if (target.maxSubmissions !== null
-      && (await this.submissions.countForProblem(actor.id, input.sessionId, key)) >= target.maxSubmissions) {
-      throw DomainError.conflict('judging.submission_limit', `Bạn đã dùng hết ${target.maxSubmissions} lần nộp cho bài này.`);
     }
 
     const submission = Submission.submit({
@@ -68,7 +60,16 @@ export class JudgingService {
       source,
       totalPoints: totalPoints(target),
     });
-    await this.submissions.save(submission);
+    // The limits are checked and the submission stored in one atomic step (see SubmissionRepository.admit).
+    const admission = await this.submissions.admit(submission, { maxPending: this.maxPending, maxForProblem: target.maxSubmissions });
+    if (admission === 'TOO_MANY_PENDING') {
+      throw DomainError.conflict('judging.too_many_pending',
+        `Bạn đang có ${this.maxPending} bài chờ chấm. Hãy đợi kết quả rồi nộp tiếp.`);
+    }
+    if (admission === 'PROBLEM_LIMIT_REACHED') {
+      throw DomainError.conflict('judging.submission_limit', `Bạn đã dùng hết ${target.maxSubmissions} lần nộp cho bài này.`);
+    }
+
     await this.enqueue(submission, target);
     return (await this.toDtos(actor, [submission]))[0];
   }
@@ -109,8 +110,21 @@ export class JudgingService {
     }
     if (!submission.isCurrentRun(message.judgeRun ?? 1)) return;
     if (message.type === 'started') submission.startJudging();
-    else submission.complete(message.verdict, message.testResults, message.compileOutput ?? null);
-    await this.submissions.save(submission);
+    else submission.complete(message.verdict, message.testResults, message.compileOutput ?? null, message.systemFault ?? null);
+    try {
+      await this.submissions.save(submission);
+    } catch (error) {
+      if (message.type !== 'finished') throw error;
+      // A result the database refuses would otherwise stay unstored until the watchdog calls it lost, which never
+      // counts: a program could make that happen on purpose (audit F-2). Store a system error attributed to it instead.
+      this.logger.error(`Cannot store the result of submission ${submission.id}; storing a system error instead`, error as Error);
+      const fresh = await this.submissions.findById(submission.id);
+      if (!fresh || !fresh.isCurrentRun(message.judgeRun ?? 1)) return;
+      fresh.complete('IE', [], RESULT_NOT_STORED_MESSAGE, 'program');
+      await this.submissions.save(fresh);
+      fresh.pullEvents();
+      return;
+    }
     const events = submission.pullEvents();
     // Internal errors are the system's fault, not the student's attempt.
     if (submission.snapshot.verdict !== 'IE') await this.events.publish(events);
@@ -162,7 +176,7 @@ export class JudgingService {
       });
     } catch (error) {
       this.logger.error(`Cannot enqueue submission ${submission.id}`, error as Error);
-      submission.failToEnqueue('Không gửi được bài tới máy chấm. Vui lòng thử lại sau.');
+      submission.failToEnqueue(ENQUEUE_FAILED_MESSAGE);
       await this.submissions.save(submission);
       submission.pullEvents(); // an internal error is not an attempt worth recording
     }

@@ -26,7 +26,23 @@ export abstract class SessionGateway {
   abstract visibility(actor: Actor, sessionIds: string[]): Promise<Map<string, ResultVisibility>>;
 }
 
+/**
+ * Where a judge run stands in the queue (times in epoch ms):
+ * - waiting for an engine;
+ * - active: taken by an engine at `activeSince`. `deadlineAt` is when the engine promised to have stopped it, and
+ *   `deadlineStartedAt` the start of the attempt that promise was made for (both null from an engine too old to say);
+ * - finished by the engine at `finishedAt`, its result possibly not applied yet.
+ */
+export type QueuedRun =
+  | { state: 'waiting' }
+  | { state: 'active'; deadlineAt: number | null; deadlineStartedAt: number | null; activeSince: number | null }
+  | { state: 'finished'; finishedAt: number | null };
+
 /** Port: hands work to the judge engine. */
 export abstract class JudgeQueue {
   abstract enqueue(job: JudgeJob): Promise<void>;
+  /** The job of this judge run while it is waiting, running or just finished; null once it is gone or failed. */
+  abstract inspect(submissionId: string, judgeRun: number): Promise<QueuedRun | null>;
+  /** Removes the job of this judge run, so it is not run (again) after the submission was ended. Best effort. */
+  abstract discard(submissionId: string, judgeRun: number): Promise<void>;
 }

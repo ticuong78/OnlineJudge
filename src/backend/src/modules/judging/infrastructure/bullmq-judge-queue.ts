@@ -4,11 +4,23 @@ import {
   JUDGE_JOBS_QUEUE,
   JUDGE_RESULTS_QUEUE,
   type JudgeJob,
+  type JudgeJobProgress,
   type JudgeResultMessage,
 } from '@oj/contracts';
 import { Queue, Worker } from 'bullmq';
-import { JudgeQueue } from '../application/ports.js';
+import { JudgeQueue, type QueuedRun } from '../application/ports.js';
 import { JudgingService } from '../application/judging.service.js';
+
+/** One job per judge run, so a rejudge is never deduplicated against the first run. */
+export const judgeJobId = (submissionId: string, judgeRun: number) => `${submissionId}-${judgeRun}`;
+
+/**
+ * States in which a job will never produce a result any more. Everything else (waiting, active, delayed, a
+ * paused queue, whatever a newer BullMQ adds) counts as alive: the watchdog must only act on a job that is
+ * certainly gone, never on one it merely does not recognise. A completed job is reported as finished (its result
+ * may still be on its way), not as gone.
+ */
+const DEAD_STATES = new Set(['failed', 'unknown']);
 
 const connectionFrom = (config: ConfigService) => ({
   url: config.get<string>('REDIS_URL', 'redis://localhost:6379'),
@@ -30,13 +42,36 @@ export class BullMqJudgeQueue extends JudgeQueue implements OnModuleDestroy {
 
   async enqueue(job: JudgeJob) {
     await this.queue.add('judge', job, {
-      // One job per judge run, so a rejudge is never deduplicated against the first run.
-      jobId: `${job.submissionId}-${job.judgeRun}`,
+      jobId: judgeJobId(job.submissionId, job.judgeRun),
       attempts: 2,
       backoff: { type: 'fixed', delay: 2000 },
       removeOnComplete: 1000,
       removeOnFail: 1000,
     });
+  }
+
+  async inspect(submissionId: string, judgeRun: number): Promise<QueuedRun | null> {
+    const job = await this.queue.getJob(judgeJobId(submissionId, judgeRun));
+    if (!job) return null;
+    const state = await job.getState();
+    if (DEAD_STATES.has(state)) return null;
+    // The engine marks a job completed once it has published the result, which the backend may not have applied yet.
+    if (state === 'completed') return { state: 'finished', finishedAt: job.finishedOn ?? null };
+    if (state !== 'active') return { state: 'waiting' };
+    const progress = (typeof job.progress === 'object' ? job.progress : {}) as Partial<JudgeJobProgress>;
+    const announced = typeof progress.deadlineAt === 'number' && typeof progress.startedAt === 'number';
+    return {
+      state: 'active',
+      deadlineAt: announced ? progress.deadlineAt! : null,
+      deadlineStartedAt: announced ? progress.startedAt! : null,
+      activeSince: job.processedOn ?? null,
+    };
+  }
+
+  /** A job an engine still holds a lock on cannot be removed; it is then left to BullMQ, and its late result is ignored. */
+  async discard(submissionId: string, judgeRun: number) {
+    const job = await this.queue.getJob(judgeJobId(submissionId, judgeRun));
+    await job?.remove().catch(() => undefined);
   }
 
   async onModuleDestroy() {
