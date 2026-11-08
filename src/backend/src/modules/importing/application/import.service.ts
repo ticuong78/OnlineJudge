@@ -3,6 +3,7 @@ import { fileIoFields, fileIoMessage, isAboutFileIo, type ImportProblemsResponse
 import type { Actor } from '../../../shared/application/actor.js';
 import { AiAccess } from '../../../shared/application/ai-access.js';
 import { assert } from '../../../shared/domain/domain-error.js';
+import { documentFileProblem } from '../domain/document-file.js';
 import { documentText, type ExamDocument } from '../domain/exam-document.js';
 import { ExamParser } from '../domain/exam-parser.js';
 import { stripExternalLinks } from '../../../shared/domain/external-links.js';
@@ -28,6 +29,8 @@ export class ImportService {
    * the rule-based parser is the fallback.
    */
   async parse(actor: Actor, file: UploadedFile): Promise<ParsedExamDto> {
+    const problem = documentFileProblem(file);
+    if (problem) throw problem;
     // The text layer may be empty (scanned PDF); that only matters if the AI reader is not used.
     const doc: ExamDocument | null = await this.reader.read(file).catch(() => null);
     return this.extract(actor, file, doc);

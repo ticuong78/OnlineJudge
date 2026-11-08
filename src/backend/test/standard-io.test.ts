@@ -75,7 +75,7 @@ test('the teacher wording is kept on import; file wording is refused until it is
     { createProblem: async (_: unknown, problem: { title: string }) => (created.push(problem.title), 'id') } as never,
     { allows: async () => true } as never,
   );
-  const [draft] = (await service.parse({ id: 't', role: 'TEACHER', name: 'Lan' }, { originalName: 'de.docx', mimeType: '', buffer: Buffer.alloc(0) })).drafts;
+  const [draft] = (await service.parse({ id: 't', role: 'TEACHER', name: 'Lan' }, { originalName: 'de.docx', mimeType: '', buffer: Buffer.from('PK\u0003\u0004') /* a .docx is a ZIP package */ })).drafts;
   assert.equal(draft.inputFormat, 'Đọc từ file TONG.INP một dòng chứa a, b.');
   assert.equal(draft.outputFormat, 'Ghi ra file TONG.OUT tổng a + b.');
   assert.deepEqual(draft.tests, [{ input: '1 2\n', expectedOutput: '3\n', isSample: true, points: 10 }]);
