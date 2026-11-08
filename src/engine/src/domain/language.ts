@@ -14,6 +14,8 @@ export interface LanguageSpec {
 }
 
 const JAVA_CLASS_RE = /public\s+(?:final\s+)?class\s+([A-Za-z_$][\w$]*)/;
+/** `${name}.java` must fit the sandbox's 128-character file names. */
+const MAX_JAVA_CLASS_NAME = 123;
 
 export function languageSpecFor(language: Language, sourceCode: string): LanguageSpec {
   switch (language) {
@@ -37,7 +39,9 @@ export function languageSpecFor(language: Language, sourceCode: string): Languag
       return {
         language,
         sourceFile: 'main.py',
-        compile: ['python3', '-m', 'py_compile', 'main.py'],
+        // A syntax check only. Its bytecode goes to /tmp (emptied after every test), so /box holds just the source and
+        // can be sealed: a __pycache__ directory made by the program's user could not be (see docker-sandbox.ts).
+        compile: ['python3', '-X', 'pycache_prefix=/tmp/pycache', '-m', 'py_compile', 'main.py'],
         run: ['python3', '-S', 'main.py'],
         memoryOverheadMb: 32,
       };
@@ -49,8 +53,11 @@ export function languageSpecFor(language: Language, sourceCode: string): Languag
         memoryOverheadMb: 64,
       };
     case 'java': {
-      // Java requires the file name to match the public class; default to Main.
-      const className = JAVA_CLASS_RE.exec(sourceCode)?.[1] ?? 'Main';
+      // Java requires the file name to match the public class; default to Main. A name too long for a sandbox file
+      // name (128 characters) also gets Main, so javac reports the mismatch as a compile error rather than the sandbox
+      // refusing the file, which would be a free system error (audit NF-5).
+      const found = JAVA_CLASS_RE.exec(sourceCode)?.[1];
+      const className = found && found.length <= MAX_JAVA_CLASS_NAME ? found : 'Main';
       return {
         language,
         sourceFile: `${className}.java`,
