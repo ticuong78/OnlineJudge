@@ -18,8 +18,10 @@ export interface UserDto {
   createdAt: string;
   /** VIP teacher: may use the AI features. Only meaningful for teachers. */
   vip: boolean;
-  /** Whether this account may use the AI features (administrators and VIP teachers). */
+  /** Whether this account may use the AI features (administrators, VIP teachers, members of an active organization with AI). */
   canUseAi: boolean;
+  /** Teachers: the organizations they belong to (OJ-8). Empty for students and administrators. */
+  organizations: OrganizationMembershipDto[];
 }
 
 export interface SetVipRequest {
@@ -68,9 +70,10 @@ export interface ForgotPasswordRequest {
   email: string;
 }
 
+/** `verificationId` and `token` come from the link in the reset email; a password reset has no typed code. */
 export interface ResetPasswordRequest {
   verificationId: string;
-  code: string;
+  token: string;
   newPassword: string;
 }
 
@@ -103,6 +106,95 @@ export interface AcceptInvitationRequest {
   password: string;
 }
 
+// ---------- Organizations (OJ-8: centers and schools) ----------
+/** ADMIN = org admin (manages the organization's members and classes); TEACHER = member. */
+export type OrganizationRole = 'ADMIN' | 'TEACHER';
+
+/** One of the signed-in teacher's organizations. */
+export interface OrganizationMembershipDto {
+  organizationId: string;
+  organizationName: string;
+  role: OrganizationRole;
+  /** Today is on or before `activeUntil`. */
+  active: boolean;
+  aiIncluded: boolean;
+}
+
+export interface OrganizationDto {
+  id: string;
+  name: string;
+  /** Teacher seats: members plus pending invitations may not exceed this. */
+  seats: number;
+  seatsUsed: number;
+  memberCount: number;
+  /** Last day of the plan (YYYY-MM-DD, Vietnam time), inclusive. */
+  activeUntil: string;
+  active: boolean;
+  /** Members get the AI features while the organization is active. */
+  aiIncluded: boolean;
+  createdAt: string;
+  /** The viewer's role in this organization; null for the system administrator. */
+  myRole: OrganizationRole | null;
+}
+
+export interface OrganizationMemberDto {
+  userId: string;
+  displayName: string;
+  email: string;
+  role: OrganizationRole;
+  joinedAt: string;
+}
+
+export type OrganizationInvitationStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'CANCELLED';
+
+export interface OrganizationInvitationDto {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  email: string;
+  displayName: string;
+  /** true = sent to a teacher who already has an account (they accept on their home page). */
+  forExistingAccount: boolean;
+  status: OrganizationInvitationStatus;
+  invitedByName: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface OrganizationDetailDto extends OrganizationDto {
+  members: OrganizationMemberDto[];
+  /** Pending invitations (each holds a seat until accepted, declined, cancelled or expired). */
+  invitations: OrganizationInvitationDto[];
+}
+
+export interface UpsertOrganizationRequest {
+  name: string;
+  seats: number;
+  /** YYYY-MM-DD */
+  activeUntil: string;
+  aiIncluded: boolean;
+}
+
+export interface CreateOrganizationRequest extends UpsertOrganizationRequest {
+  /** The first org admin: an existing teacher account. */
+  adminUserId: string;
+}
+
+export interface InviteToOrganizationRequest {
+  email: string;
+  /** Used when the email has no account yet. */
+  displayName: string;
+}
+
+/** Administrator only: put an existing teacher into the organization directly. */
+export interface AddOrganizationMemberRequest {
+  userId: string;
+  role: OrganizationRole;
+}
+
+export interface SetOrganizationRoleRequest {
+  role: OrganizationRole;
+}
 
 // ---------- Classrooms ----------
 export type ClassStatus = 'ACTIVE' | 'ARCHIVED';
@@ -131,13 +223,25 @@ export interface ClassroomDto {
   isCurrent?: boolean;
   /** Teacher/admin view only: join and leave requests waiting for a decision. */
   pendingRequestCount?: number;
+  /** The organization the class belongs to; null = the teacher's personal class (OJ-8). */
+  organization: { id: string; name: string } | null;
 }
 
 export interface UpsertClassroomRequest {
   name: string;
   code: string;
-  /** Admin only: the teacher in charge. Teachers always create classes for themselves. */
+  /**
+   * The teacher in charge. Admin: any teacher. Org admin (organization classes only): a member of the class's
+   * organization. Teachers create classes for themselves.
+   */
   teacherId?: string | null;
+  /** On create only: one of the creator's organizations, or null/absent for a personal class. */
+  organizationId?: string | null;
+}
+
+/** Moves a personal class into one of the teacher's organizations (one way in the pilot). */
+export interface MoveClassToOrganizationRequest {
+  organizationId: string;
 }
 
 export interface ScheduleClassDeletionRequest {
@@ -205,11 +309,13 @@ export interface LeaveClassRequest {
 /**
  * What other teachers (and students, through public sessions) may see of a blueprint.
  * `publicTests` and `publicSolution` require `isPublic`.
+ * `organizationIds`: organizations of the owner whose teachers see the whole problem (statement, tests, solution).
  */
 export interface SharingDto {
   isPublic: boolean;
   publicTests: boolean;
   publicSolution: boolean;
+  organizationIds: string[];
 }
 
 /** Where a copied blueprint came from. */
@@ -265,7 +371,8 @@ export interface ProblemDetailDto extends ProblemSummaryDto {
 }
 
 /** mine = own bank; public = shared by anyone; all = everything (admin only). */
-export type BankScope = 'mine' | 'public' | 'all';
+/** organization = shared with one of the viewer's organizations (problems only). */
+export type BankScope = 'mine' | 'public' | 'organization' | 'all';
 
 export interface UpsertProblemRequest {
   title: string;
@@ -778,7 +885,12 @@ export interface PinThreadRequest {
 export interface ApiErrorBody {
   statusCode: number;
   message: string;
-  code?: string;
+  /**
+   * Stable English identifier on every error: domain codes (`identity.wrong_code`, `organization.no_seats`, …), codes
+   * for framework errors (`request.invalid`, `request.not_found`, `request.too_large`, `auth.required`, …) and
+   * `server.error` for unexpected failures. Branch on this, never on `message`.
+   */
+  code: string;
   /** Extra data for the client, e.g. `sessionId` of the session that already exists. */
   details?: Record<string, string>;
 }

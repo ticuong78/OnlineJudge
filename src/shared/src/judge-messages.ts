@@ -23,6 +23,18 @@ export interface JudgeJob {
   testCases: JudgeJobTestCase[];
 }
 
+/**
+ * Progress the engine reports on a judge job when it starts it: the moment by which it will have stopped the job
+ * (epoch ms). The backend's watchdog uses it to tell a long but healthy run from one whose engine died.
+ */
+export interface JudgeJobProgress {
+  deadlineAt: number;
+  /** The attempt this deadline belongs to (the job's `processedOn` when the engine took it); a retry makes it stale. */
+  startedAt: number;
+}
+
+export type SystemFault = 'infrastructure' | 'program';
+
 export interface TestCaseResult {
   testCaseId: string;
   verdict: Verdict;
@@ -43,4 +55,9 @@ export type JudgeResultMessage =
       verdict: Verdict;
       compileOutput?: string;
       testResults: TestCaseResult[];
+      /**
+       * For verdict IE only: where the judge failed. `infrastructure` = before any of the submitted program ran (the
+       * system's fault); `program` = after a test had started, so the program may have caused it.
+       */
+      systemFault?: SystemFault;
     };
