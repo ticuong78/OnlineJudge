@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { RoleLabels, useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 
@@ -64,6 +64,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? '/';
   const router = useRouter();
   const [open, setOpen] = useState(false);
+
+  // The menu floats over the page, so it must not stay open on the next page or block the keyboard.
+  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
 
   const items = NAV.filter((i) => !i.roles || (user && i.roles.includes(user.role) && (!i.when || i.when(user))));
 
@@ -127,13 +136,15 @@ export function AppShell({ children }: { children: ReactNode }) {
             className="ml-auto rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
             onClick={() => setOpen((o) => !o)}
             aria-label="Menu"
+            aria-expanded={open}
           >
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
 
         {open && (
-          <nav className="border-t border-slate-200 bg-white px-4 py-2 lg:hidden">
+          // Floats over the page (the sticky header is its positioning context) instead of pushing the content down.
+          <nav className="absolute inset-x-0 top-full max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 py-2 shadow-lg lg:hidden">
             {items.map((i) => (
               <Link
                 key={i.href}
@@ -160,6 +171,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
         )}
       </header>
+      {open && (
+        // Dims the page under the menu; tapping it closes the menu. Outside the header: its backdrop-blur would
+        // make it the containing block of a fixed element and shrink this to the header's height.
+        <div className="fixed inset-x-0 bottom-0 top-14 z-30 bg-slate-900/20 lg:hidden" aria-hidden="true" onClick={() => setOpen(false)} />
+      )}
       <main className="flex-1">{children}</main>
     </div>
   );
