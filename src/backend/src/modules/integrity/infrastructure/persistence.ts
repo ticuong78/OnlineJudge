@@ -22,6 +22,9 @@ export class IntegrityFlagOrmEntity {
   @Column({ type: 'varchar', length: 210 }) problemTitle: string;
   @Column('jsonb') subject: FlagState['subject'];
   @Column('jsonb', { nullable: true }) matched: FlagState['matched'];
+  /** Plagiarism: the two submission ids in order; unique, so a pair is flagged once (K-11). Null for AI-usage flags. */
+  @Index({ unique: true })
+  @Column({ type: 'varchar', length: 80, nullable: true }) pairKey: string | null;
   @Column('timestamptz') createdAt: Date;
   @Column('timestamptz', { nullable: true }) acknowledgedAt: Date | null;
   @Column({ type: 'varchar', length: 80, nullable: true }) acknowledgedByName: string | null;
@@ -63,7 +66,17 @@ export class TypeOrmIntegrityFlagRepository extends IntegrityFlagRepository {
   }
 
   async save(flag: IntegrityFlag) {
-    await this.repo.save({ id: flag.id, ...flag.snapshot });
+    await this.repo.save({ id: flag.id, ...flag.snapshot, pairKey: flag.pairKey });
+  }
+
+  async addIfNewPair(flag: IntegrityFlag) {
+    // ON CONFLICT DO NOTHING ... RETURNING: a row comes back only when this call inserted it.
+    const result = await this.repo.createQueryBuilder().insert()
+      .values({ id: flag.id, ...flag.snapshot, pairKey: flag.pairKey })
+      .orIgnore()
+      .returning(['id'])
+      .execute();
+    return Array.isArray(result.raw) && result.raw.length > 0;
   }
 
   /** True only for the first caller: the row is inserted atomically, a repeat hits the primary key and returns nothing. */

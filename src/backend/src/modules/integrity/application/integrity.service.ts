@@ -64,19 +64,20 @@ export class IntegrityService {
 
   /** Compares with every other participant's submissions of the same problem; flags the closest match. */
   private async checkPlagiarism(ctx: FlagContext, submission: SubmissionInfo) {
-    const mine = fingerprint(submission.code);
+    const mine = fingerprint(submission.code, submission.language);
     if (!mine) return;
     let best: { other: SubmissionInfo; score: number } | null = null;
     for (const other of await this.submissions.ofProblem(submission.sessionId, submission.problemKey)) {
       if (other.userId === submission.userId || other.verdict === 'CE') continue;
-      const theirs = fingerprint(other.code);
+      const theirs = fingerprint(other.code, other.language);
       if (!theirs) continue;
       const score = similarity(mine, theirs);
       if (!best || score > best.score) best = { other, score };
     }
     if (!best) return;
     const flag = IntegrityFlag.plagiarism(ctx, ref(submission), ref(best.other), best.score);
-    if (flag) await this.flags.save(flag);
+    // One flag per pair: the other submission's check may already have flagged it, or be doing so right now (K-11).
+    if (flag) await this.flags.addIfNewPair(flag);
   }
 
   private enqueue(job: () => Promise<void>) {

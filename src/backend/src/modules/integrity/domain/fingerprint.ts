@@ -1,3 +1,5 @@
+import type { Language } from '@oj/contracts';
+
 /**
  * Code similarity by fingerprinting (the idea behind MOSS):
  * 1. tokenize, dropping comments/whitespace and replacing identifiers, numbers and strings by placeholders,
@@ -11,41 +13,116 @@ const K = 5;
 const WINDOW = 4;
 export const MIN_TOKENS = 40;
 
+/**
+ * Words that stay as they are: the language's keywords and the library names every solution uses.
+ * Never put a name the author chooses here (`main`, `solve`, ...): renaming it would change the fingerprint,
+ * which is exactly what the abstraction is there to prevent.
+ */
 const KEYWORDS = new Set([
   // C / C++ / Java / JS
   'int', 'long', 'short', 'char', 'float', 'double', 'bool', 'boolean', 'void', 'auto', 'const', 'static', 'unsigned',
   'signed', 'struct', 'class', 'public', 'private', 'protected', 'return', 'if', 'else', 'for', 'while', 'do', 'switch',
   'case', 'break', 'continue', 'new', 'delete', 'true', 'false', 'null', 'nullptr', 'this', 'template', 'typename',
-  'using', 'namespace', 'include', 'define', 'let', 'var', 'function', 'import', 'export', 'try', 'catch', 'throw',
-  'string', 'vector', 'map', 'set', 'pair', 'cin', 'cout', 'scanf', 'printf', 'endl', 'main', 'sizeof', 'typedef',
+  'using', 'namespace', 'define', 'let', 'var', 'function', 'import', 'export', 'try', 'catch', 'throw',
+  'string', 'vector', 'map', 'set', 'pair', 'cin', 'cout', 'scanf', 'printf', 'endl', 'sizeof', 'typedef',
   'final', 'extends', 'implements', 'interface', 'throws', 'String', 'System', 'Scanner', 'Math', 'console',
   // Python
   'def', 'in', 'not', 'and', 'or', 'is', 'elif', 'pass', 'lambda', 'None', 'True', 'False', 'from', 'as', 'with',
-  'yield', 'global', 'range', 'len', 'print', 'input', 'map', 'list', 'dict', 'sorted', 'sum', 'min', 'max', 'split',
+  'yield', 'global', 'range', 'len', 'print', 'input', 'list', 'dict', 'sorted', 'sum', 'min', 'max', 'split',
 ]);
 
-/** Tokens with identifiers/literals abstracted. */
-export function normalizedTokens(code: string): string[] {
-  const stripped = code
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/\/\/[^\n]*/g, ' ')
-    .replace(/^\s*#(?!include|define)[^\n]*/gm, ' ') // Python comments (keep C preprocessor lines)
-    .replace(/"""[\s\S]*?"""|'''[\s\S]*?'''/g, ' S ');
+const OPERATORS = ['==', '!=', '<=', '>=', '&&', '||', '<<', '>>', '++', '--'];
+const PUNCTUATION = new Set('+-*/%=<>!&|^~?:;,.(){}[]');
+/** Preprocessor lines with no bearing on what the program does; `#define` is kept because macros are code. */
+const DROPPED_DIRECTIVES = /^#\s*(include|pragma|if|ifdef|ifndef|else|elif|endif|error|warning|undef|line)\b/;
+
+const isSpace = (c: string) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f' || c === '\v';
+const isWordStart = (c: string) => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c === '_' || c === '$';
+const isDigit = (c: string) => c >= '0' && c <= '9';
+const isWordPart = (c: string) => isWordStart(c) || isDigit(c);
+
+/**
+ * Tokens with identifiers/literals abstracted. One pass over the source, so a `#` or `//` inside a string
+ * is text, not a comment, and a comment hides nothing that follows it. `language` picks the comment syntax
+ * (hash comments for Python; line and block comments for the others); without it the C family is assumed.
+ */
+export function normalizedTokens(code: string, language?: Language): string[] {
+  const python = language === 'python';
+  const cFamily = language === 'c' || language === 'cpp' || language === undefined;
   const tokens: string[] = [];
-  const re = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[A-Za-z_]\w*|\d+(?:\.\d+)?|==|!=|<=|>=|&&|\|\||<<|>>|\+\+|--|[+\-*/%=<>!&|^~?:;,.(){}[\]]/g;
-  for (const m of stripped.matchAll(re)) {
-    const t = m[0];
-    if (t[0] === '"' || t[0] === "'") tokens.push('S');
-    else if (/^\d/.test(t)) tokens.push('N');
-    else if (/^[A-Za-z_]/.test(t)) tokens.push(KEYWORDS.has(t) ? t : 'I');
-    else tokens.push(t);
+  const n = code.length;
+  let i = 0;
+
+  const skipLine = () => {
+    // A directive may continue on the next line with a trailing backslash.
+    while (i < n && code[i] !== '\n') i += code[i] === '\\' && code[i + 1] === '\n' ? 2 : 1;
+  };
+  const skipPast = (end: string) => {
+    const at = code.indexOf(end, i);
+    i = at < 0 ? n : at + end.length;
+  };
+  const skipQuoted = (quote: string, multiline: boolean) => {
+    i++;
+    while (i < n && code[i] !== quote) {
+      if (code[i] === '\\') i++;
+      else if (code[i] === '\n' && !multiline) return; // an unterminated string ends at the line
+      i++;
+    }
+    i++;
+  };
+  const lineStart = (at: number) => {
+    for (let j = at - 1; j >= 0 && code[j] !== '\n'; j--) if (!isSpace(code[j])) return false;
+    return true;
+  };
+
+  while (i < n) {
+    const c = code[i];
+    if (isSpace(c)) { i++; continue; }
+
+    // comments
+    if (python ? c === '#' : c === '/' && code[i + 1] === '/') { skipLine(); continue; }
+    if (!python && c === '/' && code[i + 1] === '*') { i += 2; skipPast('*/'); continue; }
+
+    // C preprocessor
+    if (cFamily && c === '#' && lineStart(i)) {
+      if (DROPPED_DIRECTIVES.test(code.slice(i, i + 16))) { skipLine(); continue; }
+      i++; // `#define ...`: the rest of the line is scanned like code
+      continue;
+    }
+
+    // strings and character literals
+    if (c === '"' || c === "'") {
+      if ((python || language === 'java') && code.startsWith(c.repeat(3), i)) { i += 3; skipPast(c.repeat(3)); }
+      else skipQuoted(c, false);
+      tokens.push('S');
+      continue;
+    }
+    if (c === '`' && !python && language !== 'java' && !cFamily) { skipQuoted('`', true); tokens.push('S'); continue; }
+
+    if (isWordStart(c)) {
+      const start = i;
+      while (i < n && isWordPart(code[i])) i++;
+      const word = code.slice(start, i);
+      tokens.push(KEYWORDS.has(word) ? word : 'I');
+      continue;
+    }
+    if (isDigit(c)) {
+      while (i < n && (isWordPart(code[i]) || code[i] === '.')) i++;
+      tokens.push('N');
+      continue;
+    }
+
+    const two = code.slice(i, i + 2);
+    if (OPERATORS.includes(two)) { tokens.push(two); i += 2; continue; }
+    if (PUNCTUATION.has(c)) tokens.push(c);
+    i++; // anything else (`@`, `\`, stray `#`) carries no meaning for the comparison
   }
   return tokens;
 }
 
 /** Winnowed fingerprint set; null if the program is too short to compare meaningfully. */
-export function fingerprint(code: string): Set<number> | null {
-  const tokens = normalizedTokens(code);
+export function fingerprint(code: string, language?: Language): Set<number> | null {
+  const tokens = normalizedTokens(code, language);
   if (tokens.length < MIN_TOKENS) return null;
   const hashes: number[] = [];
   for (let i = 0; i + K <= tokens.length; i++) hashes.push(hash(tokens.slice(i, i + K).join('\u0001')));
