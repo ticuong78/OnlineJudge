@@ -3,8 +3,29 @@
 Base URL: `${NEXT_PUBLIC_API_URL}` (dev: `http://localhost:4000/api`).
 All request/response types live in `@oj/contracts` (`src/shared/src/api.ts`).
 
-Auth: `Authorization: Bearer <accessToken>` (JWT; payload `{ sub, role, name }`).
-Errors: JSON `ApiErrorBody` `{ statusCode, message, code? }`. `message` is human readable (Vietnamese).
+Auth: `Authorization: Bearer <accessToken>` (JWT, 7 days). The server checks the token against the account on every call:
+the role and name come from the account, and a token stops working as soon as the account is deleted or its password is
+changed or reset (signing in again gives a new one).
+Errors: JSON `ApiErrorBody` `{ statusCode, message, code, details? }`. `message` is human readable (Vietnamese); `code` is a
+stable English identifier on every error, so clients branch on `code`, never on `message`:
+domain codes (`identity.wrong_code`, `organization.no_seats`, …, listed per endpoint); request errors raised before the
+use case: `request.invalid` (400, body checks; `message` joins the reasons with "; "), `auth.required` (401),
+`auth.forbidden` (403, role), `request.not_found` (404, unknown route), `request.too_large` (413), other statuses
+`request.failed`; unexpected failures `server.error` (500, generic message, details only in the server log).
+
+### Rate limits (HTTP 429)
+Public auth endpoints are limited. Over the limit the answer is `429` with code `identity.too_many_attempts` (sign-in) or
+`rate.limited`, the wait in the `Retry-After` header (seconds) and in `message`. Counters are kept in Redis, so they survive a backend restart and hold across instances; if Redis is unreachable these endpoints fail rather than let attempts through uncounted. Limits are per client IP (the address the
+API sees: behind a reverse proxy set `TRUST_PROXY`, see README; IPv6 clients are counted per /64 block) and, where noted, per mailbox:
+
+| Endpoint | Limit |
+|---|---|
+| `POST /auth/login` | wrong passwords only: 10 per account per IP and 300 per IP, per 10 minutes, and 100 per account from all IPs together per hour (more than one IP may send in an hour, so a single address cannot fill it). Successful sign-ins are not counted; while blocked even the right password is refused. The account-wide limit skips addresses that signed in to that account in the last 30 days (so an attack cannot lock the owner out), is lifted by a password reset (which also exempts the address the reset was done from), and emails the owner once per hour while it is hit. Unknown addresses are limited the same way |
+| `POST /auth/register` | 60 per IP per hour; 2 per mailbox per minute |
+| `POST /auth/password/forgot` | 30 per IP per hour; 2 per mailbox per minute |
+| `POST /auth/verification/resend` | 30 per IP per hour; 2 per verification per minute |
+| `POST /auth/register/verify`, `/auth/password/reset`, `/auth/invitations/accept` | 300 per IP per 10 minutes (a code additionally allows only 5 attempts, however they arrive). Sign-up codes also have a budget of 20 wrong codes per address per 24 hours, across resends and new sign-ups (`identity.too_many_attempts`) |
+| `GET /auth/invitations/:id` | 120 per IP per 10 minutes |
 
 Roles: `ADMIN` (exactly one, seeded from env), `TEACHER` (invited by admin by email), `STUDENT` (self-registered with a class's join code + email OTP).
 "Staff" = ADMIN or TEACHER.
@@ -12,24 +33,51 @@ Roles: `ADMIN` (exactly one, seeded from env), `TEACHER` (invited by admin by em
 ## Auth / users
 | Method | Path | Who | Body | Response |
 |---|---|---|---|---|
-| POST | /auth/login | public | LoginRequest | AuthResponse |
+| POST | /auth/login | public | LoginRequest | AuthResponse (401 `identity.bad_credentials` for an unknown email or a wrong password alike; 429 when throttled, see above) |
 | GET | /auth/me | any | – | UserDto |
-| POST | /auth/register | public | RegisterRequest (`classCode` optional) | 202 VerificationTicketDto — a 6-digit OTP is emailed; no account yet. With a class code, a JOIN request to that class is created once verified (the teacher approves); without one the student is a free candidate |
-| POST | /auth/register/verify | public | VerifyCodeRequest | AuthResponse (account created, role STUDENT) |
-| POST | /auth/verification/resend | public | ResendCodeRequest | VerificationTicketDto (409 if before `resendAvailableAt`) |
-| POST | /auth/password/forgot | public | ForgotPasswordRequest | 202 VerificationTicketDto (same answer whether the email exists or not) |
-| POST | /auth/password/reset | public | ResetPasswordRequest | AuthResponse (signed in with the new password) |
+| POST | /auth/register | public | RegisterRequest (`classCode` optional) | 202 VerificationTicketDto — a 6-digit OTP is emailed; no account yet. With a class code, a JOIN request to that class is created once verified (the teacher approves); without one the student is a free candidate. An address that already has an account gets the same answer (never 409 `email_taken`); its owner is emailed a notice with no code, so that ticket can never be verified |
+| POST | /auth/register/verify | public | VerifyCodeRequest | AuthResponse (account created, role STUDENT). Sign-up is completed only with the 6-digit code typed on the screen that asked for it; the sign-up email has no link, so the mailbox owner cannot be made to confirm a sign-up someone else started |
+| POST | /auth/verification/resend | public | ResendCodeRequest | VerificationTicketDto (409 if before `resendAvailableAt`). Answers the same whether or not the address has an account; a reset code is only sent to an existing account, in the background |
+| POST | /auth/password/forgot | public | ForgotPasswordRequest | 202 VerificationTicketDto. The answer does not depend on whether the email has an account, including when asked again within the resend cooldown (the same ticket comes back; no second email is sent), and neither do the answers to resend or to a wrong code on that ticket. Only an existing account is emailed a code, in the background |
+| POST | /auth/password/reset | public | ResetPasswordRequest (`verificationId` + `token` from the emailed link) | AuthResponse (signed in with the new password). The reset email carries only a link `FRONTEND_URL/forgot-password?v=<id>#t=<token>`, valid once until the ticket expires. There is no reset code, so nothing short can be guessed and wrong tries never use up the owner's link |
 | GET | /auth/invitations/:id | public | – | InvitationPreviewDto (400 if expired/used) |
 | POST | /auth/invitations/accept | public | AcceptInvitationRequest | AuthResponse (account created, role TEACHER) |
 | GET | /users | ADMIN | – | UserDto[] |
-| DELETE | /users/:id | ADMIN | – | 204 (cannot delete admin) |
+| DELETE | /users/:id | ADMIN | – | 204 (cannot delete admin). A teacher leaves their organizations first, as if removed (seats freed; the organizations keep their classes and problem copies); 409 `organization.last_admin` while they are the only org admin of one |
 | PUT | /users/:id/vip | ADMIN | SetVipRequest `{ vip }` | UserDto — teachers only. AI features (`/problems/suggest-*`, `/problems/:id/test-cases/suggest`, AI exam reading in `/imports/parse*`, the session `checkAiUsage` setting) are for ADMIN and VIP teachers; others get 403 `ai.vip_required` (imports fall back to the rule-based parser). |
 | GET | /users/invitations | ADMIN | – | InvitationDto[] (pending teacher invitations) |
-| POST | /users/invitations | ADMIN | InviteTeacherRequest | InvitationDto — email with link `${FRONTEND_URL}/invite?id=<id>&code=<code>` |
+| POST | /users/invitations | ADMIN | InviteTeacherRequest | InvitationDto — email with link `${FRONTEND_URL}/invite?id=<id>#c=<code>` |
 | POST | /users/invitations/:id/resend | ADMIN | – | InvitationDto (new code, old link stops working; 1-minute cooldown) |
-| DELETE | /users/invitations/:id | ADMIN | – | 204 |
+| DELETE | /users/invitations/:id | ADMIN | – | 204 (an invitation sent for an organization also frees its seat) |
 
-OTP rules: 6 digits, valid 10 minutes (invitations: 7 days), 5 wrong attempts then "send again", resend cooldown 60s.
+`UserDto.organizations`: the teacher's organizations (OJ-8). `canUseAi` is also true for a member of an active organization with AI included.
+
+## Organizations (OJ-8: centers and schools)
+An organization has teacher seats, a plan end date (`activeUntil`, inclusive, Vietnam time) and whether AI is included.
+A teacher may belong to several organizations, in each as org admin (`ADMIN`) or `TEACHER`. Members plus pending,
+unexpired invitations use seats; reservations are checked in one transaction (409 `organization.no_seats`). After
+`activeUntil`: AI from the organization stops and no new invitations (409 `organization.inactive`); nothing is deleted.
+"Org admin" below = org admin of that organization, or the system administrator. Organization ids are always checked
+against the caller's memberships; outsiders get 404 `organization.not_found`.
+
+| Method | Path | Who | Body | Response |
+|---|---|---|---|---|
+| GET | /organizations | ADMIN, TEACHER | – | OrganizationDto[] — admin: all; teacher: their own (`myRole`) |
+| POST | /organizations | ADMIN | CreateOrganizationRequest (terms + `adminUserId`, an existing teacher) | OrganizationDetailDto |
+| GET | /organizations/:id | admin or member | – | OrganizationDetailDto (`invitations` only for org admins) |
+| PUT | /organizations/:id | ADMIN | UpsertOrganizationRequest | OrganizationDetailDto (409 `organization.seats_in_use` below the seats in use) |
+| POST | /organizations/:id/members | ADMIN | AddOrganizationMemberRequest | OrganizationDetailDto — existing teacher joins directly (a pending invitation of theirs is withdrawn) |
+| PUT | /organizations/:id/members/:userId/role | org admin | SetOrganizationRoleRequest | OrganizationDetailDto (409 `organization.last_admin`) |
+| DELETE | /organizations/:id/members/:userId | org admin; the member themselves (= leave) | – | 204 — the organization's classes taught by them go to the remover (or the longest-standing other org admin); problems they shared with it are unshared and copied into that org admin's bank; 409 `organization.last_admin` |
+| POST | /organizations/:id/invitations | org admin (60 per IP per hour) | InviteToOrganizationRequest | OrganizationInvitationDto — existing teacher: accepts on their home page (notice email, no code); new email: the teacher invitation (email + code) that creates the account and joins; 409 `organization.not_a_teacher`, `already_member`, `already_invited`, `no_seats`, `inactive` |
+| DELETE | /organizations/:id/invitations/:invitationId | org admin | – | 204 (seat freed) |
+| GET | /organizations/:id/classes | org admin | – | ClassroomDto[] (class module) |
+| GET | /organization-invitations/mine | TEACHER | – | OrganizationInvitationDto[] (pending, addressed to the caller) |
+| POST | /organization-invitations/:id/accept | TEACHER (addressee) | – | OrganizationDto |
+| POST | /organization-invitations/:id/decline | TEACHER (addressee) | – | 204 (seat freed) |
+
+OTP rules: 6 digits, valid 10 minutes (invitations: 7 days), 5 attempts per code then "send again", resend cooldown 60s.
+An attempt is claimed before the code is compared, atomically, so 5 is a hard limit even for parallel requests. A code can be used once.
 Phone is optional, Vietnamese format, stored for contact only (not verified).
 
 ## Concepts (since "Đợt 1")
@@ -54,14 +102,18 @@ Phone is optional, Vietnamese format, stored for contact only (not verified).
   directly: add a student by email, remove a student. Classes a student left or that were archived remain as history.
 
 ## Classes (lớp)
-"Manager" of a class = its teacher or the admin.
+"Manager" of a class = its teacher, the admin, or an org admin of the organization the class belongs to (OJ-8).
+Managers have every class power (roster, requests, sessions, results, submissions, rejudge, integrity, board, archive),
+except that deleting a class for good (`schedule-deletion`, `delete-now`) is for its teacher and the admin only
+(403 `classroom.only_teacher_deletes` for org admins).
 
 | Method | Path | Who | Body | Response |
 |---|---|---|---|---|
-| GET | /classes | any | – | ClassroomDto[] — admin: all; teacher: classes they teach; student: current classes + history (`code` null, `isCurrent`); managers also get `pendingRequestCount` |
-| POST | /classes | staff | UpsertClassroomRequest | ClassroomDto. Teachers always create for themselves; admin may pass `teacherId` |
+| GET | /classes | any | – | ClassroomDto[] — admin: all; teacher: classes they teach plus the classes of organizations where they are org admin; student: current classes + history (`code` null, `isCurrent`); managers also get `pendingRequestCount`. `organization` null = personal class |
+| POST | /classes | staff | UpsertClassroomRequest | ClassroomDto. Teachers always create for themselves; admin may pass `teacherId`. Optional `organizationId`: one of the creator's organizations (403 `classroom.not_in_organization`) |
+| PUT | /classes/:id/organization | class teacher or admin | MoveClassToOrganizationRequest | ClassroomDto — a personal class joins one of the teacher's organizations; one way (409 `classroom.already_in_organization`) |
 | GET | /classes/:id | manager or (former) member | – | ClassroomDto |
-| PUT | /classes/:id | manager | UpsertClassroomRequest | ClassroomDto (changing `teacherId`: admin only; not allowed while archived) |
+| PUT | /classes/:id | manager | UpsertClassroomRequest | ClassroomDto (changing `teacherId`: admin, or an org admin to a member of the class's organization; not allowed while archived) |
 | POST | /classes/:id/archive | manager | – | ClassroomDto (status ARCHIVED) |
 | POST | /classes/:id/restore | manager | – | ClassroomDto (ACTIVE again, cancels scheduled deletion) |
 | POST | /classes/:id/schedule-deletion | manager | ScheduleClassDeletionRequest | ClassroomDto (`purgeAt` set; class must be archived) |
@@ -95,13 +147,13 @@ Staff only (students reach problems through sessions).
 
 | Method | Path | Who | Body | Response |
 |---|---|---|---|---|
-| GET | /problems?scope=mine\|public\|all&search=&difficulty=&tag=&page=1&pageSize=20 | staff (`all`: admin) | – | Paginated<ProblemSummaryDto> |
-| GET | /problems/:id | owner, admin, or any staff if public | – | ProblemDetailDto (tests/solution filtered by sharing) |
+| GET | /problems?scope=mine\|public\|organization\|all&organizationId=&search=&difficulty=&tag=&page=1&pageSize=20 | staff (`all`: admin) | – | Paginated<ProblemSummaryDto>. `organization`: shared with one of the caller's organizations (narrowed by `organizationId`) |
+| GET | /problems/:id | owner, admin, any staff if public, teachers of an organization it is shared with | – | ProblemDetailDto (tests/solution filtered by sharing; organization colleagues see everything) |
 | POST | /problems | staff | CreateProblemRequest (UpsertProblemRequest + optional `testCases`, ≤ 200; examples are tests with `isSample`) | ProblemDetailDto (owned by the caller), saved together with its tests |
 | POST | /problems/suggest-tests | staff | SuggestDraftTestsRequest (`problem` as typed, `tests` it already has, `count`, `focus`) | 200 TestCaseSuggestionsDto — AI test suggestions for a problem **not saved yet** (creating, importing); same as `/problems/:id/test-cases/suggest` without the stored solution |
 | PUT | /problems/:id | owner or admin | UpsertProblemRequest | ProblemDetailDto |
 | DELETE | /problems/:id | owner or admin | – | 204 (removed from the owner's sets; running sessions keep their frozen copy) |
-| PUT | /problems/:id/sharing | owner or admin | SharingDto | ProblemDetailDto |
+| PUT | /problems/:id/sharing | owner or admin | SharingDto | ProblemDetailDto. `organizationIds` (required): organizations of the caller (403 `catalog.not_in_organization` otherwise); their teachers see the whole problem and can copy it |
 | POST | /problems/:id/copy | staff, problem public (or admin) | – | ProblemDetailDto — copy in the caller's bank (hidden tests / solution only if shared) |
 | POST | /problems/:id/test-cases | owner or admin | UpsertTestCaseRequest | TestCaseDto |
 | POST | /problems/suggest-section | staff | SuggestProblemSectionRequest (`section`: statement, inputFormat, outputFormat or constraints; `problem`: the content as typed, saved or not) | 200 ProblemSectionSuggestionDto — AI rewrite of that section, **not saved** (the "Dùng gợi ý" switches). Text never comes back with file input/output. Without an API key only the file-to-standard-I/O rewrite of a text section is offered; otherwise 400 `catalog.ai_unavailable` |
@@ -116,7 +168,7 @@ Staff only (students reach problems through sessions).
 ## Importing exam documents (into the caller's bank)
 | Method | Path | Who | Body | Response |
 |---|---|---|---|---|
-| POST | /imports/parse | staff | multipart/form-data, field `file` (.docx or .pdf, ≤ 10MB) | ParsedExamDto |
+| POST | /imports/parse | staff | multipart/form-data, field `file` (.docx or .pdf, ≤ 10MB) | ParsedExamDto. 400 `import.no_file`, `import.unsupported_type` (other extensions), `import.invalid_file` (the content is not a Word document or PDF, checked by its signature, e.g. a text file renamed to `.docx`), `import.empty_document` (no text, e.g. a scanned PDF) |
 | POST | /imports/parse-text | staff | `{ text }` (≤ 100,000 characters) | ParsedExamDto (`fileName` = "Nội dung đã dán") — the same reading as `parse`, for exam text pasted by the teacher ("Tái cấu trúc bằng AI"). 400 `import.empty_text` |
 | POST | /imports/confirm | staff | ImportProblemsRequest (each draft carries its `tests`; examples read from the document arrive as tests with `isSample`) | ImportProblemsResponse (problems owned by the caller, saved with their tests). 400 `import.file_io` (nothing imported) when a draft still reads or writes files |
 
@@ -170,11 +222,16 @@ ACTIVE and the user is a current student of it or its manager. Public sessions: 
 ## Submissions (judging)
 | Method | Path | Who | Body | Response |
 |---|---|---|---|---|
-| POST | /submissions | see above | SubmitRequest | SubmissionDto (status PENDING) |
+| POST | /submissions | see above | SubmitRequest | SubmissionDto (status PENDING). 409 `judging.too_many_pending` (a student may have `MAX_PENDING_SUBMISSIONS` waiting at once) or `judging.submission_limit` (the session's per-problem limit); both limits are enforced atomically, also for parallel requests. A submission ended by a system error (verdict `IE`) does not count as an attempt, with one exception: a system error that happened after the program had started running (`faultSource` = `program`) counts from the third one per student and problem, for good (a program could otherwise make the sandbox fail on purpose and probe the hidden tests for free). System errors before any of the program ran (`infrastructure`: queue down, sandbox start, compiler missing, lost result) never count |
 | GET | /submissions?sessionId=&problemKey=&mine=true&page=1&pageSize=20 | any | – | Paginated<SubmissionDto> — students: own only; staff: own, or all of a session they manage (`sessionId` required unless admin) |
 | GET | /submissions/:id | owner, session manager, admin | – | SubmissionDetailDto |
 
 Clients poll `GET /submissions/:id` (≈1s) until `status === 'DONE'`.
+
+A submission whose judge job vanished (queue data lost, engine crashed on it) is ended with verdict `IE` and an explanatory
+`compileOutput` after `JUDGE_STALE_AFTER_SECONDS` (default 300); jobs still queued or running are left alone until
+`JUDGE_GIVE_UP_AFTER_SECONDS` (default 1800). `IE` is a system error: it does not reach the scoreboard or học bạ, does not count
+as an attempt, and the student can submit again (or the teacher can rejudge).
 
 ## Learning record (học bạ)
 | Method | Path | Who | Body | Response |
