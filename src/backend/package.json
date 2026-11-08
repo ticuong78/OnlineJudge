@@ -7,7 +7,10 @@
     "dev": "nest start --watch",
     "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts",
+    "seed": "tsc -p tsconfig.build.json && node --enable-source-maps dist/seed.js",
+    "test:e2e": "tsc -p tsconfig.build.json && node --import tsx --test --test-concurrency=1 ../../e2e/api/*.e2e.test.ts",
+    "test:integration": "node --import tsx --test test/*.integration.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

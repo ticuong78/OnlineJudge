@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { validateEnvironment } from './config/environment.js';
 import { AssessmentModule } from './modules/assessment/assessment.module.js';
 import { CatalogModule } from './modules/catalog/catalog.module.js';
 import { ClassroomModule } from './modules/classroom/classroom.module.js';
@@ -15,7 +16,7 @@ import { SharedModule } from './shared/shared.module.js';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '.env.local'] }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '.env.local'], validate: validateEnvironment }),
     EventEmitterModule.forRoot(),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],

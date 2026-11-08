@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import nodemailer, { type Transporter } from 'nodemailer';
 import { DomainError } from '../domain/domain-error.js';
+import { maskEmail, maskEmailsIn } from '../domain/mask-email.js';
 import { MailTransport, type MailMessage } from '../application/mail-transport.js';
 
 /** SMTP delivery, e.g. Gmail: SMTP_HOST=smtp.gmail.com, SMTP_PORT=465, SMTP_USER + App Password. */
@@ -19,13 +20,17 @@ export class SmtpMailTransport extends MailTransport {
     try {
       await this.transporter.sendMail({ from: this.from, ...message });
     } catch (error) {
-      this.logger.error(`Cannot send email to ${message.to}: ${(error as Error).message}`);
+      // The server's reply often echoes the recipient ("550 <x@y>: Recipient address rejected"), so mask it too.
+      this.logger.error(`Cannot send email to ${maskEmail(message.to)}: ${maskEmailsIn((error as Error).message)}`);
       throw DomainError.conflict('mail.send_failed', 'Không gửi được email. Hãy kiểm tra lại địa chỉ email hoặc thử lại sau ít phút.');
     }
   }
 }
 
-/** Development fallback when SMTP is not configured: prints the email (and its code) to the server log. */
+/**
+ * Development fallback when SMTP is not configured: prints the email (and its code) to the server log.
+ * Production refuses to start without SMTP_HOST (config/environment.ts), so this never runs there.
+ */
 export class ConsoleMailTransport extends MailTransport {
   private readonly logger = new Logger('ConsoleMailTransport');
 
