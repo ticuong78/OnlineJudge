@@ -32,6 +32,16 @@ export class TypeOrmProblemRepository extends ProblemRepository {
     return rows.map(toDomain);
   }
 
+  async findByOwnerSharedWith(ownerId: string, organizationId: string) {
+    const ids = await this.db
+      .getRepository(ProblemOrmEntity)
+      .createQueryBuilder('p')
+      .select('p.id', 'id')
+      .where('p.ownerId = :ownerId AND :org = ANY(p.sharedOrganizationIds)', { ownerId, org: organizationId })
+      .getRawMany<{ id: string }>();
+    return this.findByIds(ids.map((r) => r.id));
+  }
+
   async nextSeq() {
     const row = await this.db
       .getRepository(ProblemOrmEntity)
@@ -53,6 +63,7 @@ export class TypeOrmProblemRepository extends ProblemRepository {
         isPublic: problem.sharing.isPublic,
         publicTests: problem.sharing.publicTests,
         publicSolution: problem.sharing.publicSolution,
+        sharedOrganizationIds: [...problem.sharing.organizationIds],
         copiedFromId: problem.copiedFrom?.id ?? null,
         copiedFromCode: problem.copiedFrom?.code ?? null,
         copiedFromOwner: problem.copiedFrom?.ownerName ?? null,
@@ -102,10 +113,17 @@ export class TypeOrmProblemQueries extends ProblemQueries {
       .select([
         'p.id', 'p.seq', 'p.title', 'p.difficulty', 'p.tags', 'p.timeLimitMs', 'p.memoryLimitMb',
         'p.solutionExplanation', 'p.solutionCode', 'p.createdAt', 'p.ownerId', 'p.ownerName',
-        'p.isPublic', 'p.publicTests', 'p.publicSolution', 'p.copiedFromId', 'p.copiedFromCode', 'p.copiedFromOwner',
+        'p.isPublic', 'p.publicTests', 'p.publicSolution', 'p.sharedOrganizationIds',
+        'p.copiedFromId', 'p.copiedFromCode', 'p.copiedFromOwner',
       ]);
     if (filter.scope === 'mine') qb.andWhere('p.ownerId = :viewer', { viewer: filter.viewerId });
     else if (filter.scope === 'public') qb.andWhere('p.isPublic = true');
+    else if (filter.scope === 'organization') {
+      // Only organizations the service has checked against the viewer's memberships; none = nothing.
+      const orgs = filter.organizationIds ?? [];
+      if (!orgs.length) qb.andWhere('1 = 0');
+      else qb.andWhere('p.sharedOrganizationIds && CAST(:orgs AS uuid[])', { orgs });
+    }
     if (filter.search) {
       qb.andWhere('(p.title ILIKE :q OR p.statement ILIKE :q OR CAST(p.seq AS text) = :seq)', {
         q: `%${filter.search}%`,
@@ -186,7 +204,7 @@ function toDomain(row: ProblemOrmEntity): Problem {
 }
 
 function sharingOf(row: ProblemOrmEntity): Sharing {
-  return Sharing.of(row.isPublic, row.publicTests, row.publicSolution);
+  return Sharing.of(row.isPublic, row.publicTests, row.publicSolution, row.sharedOrganizationIds ?? []);
 }
 
 function sourceOf(row: ProblemOrmEntity) {

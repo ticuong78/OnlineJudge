@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { hasFileIo, ioSideOf, toStandardIo } from '@oj/contracts';
 import type {
   Paginated,
@@ -16,7 +17,8 @@ import type {
   UpsertSolutionRequest,
   UpsertTestCaseRequest,
 } from '@oj/contracts';
-import type { Actor } from '../../../shared/application/actor.js';
+import { isOrgMember, type Actor } from '../../../shared/application/actor.js';
+import { MEMBER_LEFT_ORGANIZATION, type MemberLeftOrganizationEvent } from '../../identity/identity.events.js';
 import { AiAccess, aiRequiresVip } from '../../../shared/application/ai-access.js';
 import { EventPublisher } from '../../../shared/application/event-publisher.js';
 import { DomainError } from '../../../shared/domain/domain-error.js';
@@ -44,11 +46,18 @@ export class ProblemService {
 
   // ---------- Queries ----------
 
-  async list(actor: Actor, filter: Omit<ProblemListFilter, 'viewerId'>): Promise<Paginated<ProblemSummaryDto>> {
+  async list(
+    actor: Actor,
+    filter: Omit<ProblemListFilter, 'viewerId' | 'organizationIds'> & { organizationId?: string },
+  ): Promise<Paginated<ProblemSummaryDto>> {
     if (filter.scope === 'all' && actor.role !== 'ADMIN') {
       throw DomainError.forbidden('catalog.scope_all', 'Chỉ quản trị viên được xem toàn bộ ngân hàng.');
     }
-    const { rows, total } = await this.queries.list({ ...filter, viewerId: actor.id });
+    const { organizationId, ...rest } = filter;
+    // Organization scope: only the viewer's own organizations (students have none), optionally one of them.
+    const mine = actor.role === 'TEACHER' ? (actor.organizations ?? []).map((o) => o.id) : [];
+    const organizationIds = organizationId ? mine.filter((id) => id === organizationId) : mine;
+    const { rows, total } = await this.queries.list({ ...rest, viewerId: actor.id, organizationIds });
     return { items: rows.map(toSummaryDto), total, page: filter.page, pageSize: filter.pageSize };
   }
 
@@ -94,7 +103,14 @@ export class ProblemService {
 
   async share(actor: Actor, id: string, input: SharingDto): Promise<ProblemDetailDto> {
     const problem = await this.loadEditable(actor, id);
-    const sharing = Sharing.of(input.isPublic, input.publicTests, input.publicSolution);
+    const organizationIds = [...new Set(input.organizationIds ?? [])];
+    // A teacher shares only with organizations they belong to; organizations already chosen stay allowed for the
+    // administrator, who edits on the owner's behalf.
+    const allowed = (orgId: string) => isOrgMember(actor, orgId) || (actor.role === 'ADMIN' && problem.sharing.organizationIds.includes(orgId));
+    if (organizationIds.some((orgId) => !allowed(orgId))) {
+      throw DomainError.forbidden('catalog.not_in_organization', 'Bạn chỉ chia sẻ được với tổ chức mà bạn là thành viên.');
+    }
+    const sharing = Sharing.of(input.isPublic, input.publicTests, input.publicSolution, organizationIds);
     // Making the statement private is refused while something else relies on it being public (a public set).
     if (problem.sharing.isPublic && !sharing.isPublic) {
       const reason = await this.unshareChecks.reasonToStayPublic(problem.id);
@@ -103,6 +119,29 @@ export class ProblemService {
     problem.share(sharing);
     await this.problems.save(problem);
     return toDetailDto(problem, actor);
+  }
+
+  /**
+   * A teacher left an organization (OJ-8): they keep their problems, which stop being shared with it, and the
+   * organization keeps a copy of each in its successor org admin's bank ("copied from" the original).
+   */
+  @OnEvent(MEMBER_LEFT_ORGANIZATION, { async: true, promisify: true })
+  async onMemberLeftOrganization(event: MemberLeftOrganizationEvent): Promise<void> {
+    const shared = await this.problems.findByOwnerSharedWith(event.userId, event.organizationId);
+    // The successor sees the problem through the organization while it is still shared, so the copy is complete.
+    const successor: Actor = {
+      id: event.successorId,
+      role: 'TEACHER',
+      name: event.successorName,
+      organizations: [{ id: event.organizationId, role: 'ADMIN' }],
+    };
+    for (const problem of shared) {
+      const copy = problem.copyFor(successor, await this.problems.nextSeq());
+      await this.problems.save(copy);
+      problem.share(problem.sharing.withoutOrganization(event.organizationId));
+      await this.problems.save(problem);
+    }
+    if (shared.length) this.logger.log(`${shared.length} problem(s) copied for organization ${event.organizationId}`);
   }
 
   async copy(actor: Actor, id: string): Promise<ProblemDetailDto> {

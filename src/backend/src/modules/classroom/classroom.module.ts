@@ -14,11 +14,11 @@ import {
   TypeOrmMembershipRequestRepository,
 } from './infrastructure/classroom.persistence.js';
 import { IdentityPeopleDirectory } from './infrastructure/identity.gateway.js';
-import { ClassroomsController, MembershipRequestsController, RegistrationController } from './presentation/classrooms.controller.js';
+import { ClassroomsController, MembershipRequestsController, RegistrationController, OrganizationClassesController } from './presentation/classrooms.controller.js';
 
 @Module({
   imports: [TypeOrmModule.forFeature([ClassroomOrmEntity, EnrollmentOrmEntity, MembershipRequestOrmEntity]), IdentityModule],
-  controllers: [ClassroomsController, MembershipRequestsController, RegistrationController],
+  controllers: [ClassroomsController, MembershipRequestsController, RegistrationController, OrganizationClassesController],
   providers: [
     ClassroomService,
     ClassroomFacade,

@@ -1,5 +1,5 @@
 import type { ClassStatus } from '@oj/contracts';
-import type { Actor } from '../../../shared/application/actor.js';
+import { isOrgAdmin, type Actor } from '../../../shared/application/actor.js';
 import { AggregateRoot, newId } from '../../../shared/domain/aggregate-root.js';
 import { assert, DomainError } from '../../../shared/domain/domain-error.js';
 import { CLASS_PURGED, type ClassPurgedEvent } from '../classroom.events.js';
@@ -22,6 +22,8 @@ export interface ClassroomState {
   name: string;
   code: ClassCode;
   teacherId: string;
+  /** The organization the class belongs to (OJ-8); null = the teacher's personal class. */
+  organizationId: string | null;
   status: ClassStatus;
   archivedAt: Date | null;
   /** Scheduled permanent deletion (archived classes only). */
@@ -38,11 +40,12 @@ export class Classroom extends AggregateRoot {
     super(id);
   }
 
-  static open(name: string, code: ClassCode, teacherId: string): Classroom {
+  static open(name: string, code: ClassCode, teacherId: string, organizationId: string | null = null): Classroom {
     return new Classroom(newId(), {
       name: validName(name),
       code,
       teacherId,
+      organizationId,
       status: 'ACTIVE',
       archivedAt: null,
       purgeAt: null,
@@ -57,19 +60,39 @@ export class Classroom extends AggregateRoot {
   get name() { return this.state.name; }
   get code() { return this.state.code; }
   get teacherId() { return this.state.teacherId; }
+  get organizationId() { return this.state.organizationId; }
   get status() { return this.state.status; }
   get isActive() { return this.state.status === 'ACTIVE'; }
   get archivedAt() { return this.state.archivedAt; }
   get purgeAt() { return this.state.purgeAt; }
   get createdAt() { return this.state.createdAt; }
 
+  /**
+   * The administrator, the teacher in charge, and the org admins of the class's organization (OJ-8). Every class
+   * permission elsewhere (sessions, results, rejudging, integrity, class board) derives from this rule.
+   */
   isManagedBy(actor: Actor): boolean {
-    return actor.role === 'ADMIN' || actor.id === this.state.teacherId;
+    return actor.role === 'ADMIN' || actor.id === this.state.teacherId || isOrgAdmin(actor, this.state.organizationId);
   }
 
   ensureManageableBy(actor: Actor): void {
     if (!this.isManagedBy(actor)) {
       throw DomainError.forbidden('classroom.not_teacher', 'Chỉ giáo viên phụ trách lớp hoặc quản trị viên được thao tác với lớp này.');
+    }
+  }
+
+  /**
+   * Permanent deletion (scheduled or immediate) erases sessions and submissions: only the class teacher and the
+   * administrator. Org admins manage organization classes but may only archive them (owner's decision, OJ-8).
+   */
+  canDeleteBy(actor: Actor): boolean {
+    return actor.role === 'ADMIN' || actor.id === this.state.teacherId;
+  }
+
+  ensureDeletableBy(actor: Actor): void {
+    if (!this.canDeleteBy(actor)) {
+      throw DomainError.forbidden('classroom.only_teacher_deletes',
+        'Chỉ giáo viên phụ trách lớp hoặc quản trị viên được xóa hẳn lớp. Quản lý tổ chức có thể lưu trữ lớp.');
     }
   }
 
@@ -92,6 +115,14 @@ export class Classroom extends AggregateRoot {
 
   assignTeacher(teacherId: string): void {
     this.state.teacherId = teacherId;
+  }
+
+  /** A personal class joins one of the teacher's organizations. One way in the pilot: it cannot leave again. */
+  moveToOrganization(organizationId: string): void {
+    if (this.state.organizationId) {
+      throw DomainError.conflict('classroom.already_in_organization', 'Lớp này đã thuộc một tổ chức.');
+    }
+    this.state.organizationId = organizationId;
   }
 
   archive(now = new Date()): void {

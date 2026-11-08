@@ -1,7 +1,7 @@
 import { Difficulties, fileIoFields, fileIoMessage, Languages, type Difficulty, type Language } from '@oj/contracts';
 import { AggregateRoot, newId, type DomainEvent } from '../../../shared/domain/aggregate-root.js';
 import { assert, DomainError } from '../../../shared/domain/domain-error.js';
-import type { Actor } from '../../../shared/application/actor.js';
+import { isOrgMember, type Actor } from '../../../shared/application/actor.js';
 import { PROBLEM_DELETED, type ProblemDeletedEvent } from '../catalog.events.js';
 
 const MAX_TEST_CASES = 200;
@@ -91,20 +91,34 @@ export class TestCase {
  * How much of a blueprint is visible outside its owner's bank.
  * Hidden tests and the solution can only be shared together with the statement.
  */
+export const MAX_SHARED_ORGANIZATIONS = 20;
+
+/**
+ * Public sharing (statement, then optionally hidden tests and the solution) and sharing with organizations (OJ-8):
+ * teachers of `organizationIds` see the whole problem. The two are independent.
+ */
 export class Sharing {
   private constructor(
     readonly isPublic: boolean,
     readonly publicTests: boolean,
     readonly publicSolution: boolean,
+    readonly organizationIds: readonly string[],
   ) {}
 
-  static of(isPublic: boolean, publicTests: boolean, publicSolution: boolean): Sharing {
+  static of(isPublic: boolean, publicTests: boolean, publicSolution: boolean, organizationIds: readonly string[] = []): Sharing {
     assert(isPublic || (!publicTests && !publicSolution), 'catalog.invalid_sharing',
       'Chỉ có thể chia sẻ test hoặc lời giải khi đề bài đã công khai.');
-    return new Sharing(isPublic, publicTests, publicSolution);
+    const orgs = [...new Set(organizationIds)];
+    assert(orgs.length <= MAX_SHARED_ORGANIZATIONS, 'catalog.too_many_organizations',
+      `Chỉ chia sẻ được với tối đa ${MAX_SHARED_ORGANIZATIONS} tổ chức.`);
+    return new Sharing(isPublic, publicTests, publicSolution, orgs);
   }
 
-  static readonly private = new Sharing(false, false, false);
+  static readonly private = new Sharing(false, false, false, []);
+
+  withoutOrganization(organizationId: string): Sharing {
+    return new Sharing(this.isPublic, this.publicTests, this.publicSolution, this.organizationIds.filter((id) => id !== organizationId));
+  }
 }
 
 export interface Owner {
@@ -202,17 +216,23 @@ export class Problem extends AggregateRoot {
     return this.isOwnedBy(actor) || actor.role === 'ADMIN';
   }
 
-  /** Staff can browse public blueprints; students never see blueprints directly. */
-  canView(actor: Actor): boolean {
-    return this.canEdit(actor) || (this.state.sharing.isPublic && actor.role !== 'STUDENT');
+  /** Teachers of an organization the problem is shared with (OJ-8). Students are never members. */
+  isSharedWith(actor: Actor): boolean {
+    return actor.role === 'TEACHER' && this.state.sharing.organizationIds.some((id) => isOrgMember(actor, id));
   }
 
+  /** Staff can browse public blueprints and those shared with their organizations; students never see blueprints. */
+  canView(actor: Actor): boolean {
+    return this.canEdit(actor) || (this.state.sharing.isPublic && actor.role !== 'STUDENT') || this.isSharedWith(actor);
+  }
+
+  /** Organization colleagues see the whole problem; others only what is shared publicly. */
   canSeeHiddenTests(actor: Actor): boolean {
-    return this.canEdit(actor) || (this.canView(actor) && this.state.sharing.publicTests);
+    return this.canEdit(actor) || this.isSharedWith(actor) || (this.canView(actor) && this.state.sharing.publicTests);
   }
 
   canSeeSolution(actor: Actor): boolean {
-    return this.canEdit(actor) || (this.canView(actor) && this.state.sharing.publicSolution);
+    return this.canEdit(actor) || this.isSharedWith(actor) || (this.canView(actor) && this.state.sharing.publicSolution);
   }
 
   ensureEditableBy(actor: Actor): void {

@@ -27,6 +27,8 @@ export class ProblemOrmEntity {
   @Column('boolean', { default: false }) isPublic: boolean;
   @Column('boolean', { default: false }) publicTests: boolean;
   @Column('boolean', { default: false }) publicSolution: boolean;
+  /** Organizations whose teachers see the whole problem (OJ-8). */
+  @Column('uuid', { array: true, default: '{}' }) sharedOrganizationIds: string[];
 
   @Column('uuid', { nullable: true }) copiedFromId: string | null;
   @Column({ type: 'varchar', length: 16, nullable: true }) copiedFromCode: string | null;

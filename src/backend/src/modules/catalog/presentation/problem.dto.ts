@@ -9,6 +9,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -18,7 +19,9 @@ import {
 import { PaginationQuery } from '../../../shared/presentation/pagination.dto.js';
 
 export class ProblemListQuery extends PaginationQuery {
-  @IsOptional() @IsIn(['mine', 'public', 'all']) scope?: BankScope;
+  @IsOptional() @IsIn(['mine', 'public', 'organization', 'all']) scope?: BankScope;
+  /** `organization` scope: narrow to one of the viewer's organizations. */
+  @IsOptional() @IsUUID() organizationId?: string;
   @IsOptional() @IsString() @MaxLength(200) search?: string;
   @IsOptional() @IsIn(Difficulties) difficulty?: Difficulty;
   @IsOptional() @IsString() @MaxLength(50) tag?: string;
@@ -88,6 +91,9 @@ export class SharingBody {
   @IsBoolean() isPublic: boolean;
   @IsBoolean() publicTests: boolean;
   @IsBoolean() publicSolution: boolean;
+  /** OJ-8: organizations of the owner that see the whole problem; each is checked against the actor's memberships. */
+  // Required, not defaulted: a client that leaves it out must not silently remove all organization sharing.
+  @IsArray() @ArrayMaxSize(20) @IsUUID('all', { each: true }) organizationIds: string[];
 }
 
 export class UpsertSolutionBody {

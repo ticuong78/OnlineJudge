@@ -7,6 +7,7 @@ export const toSharingDto = (s: Sharing): SharingDto => ({
   isPublic: s.isPublic,
   publicTests: s.publicTests,
   publicSolution: s.publicSolution,
+  organizationIds: [...s.organizationIds],
 });
 
 export function toSummaryDto(row: ProblemSummaryRow): ProblemSummaryDto {

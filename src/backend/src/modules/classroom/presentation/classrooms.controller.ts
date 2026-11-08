@@ -2,13 +2,21 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Pu
 import { Type } from 'class-transformer';
 import { IsEmail, IsInt, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
 import type { Actor } from '../../../shared/application/actor.js';
+import type { RateLimitPolicy } from '../../../shared/application/rate-limiter.js';
 import { CurrentActor, Public, Roles } from '../../../shared/presentation/decorators.js';
+import { bodyField, RateLimit } from '../../../shared/presentation/rate-limit.js';
 import { ClassroomService } from '../application/classroom.service.js';
 
 class UpsertClassroomBody {
   @IsString() @Length(1, 100, { message: 'Tên lớp phải từ 1 đến 100 ký tự.' }) name: string;
   @IsString() @Length(4, 20, { message: 'Mã lớp gồm 4–20 ký tự.' }) code: string;
   @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() teacherId?: string | null;
+  /** On create only (OJ-8): one of the creator's organizations; checked against their memberships. */
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() organizationId?: string | null;
+}
+
+class MoveToOrganizationBody {
+  @IsUUID() organizationId: string;
 }
 
 class MoveStudentBody {
@@ -87,6 +95,12 @@ export class ClassroomsController {
   @Put(':id') @Roles('ADMIN', 'TEACHER')
   update(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() body: UpsertClassroomBody) {
     return this.classrooms.update(actor, id, body);
+  }
+
+  /** A personal class joins one of the teacher's organizations (OJ-8, one way). */
+  @Put(':id/organization') @Roles('ADMIN', 'TEACHER')
+  moveToOrganization(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() body: MoveToOrganizationBody) {
+    return this.classrooms.moveToOrganization(actor, id, body.organizationId);
   }
 
   @Post(':id/archive') @Roles('ADMIN', 'TEACHER') @HttpCode(200)
@@ -176,13 +190,33 @@ export class MembershipRequestsController {
   }
 }
 
+/**
+ * Sign-up sends an email, so it is limited per IP and per mailbox. The per-IP figure leaves room for a whole
+ * class behind one school address signing up in the same hour; the per-mailbox one is the 60-second resend
+ * pace (a bigger per-mailbox budget would let anyone use up a classmate's allowance for the whole window).
+ */
+const REGISTER_PER_IP: RateLimitPolicy = { limit: 60, windowMs: 60 * 60_000 };
+const REGISTER_PER_EMAIL: RateLimitPolicy = { limit: 2, windowMs: 60_000 };
+
 /** Student sign-up lives here because the class code belongs to the Classroom context. */
 @Controller('auth')
 export class RegistrationController {
   constructor(private readonly classrooms: ClassroomService) {}
 
   @Public() @Post('register') @HttpCode(202)
+  @RateLimit({ name: 'register', perIp: REGISTER_PER_IP, perTarget: { policy: REGISTER_PER_EMAIL, of: (req) => bodyField(req, 'email') } })
   register(@Body() body: RegisterBody) {
     return this.classrooms.startRegistration(body);
+  }
+}
+
+/** The classes of an organization, for its org admins and the administrator (OJ-8). */
+@Controller('organizations')
+export class OrganizationClassesController {
+  constructor(private readonly classrooms: ClassroomService) {}
+
+  @Get(':id/classes') @Roles('ADMIN', 'TEACHER')
+  classes(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string) {
+    return this.classrooms.organizationClasses(actor, id);
   }
 }
