@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Role } from '@oj/contracts';
-import { In, IsNull, Repository } from 'typeorm';
+import { In, IsNull, LessThan, Repository } from 'typeorm';
+import { DomainError } from '../../../shared/domain/domain-error.js';
 import { Email, Phone, User } from '../domain/user.js';
 import { UserRepository, VerificationRepository } from '../domain/user.repository.js';
-import { Verification, type VerificationPurpose } from '../domain/verification.js';
+import { MAX_ATTEMPTS, Verification, type VerificationPurpose } from '../domain/verification.js';
 import { UserOrmEntity, VerificationOrmEntity } from './user.orm-entity.js';
 
 @Injectable()
@@ -40,21 +41,34 @@ export class TypeOrmUserRepository extends UserRepository {
   }
 
   async save(user: User) {
-    await this.repo.save({
-      id: user.id,
-      email: user.email.value,
-      displayName: user.displayName,
-      phone: user.phone?.value ?? null,
-      role: user.role,
-      passwordHash: user.passwordHash,
-      vip: user.vip,
-      createdAt: user.createdAt,
-    });
+    try {
+      await this.repo.save({
+        id: user.id,
+        email: user.email.value,
+        displayName: user.displayName,
+        phone: user.phone?.value ?? null,
+        role: user.role,
+        passwordHash: user.passwordHash,
+        vip: user.vip,
+        createdAt: user.createdAt,
+      });
+    } catch (error) {
+      // The application checks the address is free first, but two requests can both pass that check; the
+      // unique index then refuses the second one, which should read as the same 409, not a server error.
+      if (isEmailTaken(error)) throw DomainError.conflict('identity.email_taken', 'Email này đã có tài khoản. Hãy đăng nhập.');
+      throw error;
+    }
   }
 
   async delete(id: string) {
     await this.repo.delete({ id });
   }
+}
+
+/** PostgreSQL unique violation (23505) on the email column; the index name is generated, so match the column. */
+function isEmailTaken(error: unknown): boolean {
+  const driver = (error as { driverError?: { code?: string; detail?: string } }).driverError;
+  return driver?.code === '23505' && /^Key \(email\)=/.test(driver.detail ?? '');
 }
 
 function toUser(row: UserOrmEntity): User {
@@ -101,6 +115,7 @@ export class TypeOrmVerificationRepository extends VerificationRepository {
       email: s.email.value,
       payload: s.payload,
       codeHash: s.codeHash,
+      linkHash: s.linkHash,
       attempts: s.attempts,
       expiresAt: s.expiresAt,
       lastSentAt: s.lastSentAt,
@@ -112,6 +127,52 @@ export class TypeOrmVerificationRepository extends VerificationRepository {
   async delete(id: string) {
     await this.repo.delete({ id });
   }
+
+  // The two statements below restate `Verification.isUsable` / `consume` in SQL on purpose: only a single
+  // conditional UPDATE is atomic (row locks serialise concurrent callers; no connection is held while the
+  // code is hashed). Keep them in step with the aggregate.
+
+  async claimAttempt(id: string, now = new Date()) {
+    const result = await this.repo
+      .createQueryBuilder()
+      .update(VerificationOrmEntity)
+      .set({ attempts: () => '"attempts" + 1' })
+      .where('"id" = :id AND "consumedAt" IS NULL AND "expiresAt" > :now AND "attempts" < :max', { id, now, max: MAX_ATTEMPTS })
+      .returning('*')
+      .execute();
+    const row = (result.raw as VerificationOrmEntity[])[0];
+    return row ? toVerification(row) : null;
+  }
+
+  async consume(v: Verification, now = new Date()) {
+    const result = await this.repo
+      .createQueryBuilder()
+      .update(VerificationOrmEntity)
+      .set({ consumedAt: now })
+      .where('"id" = :id AND "consumedAt" IS NULL AND "codeHash" = :hash AND "expiresAt" > :now', {
+        id: v.id,
+        hash: v.snapshot.codeHash,
+        now,
+      })
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
+  async deleteExpired(purposes: VerificationPurpose[], expiredBefore: Date) {
+    const result = await this.repo.delete({ purpose: In(purposes), expiresAt: LessThan(expiredBefore) });
+    return result.affected ?? 0;
+  }
+
+  async saveReissued(v: Verification, sentBefore: Date) {
+    const s = v.snapshot;
+    const result = await this.repo
+      .createQueryBuilder()
+      .update(VerificationOrmEntity)
+      .set({ codeHash: s.codeHash, linkHash: s.linkHash, attempts: s.attempts, expiresAt: s.expiresAt, lastSentAt: s.lastSentAt })
+      .where('"id" = :id AND "consumedAt" IS NULL AND "lastSentAt" = :sentBefore', { id: v.id, sentBefore })
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
 }
 
 function toVerification(row: VerificationOrmEntity): Verification {
@@ -120,6 +181,7 @@ function toVerification(row: VerificationOrmEntity): Verification {
     email: Email.of(row.email),
     payload: row.payload,
     codeHash: row.codeHash,
+    linkHash: row.linkHash ?? null,
     attempts: row.attempts,
     expiresAt: row.expiresAt,
     lastSentAt: row.lastSentAt,

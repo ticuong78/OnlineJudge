@@ -14,27 +14,40 @@ test('phone numbers are normalised to 0xxxxxxxxx', () => {
 
 test('verification is single-use', () => {
   const v = Verification.issue('REGISTER_STUDENT', email, {}, 'hash');
-  v.attempt(true);
-  assert.throws(() => v.attempt(true), /hết hạn/);
+  v.claimAttempt();
+  v.consume();
+  assert.throws(() => v.claimAttempt(), /hết hạn/);
+  assert.throws(() => v.consume(), /hết hạn/);
 });
 
-test('verification locks after too many wrong codes until a new code is sent', () => {
+test('verification locks after too many attempts until a new code is sent', () => {
   const t0 = new Date('2026-01-01T00:00:00Z');
   const v = Verification.issue('RESET_PASSWORD', email, {}, 'hash', t0);
-  for (let i = 1; i < MAX_ATTEMPTS; i++) assert.throws(() => v.attempt(false, t0), /còn \d lần/);
-  assert.throws(() => v.attempt(false, t0), /quá nhiều lần/);
-  assert.throws(() => v.attempt(true, t0), /hết hạn/);
+  for (let i = 1; i <= MAX_ATTEMPTS; i++) assert.equal(v.claimAttempt(t0), MAX_ATTEMPTS - i);
+  assert.throws(() => v.claimAttempt(t0), /hết hạn/, 'no attempt is left, so nothing more is evaluated');
 
   assert.throws(() => v.reissue('hash2', new Date(t0.getTime() + 30_000)), /đợi 30 giây/);
   const t1 = new Date(t0.getTime() + 61_000);
   v.reissue('hash2', t1);
-  v.attempt(true, t1);
+  assert.equal(v.claimAttempt(t1), MAX_ATTEMPTS - 1);
+  v.consume(t1);
+});
+
+test('the last allowed attempt may still be the right one', () => {
+  const t0 = new Date('2026-01-01T00:00:00Z');
+  const v = Verification.issue('RESET_PASSWORD', email, {}, 'hash', t0);
+  for (let i = 1; i < MAX_ATTEMPTS; i++) v.claimAttempt(t0);
+  assert.equal(v.claimAttempt(t0), 0, 'the fifth attempt is the last');
+  v.consume(t0); // it was the right code: spending it must not need a sixth attempt
+  assert.throws(() => v.consume(t0), /hết hạn/);
 });
 
 test('verification expires', () => {
   const t0 = new Date('2026-01-01T00:00:00Z');
   const v = Verification.issue('REGISTER_STUDENT', email, {}, 'hash', t0);
-  assert.throws(() => v.attempt(true, new Date(t0.getTime() + 11 * 60_000)), /hết hạn/);
+  const late = new Date(t0.getTime() + 11 * 60_000);
+  assert.throws(() => v.claimAttempt(late), /hết hạn/);
+  assert.throws(() => v.consume(late), /hết hạn/);
   const invite = Verification.issue('INVITE_TEACHER', email, {}, 'hash', t0);
   assert.ok(invite.isUsable(new Date(t0.getTime() + 6 * 24 * 3600_000)));
 });

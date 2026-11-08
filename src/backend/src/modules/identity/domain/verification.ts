@@ -11,6 +11,8 @@ export interface VerificationPayload {
   classId?: string;
   phone?: string | null;
   passwordHash?: string;
+  /** Teacher invitation sent on behalf of an organization: accepting it joins that organization (OJ-8). */
+  organizationInvitationId?: string;
 }
 
 export const VERIFICATION_POLICY: Record<VerificationPurpose, { ttlMs: number }> = {
@@ -26,6 +28,12 @@ export interface VerificationState {
   email: Email;
   payload: VerificationPayload;
   codeHash: string;
+  /**
+   * Hash of the secret in the emailed link: set for password reset, which is completed by the link only, and null
+   * otherwise (sign-up and invitations use the code). The link is not limited to MAX_ATTEMPTS: it is long enough not
+   * to be guessed, and so cannot be "used up" by someone who only knows the public verification id.
+   */
+  linkHash: string | null;
   attempts: number;
   expiresAt: Date;
   lastSentAt: Date;
@@ -33,8 +41,13 @@ export interface VerificationState {
   createdAt: Date;
 }
 
-const invalidCode = () =>
+export const invalidCode = () =>
   DomainError.validation('identity.invalid_code', 'Mã xác thực không đúng hoặc đã hết hạn. Hãy kiểm tra lại email hoặc gửi lại mã.');
+
+/** `attemptsLeft` is what remains after the wrong attempt that was just spent. */
+export const wrongCode = (attemptsLeft: number) =>
+  DomainError.validation('identity.wrong_code',
+    attemptsLeft > 0 ? `Mã xác thực không đúng. Bạn còn ${attemptsLeft} lần thử.` : 'Bạn đã nhập sai quá nhiều lần. Hãy gửi lại mã mới.');
 
 /**
  * A one-time code sent to an email address to prove ownership before something happens
@@ -45,12 +58,15 @@ export class Verification extends AggregateRoot {
     super(id);
   }
 
-  static issue(purpose: VerificationPurpose, email: Email, payload: VerificationPayload, codeHash: string, now = new Date()): Verification {
+  static issue(
+    purpose: VerificationPurpose, email: Email, payload: VerificationPayload, codeHash: string, now = new Date(), linkHash: string | null = null,
+  ): Verification {
     return new Verification(newId(), {
       purpose,
       email,
       payload,
       codeHash,
+      linkHash,
       attempts: 0,
       expiresAt: new Date(now.getTime() + VERIFICATION_POLICY[purpose].ttlMs),
       lastSentAt: now,
@@ -79,8 +95,8 @@ export class Verification extends AggregateRoot {
     if (this.state.purpose !== purpose) throw invalidCode();
   }
 
-  /** New code (old one stops working), new expiry, attempts reset. */
-  reissue(codeHash: string, now = new Date()): void {
+  /** New code and link (the old ones stop working), new expiry, attempts reset. */
+  reissue(codeHash: string, now = new Date(), linkHash: string | null = null): void {
     if (this.state.consumedAt) throw invalidCode();
     if (now < this.resendAvailableAt) {
       const seconds = Math.ceil((this.resendAvailableAt.getTime() - now.getTime()) / 1000);
@@ -89,6 +105,7 @@ export class Verification extends AggregateRoot {
     this.state = {
       ...this.state,
       codeHash,
+      linkHash,
       attempts: 0,
       lastSentAt: now,
       expiresAt: new Date(now.getTime() + VERIFICATION_POLICY[this.state.purpose].ttlMs),
@@ -96,17 +113,24 @@ export class Verification extends AggregateRoot {
   }
 
   /**
-   * Records an attempt; `codeMatches` is computed by the application (hashing is infrastructure).
-   * On success the verification is consumed and cannot be used again.
+   * Spends one of the limited attempts and returns how many are left. The caller compares the code only
+   * AFTER this succeeded, so a guess is never evaluated without having been counted.
+   *
+   * This is the in-memory statement of the rule. Persistence must apply it atomically
+   * (`VerificationRepository.claimAttempt`), otherwise concurrent guesses all see the same counter.
    */
-  attempt(codeMatches: boolean, now = new Date()): void {
+  claimAttempt(now = new Date()): number {
     if (!this.isUsable(now)) throw invalidCode();
-    if (!codeMatches) {
-      this.state.attempts++;
-      const left = MAX_ATTEMPTS - this.state.attempts;
-      throw DomainError.validation('identity.wrong_code',
-        left > 0 ? `Mã xác thực không đúng. Bạn còn ${left} lần thử.` : 'Bạn đã nhập sai quá nhiều lần. Hãy gửi lại mã mới.');
-    }
+    this.state.attempts++;
+    return MAX_ATTEMPTS - this.state.attempts;
+  }
+
+  /**
+   * The right code was given: the verification is spent for good. It needs no free attempt (the one just
+   * claimed may have been the last), only that it is still open.
+   */
+  consume(now = new Date()): void {
+    if (this.state.consumedAt || now >= this.state.expiresAt) throw invalidCode();
     this.state.consumedAt = now;
   }
 }
