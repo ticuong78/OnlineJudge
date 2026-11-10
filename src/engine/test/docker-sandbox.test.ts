@@ -96,6 +96,12 @@ const sandboxContainers = (): string[] =>
   execFileSync('docker', ['ps', '-a', '--filter', 'label=oj.sandbox=1', '--format', '{{.ID}}'], { stdio: 'pipe' })
     .toString().split('\n').filter(Boolean);
 
+/**
+ * What a test left behind. Compare against the snapshot by membership, not equality: a container from an earlier
+ * test that removes itself while this one runs (--rm, the sweeper) would otherwise fail the check, or end the wait.
+ */
+const newSince = (before: string[], now: string[]): string[] => now.filter((id) => !before.includes(id));
+
 const hostSandboxDirs = (): string[] => readdirSync(tmpdir()).filter((n) => n.startsWith('oj-'));
 
 const AC_PROGRAMS: [JudgeJob['language'], string][] = [
@@ -312,8 +318,8 @@ sys.stdout.write('written=%d big=%s\n' % (written, big))
     assert.ok(Number(match[1]) <= BOX_TMPFS_MB + TMP_TMPFS_MB, `never more than both mounts hold (wrote ${match[1]} MB)`);
   }, { programMb: 16 + 32 });
 
-  assert.deepEqual(hostSandboxDirs(), hostBefore, 'no oj-* directories appeared in the host temp dir');
-  assert.deepEqual(sandboxContainers(), containersBefore, 'sessions clean up their containers');
+  assert.deepEqual(newSince(hostBefore, hostSandboxDirs()), [], 'no oj-* directories appeared in the host temp dir');
+  assert.deepEqual(newSince(containersBefore, sandboxContainers()), [], 'sessions clean up their containers');
 });
 
 dtest('a fork bomb is bounded, stopped, fully cleaned up, and the container stays usable', async () => {
@@ -589,6 +595,6 @@ dtest('HANG: a job that outlives its deadline gets an IE result on time and its 
   assert.ok(took >= 4500 && took < 9000, `result came at the deadline, not after the 120 s sleep (${took}ms)`);
 
   const waitUntil = Date.now() + 20_000;
-  while (sandboxContainers().length > before.length && Date.now() < waitUntil) await new Promise((r) => setTimeout(r, 500));
-  assert.deepEqual(sandboxContainers(), before, 'the aborted job removed its container');
+  while (newSince(before, sandboxContainers()).length > 0 && Date.now() < waitUntil) await new Promise((r) => setTimeout(r, 500));
+  assert.deepEqual(newSince(before, sandboxContainers()), [], 'the aborted job removed its container');
 });
