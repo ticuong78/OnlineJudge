@@ -1,3 +1,5 @@
+import { vi } from '@/i18n/messages/vi';
+import { activeLocale, tr } from '@/i18n/runtime';
 import type {
   AddOrganizationMemberRequest,
   CreateOrganizationRequest,
@@ -148,7 +150,7 @@ async function request<T>(
   try {
     res = await fetch(buildUrl(path, opts.query), { method, headers, body });
   } catch {
-    throw new ApiError('Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại; nếu vẫn lỗi, báo giáo viên.', 0);
+    throw new ApiError(tr()('common.network.offline'), 0, 'network.offline');
   }
 
   if (res.status === 204) return undefined as T;
@@ -166,7 +168,7 @@ async function request<T>(
   if (!res.ok) {
     const err = (data && typeof data === 'object' ? data : {}) as Partial<ApiErrorBody>;
     let message = Array.isArray(err.message) ? err.message.join('; ') : err.message;
-    if (!message) message = typeof data === 'string' && data ? data : `Lỗi ${res.status}`;
+    if (!message) message = typeof data === 'string' && data ? data : tr()('common.network.httpError', { status: res.status });
     if (res.status === 401 && token && typeof window !== 'undefined') {
       setToken(null);
       window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
@@ -380,7 +382,53 @@ export const api = {
   myProgress: () => request<LearningRecordDto>('GET', '/progress/me'),
 };
 
+/**
+ * Text to show for a failed call. In Vietnamese the server's own message is used: it is written for users and may name
+ * the exact item. In other languages the stable `code` (K-13) picks a translation from the `errors` dictionary, filled
+ * with the error's `details` (e.g. tries left); field checks (`request.invalid`) are translated message by message. A
+ * code without a translation falls back to the server's message rather than to a vague generic line.
+ */
 export function errorMessage(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  return 'Đã có lỗi xảy ra';
+  if (e instanceof ApiError && activeLocale() !== 'vi') {
+    const translated = translateApiError(e);
+    if (translated) return translated;
+  }
+  if (e instanceof Error && e.message) return e.message;
+  return tr()('common.network.generic');
+}
+
+type ErrorKey = Parameters<ReturnType<typeof tr>>[0];
+const VIETNAMESE = /[\u00C0-\u1EF9]/; // i18n-ignore: detects Vietnamese server text
+
+function translateApiError(e: ApiError): string | null {
+  if (e.code === 'request.invalid' && e.message) {
+    const fields = translateFieldMessages(e.message);
+    if (fields) return fields;
+  }
+  if (!e.code) return null;
+  const key = `errors.${e.code}` as ErrorKey;
+  if (!tr().has(key)) return null;
+  // Numeric details become numbers so ICU plurals work ("1 try left" / "3 tries left").
+  const values = Object.fromEntries(
+    Object.entries(e.details ?? {}).map(([k, v]) => [k, /^\d+$/.test(v) ? Number(v) : v]),
+  );
+  try {
+    const out = tr()(key, values as never);
+    // A message that needs a value the server did not send comes back as its key: use the server text instead.
+    return out === key ? null : out;
+  } catch {
+    return null;
+  }
+}
+
+/** "msg1; msg2" from the validation pipe, each matched against the Vietnamese field messages; null if one is unknown. */
+function translateFieldMessages(message: string): string | null {
+  const known = Object.entries(vi.errors.fields);
+  const parts = message.split('; ').map((part) => {
+    const hit = known.find(([, text]) => text === part);
+    if (hit) return tr()(`errors.fields.${hit[0]}` as ErrorKey);
+    // class-validator's own defaults are English already ("email must be an email"); keep those.
+    return VIETNAMESE.test(part) ? null : part;
+  });
+  return parts.every((p) => p !== null) ? parts.join(' ') : null;
 }

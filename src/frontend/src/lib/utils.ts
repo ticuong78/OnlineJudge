@@ -1,5 +1,6 @@
 import type { Language } from '@oj/contracts';
 import { extendTailwindMerge } from 'tailwind-merge';
+import { intlTag, tr } from '@/i18n/runtime';
 
 const twMerge = extendTailwindMerge({
   extend: { theme: { radius: ['control', 'panel'] } },
@@ -14,7 +15,7 @@ export function formatDateTime(iso: string | null | undefined) {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('vi-VN', {
+  return d.toLocaleString(intlTag(), {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -27,7 +28,7 @@ export function formatDate(iso: string | null | undefined) {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('vi-VN');
+  return d.toLocaleDateString(intlTag());
 }
 
 export function formatTime(ms: number | null | undefined) {
@@ -61,11 +62,11 @@ export function earnedPoints(bestPercent: number, problemPoints: number) {
 export function scoreLabel(percent: number, problemPoints?: number | null): { value: string; unit: string; spoken: string } {
   if (problemPoints === undefined || problemPoints === null) {
     const value = formatPoints(percent);
-    return { value, unit: '%', spoken: `${value}% số điểm` };
+    return { value, unit: '%', spoken: tr()('common.score.percentSpoken', { value }) };
   }
   const value = formatPoints(earnedPoints(percent, problemPoints));
   const of = formatPoints(problemPoints);
-  return { value, unit: `/${of}`, spoken: `${value} trên ${of} điểm` };
+  return { value, unit: `/${of}`, spoken: tr()('common.score.pointsSpoken', { value, of }) };
 }
 
 /** A plan's last day (YYYY-MM-DD) as dd/mm/yyyy, without any time-zone shift. */

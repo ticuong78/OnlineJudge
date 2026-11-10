@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Lock, RotateCcw, Send, X } from 'lucide-reac
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { CodeEditor } from '@/components/code-editor';
 import { ExamTimer, useServerOffset } from '@/components/exam';
 import { ProblemStatement } from '@/components/problem-statement';
@@ -32,9 +33,10 @@ function MySubmissions({ sessionId, problemKey, refreshKey }: { sessionId: strin
     () => api.listSubmissions({ sessionId, problemKey, mine: true, pageSize: 50 }),
     [sessionId, problemKey, refreshKey],
   );
+  const t = useTranslations('session.solve');
   if (loading && !data) return <LoadingState />;
   if (error) return <ErrorState message={error} onRetry={reload} />;
-  if (!data || data.items.length === 0) return <EmptyState title="Bạn chưa nộp bài này trong phiên" />;
+  if (!data || data.items.length === 0) return <EmptyState title={t('noSubmissions')} />;
   return (
     <div className="-mx-5">
       <SubmissionsTable items={data.items} showProblem={false} dim={loading} />
@@ -49,6 +51,8 @@ export default function SolvePage() {
   const { user } = useAuth();
   const toast = useToast();
   const router = useRouter();
+  const t = useTranslations('session');
+  const tc = useTranslations('common');
 
   const session = useAsync(() => api.getSession(sessionId), [sessionId]);
   const problem = useAsync(() => api.getSessionProblem(sessionId, key), [sessionId, key]);
@@ -127,7 +131,7 @@ export default function SolvePage() {
 
   const submit = async () => {
     if (!code.trim()) {
-      toast.error('Mã nguồn đang trống. Viết lời giải vào trình soạn thảo rồi nộp bài.');
+      toast.error(t('solve.emptyCode'));
       return;
     }
     setSubmitting(true);
@@ -137,7 +141,7 @@ export default function SolvePage() {
       const sub = await api.submit({ sessionId, problemKey: key, language, sourceCode: code });
       setSubmissionId(sub.id);
       setResultOpen(true);
-      toast.success('Đã nộp bài. Kết quả sẽ hiện bên dưới trình soạn thảo.');
+      toast.success(t('solve.submittedToast'));
       setRefreshKey((k) => k + 1);
       session.reload();
     } catch (e) {
@@ -150,23 +154,24 @@ export default function SolvePage() {
   if ((problem.loading && !problem.data) || (session.loading && !session.data) || mustStart) return <LoadingState />;
   const err = problem.error || session.error;
   if (err || !problem.data || !session.data) {
-    const notFound = !!err && /không tìm thấy|not found|đã bị xóa/i.test(err);
+    // By status, not by the error text: the text depends on the interface language.
+    const notFound = (problem.error ? problem.errorStatus : session.errorStatus) === 404;
     return (
       <div className="mx-auto max-w-xl space-y-4 p-6">
         <ErrorState
           message={
             notFound
-              ? 'Không mở được bài này. Có thể phiên đã bị xóa hoặc lớp đã bị xóa; kết quả của bạn vẫn còn trong học bạ.'
-              : (err ?? 'Không tìm thấy bài')
+              ? t('solve.cannotOpen')
+              : (err ?? t('solve.problemNotFound'))
           }
           onRetry={notFound ? undefined : () => (problem.reload(), session.reload())}
         />
-        <div className="flex justify-center gap-2">
+        <div className="flex flex-wrap justify-center gap-2">
           <LinkButton href="/progress" variant="secondary">
-            Mở học bạ
+            {t('solve.openProgress')}
           </LinkButton>
           <LinkButton href="/" variant="ghost">
-            Về trang chủ
+            {tc('home')}
           </LinkButton>
         </div>
       </div>
@@ -183,7 +188,7 @@ export default function SolvePage() {
   const over = timeUp && !s.canManage;
   const canSubmitNow = s.canSubmit && !over;
   const blockedReason = over
-    ? 'Đã hết giờ. Bài làm của bạn vẫn hiện ở đây nhưng không nộp được nữa.'
+    ? t('solve.timeUp')
     : s.canSubmit
       ? null
       : cannotSubmitReason(s);
@@ -203,30 +208,42 @@ export default function SolvePage() {
             <span className="truncate">{s.title}</span>
           </Link>
           <SessionStateBadge state={s.state} />
-          {solved && !s.myProgress?.resultsHidden && <span className="text-sm font-semibold text-chalk-700">Đã giải ✓</span>}
+          {solved && !s.myProgress?.resultsHidden && (
+            <span className="text-sm font-semibold whitespace-nowrap text-chalk-700">{t('solvedMark')}</span>
+          )}
           {target && (
             <ExamTimer id={s.id} endsAt={target.endsAt} offset={offset} kind={target.kind} size="sm" onTimeUp={() => setTimeUp(true)} />
           )}
-          <span className="ml-auto flex items-center gap-1">
+          <span className="ml-auto flex shrink-0 items-center gap-1">
             {prev && (
-              <Link href={solveHref(s.id, prev.key)} className="rounded p-1 text-slate-500 hover:bg-slate-100" title={`Bài trước: ${prev.title}`}>
-                <ChevronLeft className="h-4 w-4" />
+              <Link
+                href={solveHref(s.id, prev.key)}
+                className="rounded p-1 text-slate-500 hover:bg-slate-100"
+                title={t('solve.prevProblem', { title: prev.title })}
+                aria-label={t('solve.prevProblem', { title: prev.title })}
+              >
+                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
               </Link>
             )}
-            <span className="text-xs text-slate-500 tabular-nums">
-              Bài {idx + 1}/{ordered.length}
+            <span className="text-xs whitespace-nowrap text-slate-500 tabular-nums">
+              {t('solve.position', { n: idx + 1, total: ordered.length })}
             </span>
             {next && (
-              <Link href={solveHref(s.id, next.key)} className="rounded p-1 text-slate-500 hover:bg-slate-100" title={`Bài sau: ${next.title}`}>
-                <ChevronRight className="h-4 w-4" />
+              <Link
+                href={solveHref(s.id, next.key)}
+                className="rounded p-1 text-slate-500 hover:bg-slate-100"
+                title={t('solve.nextProblem', { title: next.title })}
+                aria-label={t('solve.nextProblem', { title: next.title })}
+              >
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
               </Link>
             )}
           </span>
         </div>
         <Tabs
           tabs={[
-            { value: 'statement', label: 'Đề bài' },
-            { value: 'mine', label: 'Bài nộp của tôi' },
+            { value: 'statement', label: t('solve.tabStatement') },
+            { value: 'mine', label: t('solve.tabMine') },
           ]}
           value={tab}
           onChange={setTab}
@@ -258,7 +275,7 @@ export default function SolvePage() {
             className={cn(inputClass, 'w-auto py-1.5')}
             value={language}
             onChange={(e) => changeLanguage(e.target.value as Language)}
-            aria-label="Ngôn ngữ"
+            aria-label={tc('language.label')}
           >
             {allowed.map((l) => (
               <option key={l} value={l}>
@@ -266,24 +283,30 @@ export default function SolvePage() {
               </option>
             ))}
           </select>
-          <Button variant="ghost" size="sm" onClick={() => setConfirmReset(true)} title="Khôi phục mã mẫu">
-            <RotateCcw className="h-4 w-4" />
-            <span className="hidden sm:inline">Mã mẫu</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setConfirmReset(true)}
+            title={t('solve.resetHint')}
+            aria-label={t('solve.resetHint')}
+          >
+            <RotateCcw className="h-4 w-4 shrink-0" />
+            <span className="hidden sm:inline">{t('solve.template')}</span>
           </Button>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {limit && !s.canManage && s.state === 'OPEN' && (
-              <span className={cn('text-xs tabular-nums', used >= limit ? 'text-mark-700' : 'text-slate-500')}>
-                Còn {Math.max(0, limit - used)}/{limit} lần nộp
+              <span className={cn('text-xs whitespace-nowrap tabular-nums', used >= limit ? 'text-mark-700' : 'text-slate-500')}>
+                {t('attemptsLeft', { left: Math.max(0, limit - used), limit })}
               </span>
             )}
             {submissionId && !resultOpen && (
               <Button variant="secondary" size="sm" onClick={() => setResultOpen(true)}>
-                Xem kết quả
+                {t('solve.viewResult')}
               </Button>
             )}
             <Button onClick={submit} loading={submitting} disabled={!ready || !canSubmitNow} title={blockedReason ?? undefined}>
-              {canSubmitNow ? <Send className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-              Nộp bài
+              {canSubmitNow ? <Send className="h-4 w-4 shrink-0" /> : <Lock className="h-4 w-4 shrink-0" />}
+              {t('solve.submit')}
             </Button>
           </div>
         </div>
@@ -303,17 +326,17 @@ export default function SolvePage() {
 
         {submissionId && resultOpen && (
           <div className="max-h-[50%] min-h-[140px] overflow-y-auto border-t-2 border-ink-200 bg-slate-50 px-4 py-3">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-700">Kết quả chấm</h3>
-              <div className="flex items-center gap-2">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-slate-700">{t('solve.judgeResult')}</h3>
+              <div className="flex shrink-0 items-center gap-2">
                 <Link href={`/submissions/${submissionId}`} className="text-xs text-ink-600 hover:underline">
-                  Chi tiết
+                  {t('solve.details')}
                 </Link>
                 <button
                   type="button"
                   onClick={() => setResultOpen(false)}
                   className="rounded p-1 text-slate-400 hover:bg-slate-200"
-                  aria-label="Đóng"
+                  aria-label={tc('close')}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -324,13 +347,13 @@ export default function SolvePage() {
             ) : pollError ? (
               <p className="text-sm text-mark-600">{pollError}</p>
             ) : (
-              <LoadingState label="Đang gửi bài..." />
+              <LoadingState label={t('solve.sending')} />
             )}
             {result?.status === 'DONE' && result.verdict === 'AC' && next && (
               <div className="mt-3">
                 <LinkButton href={solveHref(s.id, next.key)} size="sm">
-                  Sang bài tiếp theo
-                  <ChevronRight className="h-4 w-4" />
+                  {t('solve.goNext')}
+                  <ChevronRight className="h-4 w-4 shrink-0" />
                 </LinkButton>
               </div>
             )}
@@ -340,9 +363,9 @@ export default function SolvePage() {
 
       <ConfirmDialog
         open={confirmReset}
-        title="Khôi phục mã mẫu?"
-        message={`Mã hiện tại cho ${LanguageLabels[language]} sẽ bị thay bằng mã mẫu.`}
-        confirmLabel="Khôi phục"
+        title={t('solve.resetTitle')}
+        message={t('solve.resetMessage', { language: LanguageLabels[language] })}
+        confirmLabel={t('solve.resetConfirm')}
         onConfirm={() => {
           setCode(CodeTemplates[language]);
           storageSet(draftKey(sessionId, key, language), CodeTemplates[language]);

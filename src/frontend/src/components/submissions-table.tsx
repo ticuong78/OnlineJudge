@@ -2,6 +2,7 @@
 
 import { LanguageLabels, type SubmissionDto } from '@oj/contracts';
 import Link from 'next/link';
+import { useTranslations } from 'use-intl';
 import { sessionHref, solveHref } from '@/lib/sessions';
 import { cn, formatDateTime, formatMemory, formatTime, formatPoints } from '@/lib/utils';
 import { Badge, VerdictBadge } from './ui';
@@ -17,19 +18,21 @@ export function SubmissionsTable({
   showProblem?: boolean;
   dim?: boolean;
 }) {
+  const t = useTranslations('session.table');
+  const ts = useTranslations('session');
   return (
     <div className={cn('overflow-x-auto', dim && 'opacity-60')}>
       <table className="w-full text-sm">
-        <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold text-slate-500">
+        <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold whitespace-nowrap text-slate-500">
           <tr>
-            <th className="px-4 py-2.5">Thời điểm</th>
-            {showUser && <th className="px-4 py-2.5">Người nộp</th>}
-            {showProblem && <th className="px-4 py-2.5">Bài</th>}
-            <th className="px-4 py-2.5">Kết quả</th>
-            <th className="px-4 py-2.5 text-right">Điểm</th>
-            <th className="hidden px-4 py-2.5 sm:table-cell">Ngôn ngữ</th>
-            <th className="hidden px-4 py-2.5 text-right md:table-cell">Thời gian</th>
-            <th className="hidden px-4 py-2.5 text-right md:table-cell">Bộ nhớ</th>
+            <th className="px-4 py-2.5">{t('when')}</th>
+            {showUser && <th className="px-4 py-2.5">{t('user')}</th>}
+            {showProblem && <th className="px-4 py-2.5">{t('problem')}</th>}
+            <th className="px-4 py-2.5">{t('result')}</th>
+            <th className="px-4 py-2.5 text-right">{t('points')}</th>
+            <th className="hidden px-4 py-2.5 sm:table-cell">{t('language')}</th>
+            <th className="hidden px-4 py-2.5 text-right md:table-cell">{t('time')}</th>
+            <th className="hidden px-4 py-2.5 text-right md:table-cell">{t('memory')}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -54,16 +57,16 @@ export function SubmissionsTable({
               <td className="px-4 py-2.5">
                 <Link href={`/submissions/${s.id}`}>
                   {s.resultsHidden && s.status === 'DONE' ? (
-                    <Badge className="bg-ink-50 text-ink-700">Đã nộp</Badge>
+                    <Badge className="bg-ink-50 text-ink-700">{ts('submitted')}</Badge>
                   ) : (
                     <VerdictBadge verdict={s.verdict} status={s.status} />
                   )}
                 </Link>
               </td>
-              <td className="px-4 py-2.5 text-right font-medium">{s.status === 'DONE' && !s.resultsHidden ? `${formatPoints(s.score)}%` : '—'}</td>
-              <td className="hidden px-4 py-2.5 text-slate-600 sm:table-cell">{LanguageLabels[s.language] ?? s.language}</td>
-              <td className="hidden px-4 py-2.5 text-right text-slate-600 md:table-cell">{formatTime(s.maxTimeMs)}</td>
-              <td className="hidden px-4 py-2.5 text-right text-slate-600 md:table-cell">{formatMemory(s.maxMemoryKb)}</td>
+              <td className="px-4 py-2.5 text-right font-medium whitespace-nowrap">{s.status === 'DONE' && !s.resultsHidden ? `${formatPoints(s.score)}%` : '—'}</td>
+              <td className="hidden px-4 py-2.5 whitespace-nowrap text-slate-600 sm:table-cell">{LanguageLabels[s.language] ?? s.language}</td>
+              <td className="hidden px-4 py-2.5 text-right whitespace-nowrap text-slate-600 md:table-cell">{formatTime(s.maxTimeMs)}</td>
+              <td className="hidden px-4 py-2.5 text-right whitespace-nowrap text-slate-600 md:table-cell">{formatMemory(s.maxMemoryKb)}</td>
             </tr>
           ))}
         </tbody>

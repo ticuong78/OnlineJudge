@@ -3,6 +3,7 @@
 import { LanguageLabels, Languages, type Language, type SolutionDto } from '@oj/contracts';
 import { Save, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { api, errorMessage } from '@/lib/api';
 import { cn, MonacoLanguage } from '@/lib/utils';
 import { CodeEditor } from '../code-editor';
@@ -20,6 +21,7 @@ export function SolutionEditor({
   onChange: (s: SolutionDto | null) => void;
 }) {
   const toast = useToast();
+  const t = useTranslations('authoring.solution');
   const [explanation, setExplanation] = useState(solution?.explanation ?? '');
   const [language, setLanguage] = useState<Language | null>(solution?.language ?? 'cpp');
   const [code, setCode] = useState(solution?.code ?? '');
@@ -32,7 +34,7 @@ export function SolutionEditor({
     try {
       const s = await api.saveSolution(problemId, { explanation, language: code.trim() ? language : null, code });
       onChange(s);
-      toast.success('Đã lưu lời giải');
+      toast.success(t('saved'));
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
@@ -47,7 +49,7 @@ export function SolutionEditor({
       onChange(null);
       setExplanation('');
       setCode('');
-      toast.success('Đã xóa lời giải');
+      toast.success(t('deleted'));
       setConfirmDelete(false);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -60,16 +62,16 @@ export function SolutionEditor({
     <div className="space-y-5">
       <Card className="p-5">
         <MarkdownField
-          label="Hướng dẫn giải (Markdown)"
+          label={t('explanation')}
           value={explanation}
           onChange={setExplanation}
           rows={12}
-          placeholder="Ý tưởng, độ phức tạp, các lưu ý..."
+          placeholder={t('explanationPlaceholder')}
         />
       </Card>
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-3">
-          <h2 className="font-semibold">Code mẫu</h2>
+          <h2 className="font-semibold">{t('code')}</h2>
           <select
             className={cn(inputClass, 'w-auto py-1.5')}
             value={language ?? 'cpp'}
@@ -82,7 +84,7 @@ export function SolutionEditor({
             ))}
           </select>
           <LoadFileButton
-            label="Tải file code"
+            label={t('loadFile')}
             accept=".cpp,.cc,.c,.py,.java,.js,.txt"
             onLoad={(t, name) => {
               setCode(t);
@@ -96,7 +98,7 @@ export function SolutionEditor({
           <CodeEditor value={code} onChange={setCode} language={MonacoLanguage[language ?? 'cpp']} />
         </div>
       </Card>
-      <div className="flex justify-between gap-2">
+      <div className="flex flex-wrap justify-between gap-2">
         <Button
           variant="secondary"
           className="text-mark-600"
@@ -104,17 +106,17 @@ export function SolutionEditor({
           disabled={!solution}
         >
           <Trash2 className="h-4 w-4" />
-          Xóa lời giải
+          {t('delete')}
         </Button>
         <Button onClick={save} loading={saving}>
           <Save className="h-4 w-4" />
-          Lưu lời giải
+          {t('save')}
         </Button>
       </div>
       <ConfirmDialog
         open={confirmDelete}
-        title="Xóa lời giải?"
-        message="Hướng dẫn và code mẫu của bài sẽ bị xóa."
+        title={t('confirmDeleteTitle')}
+        message={t('confirmDeleteBody')}
         loading={deleting}
         onConfirm={remove}
         onClose={() => setConfirmDelete(false)}

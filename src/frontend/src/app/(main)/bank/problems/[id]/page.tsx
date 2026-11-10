@@ -4,6 +4,7 @@ import { LanguageLabels, type ProblemDetailDto } from '@oj/contracts';
 import { BookmarkPlus, Send, Trash2 } from 'lucide-react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { ProblemForm } from '@/components/admin/problem-form';
 import { SolutionEditor } from '@/components/admin/solution-editor';
 import { TestCaseManager } from '@/components/admin/test-case-manager';
@@ -25,20 +26,26 @@ type Tab = 'statement' | 'info' | 'solution';
 
 /** Someone else's public problem: read-only view and "save to my bank". */
 function PublicProblemView({ p }: { p: ProblemDetailDto }) {
+  const t = useTranslations('bank');
   const router = useRouter();
   const toast = useToast();
   const [copying, setCopying] = useState(false);
   const samples = p.testCases.filter((t) => t.isSample).sort((a, b) => a.order - b.order);
   const hidden = p.testCases.filter((t) => !t.isSample);
-  const missing: string[] = [];
-  if (!p.sharing.publicTests) missing.push('test ẩn');
-  if (!p.sharing.publicSolution) missing.push('lời giải');
+  const notShared =
+    !p.sharing.publicTests && !p.sharing.publicSolution
+      ? t('problem.notSharedBoth')
+      : !p.sharing.publicTests
+        ? t('problem.notSharedTests')
+        : !p.sharing.publicSolution
+          ? t('problem.notSharedSolution')
+          : null;
 
   const copy = async () => {
     setCopying(true);
     try {
       const c = await api.copyProblem(p.id);
-      toast.success(`Đã lưu vào ngân hàng của bạn với mã ${c.code}`);
+      toast.success(t('problem.copied', { code: c.code }));
       router.push(`/bank/problems/${c.id}${p.sharing.publicTests ? '' : '#tests'}`);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -51,16 +58,18 @@ function PublicProblemView({ p }: { p: ProblemDetailDto }) {
       <Card className="p-6">
         <ProblemStatement problem={p} samples={samples} />
         {p.sharing.publicTests && hidden.length > 0 && (
-          <p className="mt-6 text-sm text-slate-600">Kèm {hidden.length} test ẩn khi lưu về ngân hàng.</p>
+          <p className="mt-6 text-sm text-slate-600">{t('problem.hiddenTestsIncluded', { count: hidden.length })}</p>
         )}
         {p.solution && (p.solution.explanation?.trim() || p.solution.code?.trim()) && (
           <section className="mt-8 border-t border-rule pt-5">
-            <h2 className="mb-2 text-base font-semibold">Lời giải</h2>
+            <h2 className="mb-2 text-base font-semibold">{t('problem.solution')}</h2>
             <Markdown>{p.solution.explanation}</Markdown>
             {p.solution.code?.trim() && (
               <div className="mt-3">
                 <div className="mb-1 text-xs font-semibold text-slate-500">
-                  Code mẫu {p.solution.language ? `(${LanguageLabels[p.solution.language]})` : ''}
+                  {p.solution.language
+                    ? t('problem.sampleCodeIn', { language: LanguageLabels[p.solution.language] })
+                    : t('problem.sampleCode')}
                 </div>
                 <CodeBlock code={p.solution.code} language={p.solution.language} />
               </div>
@@ -69,22 +78,18 @@ function PublicProblemView({ p }: { p: ProblemDetailDto }) {
         )}
       </Card>
       <Card className="self-start p-5">
-        <h2 className="font-semibold">Lưu vào ngân hàng của tôi</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Bản sao thuộc về bạn: sửa tự do, giao cho lớp của bạn. Bài gốc của {p.ownerName} không thay đổi.
-        </p>
-        {missing.length > 0 && (
+        <h2 className="font-semibold">{t('saveToMyBank')}</h2>
+        <p className="mt-1 text-sm text-slate-600">{t('problem.copyBody', { owner: p.ownerName })}</p>
+        {notShared && (
           <div className="mt-3">
             <InlineAlert kind="warning">
-              Bài này không chia sẻ {missing.join(' và ')}.{' '}
-              {!p.sharing.publicTests &&
-                'Bản sao chỉ có test ví dụ, bạn cần thêm test chấm trước khi giao bài.'}
+              {notShared} {!p.sharing.publicTests && t('problem.samplesOnly')}
             </InlineAlert>
           </div>
         )}
         <Button className="mt-4 w-full" onClick={copy} loading={copying}>
-          <BookmarkPlus className="h-4 w-4" />
-          Lưu vào ngân hàng của tôi
+          <BookmarkPlus className="h-4 w-4 shrink-0" />
+          {t('saveToMyBank')}
         </Button>
       </Card>
     </div>
@@ -92,6 +97,7 @@ function PublicProblemView({ p }: { p: ProblemDetailDto }) {
 }
 
 function ProblemPage() {
+  const t = useTranslations('bank');
   const { id } = useParams<{ id: string }>();
   const params = useSearchParams();
   const router = useRouter();
@@ -109,7 +115,7 @@ function ProblemPage() {
   if (error || !data)
     return (
       <Container>
-        <ErrorState message={error ?? 'Không tìm thấy bài'} onRetry={reload} />
+        <ErrorState message={error ?? t('problem.notFound')} onRetry={reload} />
       </Container>
     );
 
@@ -117,7 +123,7 @@ function ProblemPage() {
     setDeleting(true);
     try {
       await api.deleteProblem(id);
-      toast.success('Đã xóa bài');
+      toast.success(t('problem.deleted'));
       router.replace('/bank');
     } catch (e) {
       toast.error(errorMessage(e));
@@ -134,7 +140,7 @@ function ProblemPage() {
   const subtitle = (
     <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
       <SharingBadge isPublic={data.sharing.isPublic} organizationCount={data.sharing.organizationIds.length} />
-      <span>Của {data.ownerName}</span>
+      <span>{t('ownedBy', { name: data.ownerName })}</span>
       <CopiedFrom src={data.copiedFrom} />
     </span>
   );
@@ -142,7 +148,7 @@ function ProblemPage() {
   if (!data.canEdit) {
     return (
       <Container wide>
-        <PageHeader back={{ href: '/bank', label: 'Ngân hàng' }} title={title} subtitle={subtitle} />
+        <PageHeader back={{ href: '/bank', label: t('title') }} title={title} subtitle={subtitle} />
         <PublicProblemView p={data} />
       </Container>
     );
@@ -153,20 +159,20 @@ function ProblemPage() {
   return (
     <Container>
       <PageHeader
-        back={{ href: '/bank', label: 'Ngân hàng' }}
+        back={{ href: '/bank', label: t('title') }}
         title={title}
         subtitle={subtitle}
         actions={
           <>
             {(isAdmin || data.canEdit) && (
               <Button onClick={() => setAssigning(true)}>
-                <Send className="h-4 w-4" />
-                Giao bài
+                <Send className="h-4 w-4 shrink-0" />
+                {t('assign')}
               </Button>
             )}
             <Button variant="secondary" className="text-mark-600" onClick={() => setConfirmDelete(true)}>
-              <Trash2 className="h-4 w-4" />
-              Xóa bài
+              <Trash2 className="h-4 w-4 shrink-0" />
+              {t('problem.delete')}
             </Button>
           </>
         }
@@ -181,9 +187,9 @@ function ProblemPage() {
         value={tab}
         onChange={setTab}
         tabs={[
-          { value: 'info', label: `Đề bài & bộ test (${data.testCases.length})` },
-          { value: 'statement', label: 'Xem như học sinh' },
-          { value: 'solution', label: data.solution ? 'Lời giải ✓' : 'Lời giải' },
+          { value: 'info', label: t('problem.tabInfo', { count: data.testCases.length }) },
+          { value: 'statement', label: t('problem.tabStudentView') },
+          { value: 'solution', label: data.solution ? t('problem.tabSolutionDone') : t('problem.tabSolution') },
         ]}
       />
 
@@ -206,11 +212,11 @@ function ProblemPage() {
             timeLimitMs: data.timeLimitMs,
             memoryLimitMb: data.memoryLimitMb,
           }}
-          submitLabel="Lưu bài"
+          submitLabel={t('problem.save')}
           onSubmit={async (v) => {
             const p = await api.updateProblem(id, v);
             setData((prev) => ({ ...p, testCases: p.testCases ?? prev?.testCases ?? [], solution: p.solution ?? prev?.solution }));
-            toast.success('Đã lưu bài');
+            toast.success(t('problem.saved'));
           }}
         />
       )}
@@ -239,13 +245,8 @@ function ProblemPage() {
       />
       <ConfirmDialog
         open={confirmDelete}
-        title="Xóa bài này?"
-        message={
-          <>
-            Bài <b>{data.title}</b> sẽ bị xóa khỏi ngân hàng và khỏi các đề của bạn. Các phiên đã giao vẫn giữ bản chốt
-            của bài nên học sinh làm tiếp được.
-          </>
-        }
+        title={t('problem.deleteTitle')}
+        message={t.rich('problem.deleteBody', { title: data.title, b: (c) => <b>{c}</b> })}
         loading={deleting}
         onConfirm={doDelete}
         onClose={() => setConfirmDelete(false)}

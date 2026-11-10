@@ -2,6 +2,7 @@
 
 import type { ProblemDetailDto, SharingDto } from '@oj/contracts';
 import { useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -41,7 +42,7 @@ function Toggle({
           )}
         />
       </button>
-      <span>
+      <span className="min-w-0">
         <span className="block text-sm font-medium text-slate-800">{label}</span>
         <span className="block text-xs text-slate-500">{hint}</span>
       </span>
@@ -51,6 +52,7 @@ function Toggle({
 
 /** Public sharing (three levels) and, for teachers in organizations, sharing with each organization (OJ-8). */
 export function SharingPanel({ problem, onChange }: { problem: ProblemDetailDto; onChange: (p: ProblemDetailDto) => void }) {
+  const t = useTranslations('bank.sharing');
   const toast = useToast();
   const { user } = useAuth();
   const [busy, setBusy] = useState(false);
@@ -63,7 +65,7 @@ export function SharingPanel({ problem, onChange }: { problem: ProblemDetailDto;
     try {
       const p = await api.updateProblemSharing(problem.id, next);
       onChange(p);
-      toast.success(next.isPublic || next.organizationIds.length ? 'Đã lưu chia sẻ' : 'Đã chuyển bài về riêng tư');
+      toast.success(next.isPublic || next.organizationIds.length ? t('saved') : t('madePrivate'));
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
@@ -74,7 +76,7 @@ export function SharingPanel({ problem, onChange }: { problem: ProblemDetailDto;
   return (
     <Card className="p-5">
       <div className="mb-3 flex items-center gap-2">
-        <h2 className="font-semibold">Chia sẻ</h2>
+        <h2 className="font-semibold">{t('title')}</h2>
         {busy && <Spinner className="h-4 w-4" />}
       </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -82,30 +84,28 @@ export function SharingPanel({ problem, onChange }: { problem: ProblemDetailDto;
           checked={s.isPublic}
           disabled={busy}
           onChange={(v) => save({ ...s, isPublic: v })}
-          label="Công khai đề bài"
-          hint="Giáo viên khác xem được đề và ví dụ, lưu bài về ngân hàng của họ."
+          label={t('publicLabel')}
+          hint={t('publicHint')}
         />
         <Toggle
           checked={s.publicTests}
           disabled={busy || !s.isPublic}
           onChange={(v) => save({ ...s, publicTests: v })}
-          label="Cho xem test ẩn"
-          hint="Bản sao của giáo viên khác có đủ bộ test chấm. Tắt thì họ chỉ nhận test ví dụ."
+          label={t('testsLabel')}
+          hint={t('testsHint')}
         />
         <Toggle
           checked={s.publicSolution}
           disabled={busy || !s.isPublic}
           onChange={(v) => save({ ...s, publicSolution: v })}
-          label="Cho xem lời giải"
-          hint="Giáo viên khác xem được hướng dẫn và code mẫu. Học sinh không bao giờ thấy lời giải."
+          label={t('solutionLabel')}
+          hint={t('solutionHint')}
         />
       </div>
       {myOrganizations.length > 0 && (
         <div className="mt-5 border-t border-slate-100 pt-4">
-          <h3 className="mb-1 text-sm font-semibold text-slate-800">Chia sẻ trong tổ chức</h3>
-          <p className="mb-3 text-xs text-slate-500">
-            Giáo viên trong tổ chức xem được toàn bộ bài (đề, test ẩn, lời giải) và lưu bản sao. Người ngoài tổ chức không thấy.
-          </p>
+          <h3 className="mb-1 text-sm font-semibold text-slate-800">{t('orgTitle')}</h3>
+          <p className="mb-3 text-xs text-slate-500">{t('orgHint')}</p>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {myOrganizations.map((o) => {
               const on = s.organizationIds.includes(o.organizationId);
@@ -123,7 +123,7 @@ export function SharingPanel({ problem, onChange }: { problem: ProblemDetailDto;
                     })
                   }
                   label={o.organizationName}
-                  hint={on ? 'Đang chia sẻ với tổ chức này.' : 'Chưa chia sẻ.'}
+                  hint={on ? t('orgOn') : t('orgOff')}
                 />
               );
             })}

@@ -2,6 +2,7 @@
 
 import { Eye, Pencil, Upload, X } from 'lucide-react';
 import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useTranslations } from 'use-intl';
 import { cn } from '@/lib/utils';
 import { Markdown } from './markdown';
 import { inputClass, monoTextareaClass } from './ui';
@@ -26,6 +27,7 @@ export function MarkdownField({
   /** Shown under the field (e.g. why it cannot be saved). */
   below?: ReactNode;
 }) {
+  const t = useTranslations('auth.formFields');
   const [mode, setMode] = useState<'edit' | 'preview'>('edit');
   return (
     <div>
@@ -40,14 +42,14 @@ export function MarkdownField({
             onClick={() => setMode('edit')}
             className={cn('flex items-center gap-1 rounded px-2 py-0.5', mode === 'edit' ? 'bg-slate-200' : 'text-slate-500')}
           >
-            <Pencil className="h-3 w-3" /> Soạn
+            <Pencil className="h-3 w-3 shrink-0" /> {t('write')}
           </button>
           <button
             type="button"
             onClick={() => setMode('preview')}
             className={cn('flex items-center gap-1 rounded px-2 py-0.5', mode === 'preview' ? 'bg-slate-200' : 'text-slate-500')}
           >
-            <Eye className="h-3 w-3" /> Xem trước
+            <Eye className="h-3 w-3 shrink-0" /> {t('preview')}
           </button>
         </div>
       </div>
@@ -57,7 +59,7 @@ export function MarkdownField({
           rows={rows}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder ?? 'Hỗ trợ Markdown và công thức $x^2$'}
+          placeholder={placeholder ?? t('markdownPlaceholder')}
         />
         <div
           className={cn(
@@ -69,7 +71,7 @@ export function MarkdownField({
           {value.trim() ? (
             <Markdown className="prose-sm!">{value}</Markdown>
           ) : (
-            <span className="text-xs text-slate-400">Xem trước sẽ hiển thị ở đây</span>
+            <span className="text-xs text-slate-400">{t('previewEmpty')}</span>
           )}
         </div>
       </div>
@@ -80,6 +82,7 @@ export function MarkdownField({
 
 /** Chip-style tags input. Enter or comma adds a tag. */
 export function TagsInput({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const t = useTranslations('auth.formFields');
   const [text, setText] = useState('');
   const add = (raw: string) => {
     const parts = raw
@@ -100,10 +103,10 @@ export function TagsInput({ value, onChange }: { value: string[]; onChange: (v: 
   };
   return (
     <div className={cn(inputClass, 'flex min-h-10 flex-wrap items-center gap-1.5 py-1.5')}>
-      {value.map((t) => (
-        <span key={t} className="inline-flex items-center gap-1 rounded-full bg-ink-50 px-2 py-0.5 text-xs text-ink-700">
-          {t}
-          <button type="button" onClick={() => onChange(value.filter((x) => x !== t))} aria-label={`Xóa ${t}`}>
+      {value.map((tag) => (
+        <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-ink-50 px-2 py-0.5 text-xs text-ink-700">
+          {tag}
+          <button type="button" onClick={() => onChange(value.filter((x) => x !== tag))} aria-label={t('removeTag', { tag })}>
             <X className="h-3 w-3" />
           </button>
         </span>
@@ -114,7 +117,7 @@ export function TagsInput({ value, onChange }: { value: string[]; onChange: (v: 
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKey}
         onBlur={() => text.trim() && add(text)}
-        placeholder={value.length ? '' : 'VD: mảng, quy hoạch động (Enter để thêm)'}
+        placeholder={value.length ? '' : t('tagsPlaceholder')}
       />
     </div>
   );
@@ -123,13 +126,14 @@ export function TagsInput({ value, onChange }: { value: string[]; onChange: (v: 
 /** Button that loads a text file (.txt/.in/.out/...) and passes its content to onLoad. */
 export function LoadFileButton({
   onLoad,
-  label = 'Tải file',
+  label,
   accept = '.txt,.in,.out,.inp,.ans,.dat',
 }: {
   onLoad: (text: string, fileName: string) => void;
   label?: string;
   accept?: string;
 }) {
+  const t = useTranslations('auth.formFields');
   const ref = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -147,10 +151,10 @@ export function LoadFileButton({
       <button
         type="button"
         onClick={() => ref.current?.click()}
-        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-slate-500 hover:bg-slate-100 hover:text-ink-600"
+        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs whitespace-nowrap text-slate-500 hover:bg-slate-100 hover:text-ink-600"
       >
-        <Upload className="h-3.5 w-3.5" />
-        {label}
+        <Upload className="h-3.5 w-3.5 shrink-0" />
+        {label ?? t('loadFile')}
       </button>
     </>
   );
@@ -168,15 +172,14 @@ export function IoTextarea({
   onChange: (v: string) => void;
   rows?: number;
 }) {
+  const t = useTranslations('auth.formFields');
   const lines = value ? value.split('\n').length : 0;
   return (
     <div>
-      <div className="mb-1 flex items-center justify-between">
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-x-2">
         <span className="text-sm font-medium text-slate-700">{label}</span>
         <span className="flex items-center gap-2">
-          <span className="text-xs text-slate-400">
-            {lines} dòng, {value.length.toLocaleString('vi-VN')} ký tự
-          </span>
+          <span className="text-xs whitespace-nowrap text-slate-400">{t('ioStats', { lines, chars: value.length })}</span>
           <LoadFileButton onLoad={(t) => onChange(t)} />
         </span>
       </div>

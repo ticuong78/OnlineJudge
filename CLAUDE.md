@@ -40,6 +40,7 @@ Verification gate before any push: `pnpm build:shared && pnpm typecheck && pnpm 
 6. Contracts first: any new request, response or enum goes into `src/shared/src/api.ts` or `enums.ts`, then `pnpm build:shared`, then backend and frontend use it. No duplicated DTO shapes in packages.
 7. Judge jobs are self-contained (`judge-messages.ts`): the engine never reads the database. Keep it that way.
 8. Frontend: `src/frontend/src/lib/api.ts` is the only HTTP client; pages under `app/(auth)`, `app/(main)`, `app/(print)`; shared UI in `components/`. Business rules stay in the backend; the frontend validates for usability only.
+9. Frontend text is never written inline: it goes into `src/frontend/src/i18n/messages/vi/<ns>.ts` and the same key into `en/<ns>.ts` (OJ-12, `use-intl`). Components use `useTranslations`; code outside components uses `tr()` from `i18n/runtime.ts` at call time. `i18n-coverage.test.ts` fails on Vietnamese text left in components. API errors are translated by their `code`.
 
 ## Security rules (non-negotiable)
 
@@ -65,7 +66,7 @@ Verification gate before any push: `pnpm build:shared && pnpm typecheck && pnpm 
 2. Names: aggregates and value objects in `domain/` are nouns (`Classroom`, `Enrollment`); services end with `Service`, facades with `Facade`, ORM entities with `OrmEntity` in `*.orm-entity.ts`.
 3. Small functions, explicit types at module boundaries, no `any` in domain or application code.
 4. Tests: `node --test` files under `src/<package>/test/*.test.ts`, named by area (`classroom.test.ts`). Test invariants directly on the aggregates (as the existing tests do) and use cases through the application services with in-memory repositories; reserve TypeORM for the few integration tests. A bug fix adds a failing-then-passing test.
-5. Comments explain why, not what. Keep Vietnamese for user-facing strings and English for code, comments and docs.
+5. Comments explain why, not what. User-facing strings: Vietnamese from the backend (and in the frontend's `vi` dictionary, the source wording) with English in the frontend's `en` dictionary; English for code, comments and docs.
 6. Keep `docs/API.md` in sync with controllers: method, path, role, request and response DTO names.
 
 ## Workflow rules for the assistant

@@ -15,8 +15,8 @@ export class DomainError extends Error {
     super(message);
   }
 
-  static validation(code: string, message: string) {
-    return new DomainError('validation', code, message);
+  static validation(code: string, message: string, details?: Record<string, string>) {
+    return new DomainError('validation', code, message, details);
   }
   static notFound(code: string, message: string) {
     return new DomainError('not_found', code, message);

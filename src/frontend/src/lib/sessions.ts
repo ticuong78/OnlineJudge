@@ -1,34 +1,42 @@
 import type { SessionDto, SessionState } from '@oj/contracts';
-
-export const SessionStateLabels: Record<SessionState, string> = {
-  UPCOMING: 'Sắp mở',
-  OPEN: 'Đang mở',
-  CLOSED: 'Đã đóng',
-};
+import { tr } from '@/i18n/runtime';
 
 export const sessionHref = (id: string) => `/sessions/${id}`;
 export const solveHref = (sessionId: string, key: string) => `/sessions/${sessionId}/problems/${encodeURIComponent(key)}`;
 
 const DAY = 24 * 60 * 60 * 1000;
 
-/** "còn 2 ngày 3 giờ", "còn 3 giờ 12 phút", "còn 5 phút". */
-export function formatRemaining(ms: number) {
-  if (ms <= 0) return 'đã hết giờ';
+/** The time span alone: "2 ngày 3 giờ", "3 giờ 12 phút", "5 phút" (at least one minute). */
+function formatSpan(ms: number) {
+  const t = tr();
   const m = Math.floor(ms / 60000);
-  const d = Math.floor(m / 1440);
-  const h = Math.floor((m % 1440) / 60);
-  const mm = m % 60;
-  if (d > 0) return `còn ${d} ngày${h ? ` ${h} giờ` : ''}`;
-  if (h > 0) return `còn ${h} giờ${mm ? ` ${mm} phút` : ''}`;
-  return `còn ${Math.max(1, mm)} phút`;
+  const days = Math.floor(m / 1440);
+  const hours = Math.floor((m % 1440) / 60);
+  const minutes = m % 60;
+  if (days > 0) return hours ? t('student.time.daysHours', { days, hours }) : t('student.time.days', { days });
+  if (hours > 0) return minutes ? t('student.time.hoursMinutes', { hours, minutes }) : t('student.time.hours', { hours });
+  return t('student.time.minutes', { minutes: Math.max(1, minutes) });
+}
+
+/** Time left before a deadline: "còn 2 ngày 3 giờ" / "2 days 3 hours left", "còn 5 phút", "đã hết giờ". */
+export function formatRemaining(ms: number) {
+  if (ms <= 0) return tr()('student.time.over');
+  return tr()('student.time.left', { span: formatSpan(ms) });
+}
+
+/** Time until something starts: "sau 2 ngày 3 giờ" / "in 2 days 3 hours"; "đã hết giờ" once it is past. */
+export function formatUntil(ms: number) {
+  if (ms <= 0) return tr()('student.time.over');
+  return tr()('student.time.until', { span: formatSpan(ms) });
 }
 
 /** Why the viewer cannot submit, in words a student understands. */
 export function cannotSubmitReason(s: SessionDto): string {
-  if (s.classStatus === 'ARCHIVED') return 'Lớp đã lưu trữ nên không nộp bài được nữa.';
-  if (s.state === 'UPCOMING') return 'Phiên chưa mở. Quay lại khi phiên bắt đầu.';
-  if (s.state === 'CLOSED') return 'Phiên đã đóng, không nhận bài nộp mới.';
-  return 'Bạn không thuộc lớp của phiên này nên chỉ xem được đề.';
+  const t = tr();
+  if (s.classStatus === 'ARCHIVED') return t('student.cannotSubmit.archived');
+  if (s.state === 'UPCOMING') return t('student.cannotSubmit.upcoming');
+  if (s.state === 'CLOSED') return t('student.cannotSubmit.closed');
+  return t('student.cannotSubmit.notMember');
 }
 
 export function isClosingSoon(s: Pick<SessionDto, 'state' | 'closesAt'>, now = Date.now()) {

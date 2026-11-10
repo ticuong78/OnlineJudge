@@ -114,3 +114,12 @@ test('NEGATIVE CONTROL: the old compare-then-save protocol is beaten by the same
   assert.equal(outcomes.at(-1), true, 'this is the account takeover: the 300th guess was accepted');
   assert.ok(hasher.verifications > MAX_ATTEMPTS * 10, `and ${hasher.verifications} guesses were evaluated against a budget of ${MAX_ATTEMPTS}`);
 });
+
+test('a wrong code tells the client how many tries are left, as data and not only in the text (OJ-12)', async () => {
+  const { codes, id } = await given();
+  const left: (string | undefined)[] = [];
+  for (const guess of wrongGuesses(MAX_ATTEMPTS)) {
+    left.push(await codes.load(id).then((v) => codes.check(v, guess)).then(() => 'accepted', (e: DomainError) => e.details?.attemptsLeft));
+  }
+  assert.deepEqual(left, Array.from({ length: MAX_ATTEMPTS }, (_, i) => String(MAX_ATTEMPTS - 1 - i)));
+});

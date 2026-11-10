@@ -3,6 +3,7 @@
 import type { ClassroomDto, MembershipRequestDto, SessionDto } from '@oj/contracts';
 import { Dumbbell } from 'lucide-react';
 import Link from 'next/link';
+import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { JoinClassForm, LeaveClassButton, MyRequestList } from '@/components/membership';
 import { Badge, Card, EmptyState, ErrorState, LinkButton, LoadingState, PageHeader } from '@/components/ui';
@@ -22,6 +23,7 @@ function CurrentClassRow({
   onRequestChange: () => void;
 }) {
   const open = sessions.filter((s) => s.classId === cls.id && s.state === 'OPEN' && s.canSubmit && !s.myProgress?.completed);
+  const t = useTranslations('student');
   return (
     <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-4">
       <div className="min-w-[12rem] flex-1">
@@ -29,15 +31,15 @@ function CurrentClassRow({
           {cls.name}
         </Link>
         <div className="flex flex-wrap gap-x-4 text-sm text-slate-500">
-          <span>Giáo viên {cls.teacherName}</span>
+          <span>{t('teacher', { name: cls.teacherName })}</span>
           <span className={open.length ? 'font-medium text-ink-700' : undefined}>
-            {open.length ? `${open.length} phiên đang chờ bạn làm` : 'Không có phiên nào đang chờ'}
+            {open.length ? t('myClass.openCount', { count: open.length }) : t('myClass.noOpen')}
           </span>
         </div>
       </div>
       <LeaveClassButton cls={cls} pending={pendingLeave} onSent={onRequestChange} onCancel={onRequestChange} />
       <LinkButton href={`/my-class/${cls.id}`} size="sm" variant="secondary">
-        Mở lớp
+        {t('myClass.openClass')}
       </LinkButton>
     </li>
   );
@@ -47,6 +49,7 @@ export default function MyClassPage() {
   const classes = useAsync(() => api.listClasses(), []);
   const sessions = useAsync(() => api.listSessions({ audience: 'CLASS' }), []);
   const requests = useAsync(() => api.myMembershipRequests(), []);
+  const t = useTranslations('student');
 
   if ((classes.loading && !classes.data) || (requests.loading && !requests.data)) return <LoadingState />;
   if (classes.error || requests.error)
@@ -72,24 +75,24 @@ export default function MyClassPage() {
 
   return (
     <Container>
-      <PageHeader title="Lớp của tôi" subtitle="Các lớp bạn đang học, lớp cũ và các yêu cầu vào lớp, rời lớp." />
+      <PageHeader title={t('myClass.title')} subtitle={t('myClass.subtitle')} />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
         <div className="min-w-0 space-y-6">
           <Card>
             <div className="border-b border-slate-100 px-5 py-3">
-              <h2 className="font-semibold">Đang học</h2>
+              <h2 className="font-semibold">{t('myClass.current')}</h2>
             </div>
             {current.length === 0 ? (
-              <EmptyState title={pendingJoins.length ? 'Đang chờ giáo viên duyệt' : 'Bạn chưa vào lớp nào'}>
+              <EmptyState title={pendingJoins.length ? t('myClass.pendingTitle') : t('myClass.noClassTitle')}>
                 <p className="max-w-[56ch]">
                   {pendingJoins.length
-                    ? `Yêu cầu vào lớp ${pendingJoins.map((r) => r.className).join(', ')} đang chờ giáo viên duyệt. Trong lúc chờ, bạn vẫn luyện tập được các bài công khai.`
-                    : 'Nhập mã lớp giáo viên đưa ở khung “Tham gia lớp” để xin vào lớp. Không có lớp, bạn vẫn luyện tập được các bài công khai.'}
+                    ? t('myClass.pendingBody', { names: pendingJoins.map((r) => r.className).join(', ') })
+                    : t('myClass.noClassBody')}
                 </p>
                 <div className="mt-3">
                   <LinkButton href="/practice" variant="secondary">
-                    <Dumbbell className="h-4 w-4" />
-                    Vào Luyện tập
+                    <Dumbbell className="h-4 w-4 shrink-0" />
+                    {t('myClass.goPractice')}
                   </LinkButton>
                 </div>
               </EmptyState>
@@ -111,8 +114,8 @@ export default function MyClassPage() {
           {history.length > 0 && (
             <Card>
               <div className="border-b border-slate-100 px-5 py-3">
-                <h2 className="font-semibold">Lớp cũ</h2>
-                <p className="text-sm text-slate-500">Lớp đã kết thúc hoặc bạn đã rời. Vẫn xem lại được bài cũ và bảng tin.</p>
+                <h2 className="font-semibold">{t('myClass.history')}</h2>
+                <p className="text-sm text-slate-500">{t('myClass.historyHint')}</p>
               </div>
               <ul className="divide-y divide-slate-100">
                 {history.map((c) => (
@@ -120,14 +123,14 @@ export default function MyClassPage() {
                     <Link href={`/my-class/${c.id}`} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 hover:bg-slate-50">
                       <div className="min-w-0 flex-1">
                         <div className="font-medium text-slate-900">{c.name}</div>
-                        <div className="text-xs text-slate-500">Giáo viên {c.teacherName}</div>
+                        <div className="text-xs text-slate-500">{t('teacher', { name: c.teacherName })}</div>
                       </div>
                       {c.status === 'ARCHIVED' ? (
-                        <Badge className="bg-amber-100 text-amber-800 ring-1 ring-amber-200">Đã lưu trữ</Badge>
+                        <Badge className="bg-amber-100 text-amber-800 ring-1 ring-amber-200">{t('archived')}</Badge>
                       ) : (
-                        <Badge className="bg-slate-100 text-slate-600">Đã rời lớp</Badge>
+                        <Badge className="bg-slate-100 text-slate-600">{t('myClass.left')}</Badge>
                       )}
-                      <span className="text-sm text-ink-600">Xem lại</span>
+                      <span className="text-sm whitespace-nowrap text-ink-600">{t('myClass.review')}</span>
                     </Link>
                   </li>
                 ))}
@@ -138,13 +141,13 @@ export default function MyClassPage() {
 
         <div className="space-y-6 self-start">
           <Card className="p-5">
-            <h2 className="mb-3 font-semibold">Tham gia lớp</h2>
+            <h2 className="mb-3 font-semibold">{t('myClass.join')}</h2>
             <JoinClassForm onSent={() => requests.reload()} />
           </Card>
           {reqs.length > 0 && (
             <Card>
               <div className="border-b border-slate-100 px-5 py-3">
-                <h2 className="font-semibold">Yêu cầu của bạn</h2>
+                <h2 className="font-semibold">{t('myClass.requests')}</h2>
               </div>
               <MyRequestList requests={reqs} onChange={refresh} />
             </Card>

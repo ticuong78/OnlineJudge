@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { SubmissionsTable } from '@/components/submissions-table';
 import { Card, EmptyState, ErrorState, inputClass, LoadingState, PageHeader, Pagination } from '@/components/ui';
@@ -16,6 +17,7 @@ function SubmissionsList() {
   const { isStaff, isAdmin } = useAuth();
   const router = useRouter();
   const params = useSearchParams();
+  const t = useTranslations('session.submissions');
   const sessionId = params.get('sessionId') || '';
   const [mine, setMine] = useState(!isStaff || !sessionId);
   const [page, setPage] = useState(1);
@@ -64,27 +66,26 @@ function SubmissionsList() {
   return (
     <Container>
       <PageHeader
-        title={isStaff ? 'Bài nộp' : 'Bài nộp của tôi'}
-        subtitle={isStaff ? 'Chọn một phiên để xem bài nộp của học sinh.' : 'Bấm vào một bài nộp để xem chi tiết.'}
+        title={isStaff ? t('titleStaff') : t('titleStudent')}
+        subtitle={isStaff ? t('subtitleStaff') : t('subtitleStudent')}
       />
 
       {isStaff && (
         <Card className="mb-4 flex flex-wrap items-center gap-3 p-3">
           <select
-            className={cn(inputClass, 'w-auto min-w-64')}
+            className={cn(inputClass, 'w-full min-w-0 sm:w-auto sm:min-w-64')}
             value={sessionId}
             onChange={(e) => setSession(e.target.value)}
-            aria-label="Phiên"
+            aria-label={t('sessionLabel')}
           >
-            <option value="">{isAdmin ? 'Mọi phiên' : 'Chọn phiên…'}</option>
+            <option value="">{isAdmin ? t('allSessions') : t('chooseSession')}</option>
             {managed.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.title}
-                {s.className ? ` (lớp ${s.className})` : ' (công khai)'}
+                {s.className ? t('optionClass', { title: s.title, name: s.className }) : t('optionPublic', { title: s.title })}
               </option>
             ))}
           </select>
-          <div className="inline-flex rounded-control bg-slate-100 p-1 text-sm">
+          <div className="inline-flex shrink-0 rounded-control bg-slate-100 p-1 text-sm whitespace-nowrap">
             <button
               type="button"
               disabled={!canSeeAll}
@@ -93,16 +94,16 @@ function SubmissionsList() {
                 'rounded-[4px] px-3 py-1 disabled:opacity-50',
                 !mine ? 'bg-white font-medium ring-1 ring-slate-300' : 'text-slate-600',
               )}
-              title={canSeeAll ? undefined : 'Chọn một phiên trước'}
+              title={canSeeAll ? undefined : t('chooseFirst')}
             >
-              Mọi người
+              {t('everyone')}
             </button>
             <button
               type="button"
               onClick={() => setMine(true)}
               className={cn('rounded-[4px] px-3 py-1', mine ? 'bg-white font-medium ring-1 ring-slate-300' : 'text-slate-600')}
             >
-              Của tôi
+              {t('mine')}
             </button>
           </div>
         </Card>
@@ -116,7 +117,7 @@ function SubmissionsList() {
             <ErrorState message={error} onRetry={reload} />
           </div>
         ) : !data || data.items.length === 0 ? (
-          <EmptyState title="Chưa có bài nộp nào" />
+          <EmptyState title={t('empty')} />
         ) : (
           <>
             <SubmissionsTable items={data.items} showUser={isStaff && !mine} />

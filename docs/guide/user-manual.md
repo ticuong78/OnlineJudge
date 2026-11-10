@@ -25,7 +25,7 @@ Contents
 | **Bank** ("Ngân hàng") | A teacher's own problems and sets, plus what others share. |
 | **Session** ("Phiên") | A problem or set **given** ("Giao bài") to a class or to everyone, with open/close times and rules. The content is frozen when it is given. Submissions, scores and "solved" belong to the session. |
 | **Class** ("Lớp") | One teacher in charge, students, a join code (e.g. `22DTHC5`). Personal, or belonging to an organization. |
-| **Organization** ("Tổ chức") | A center or school on the organization plan: teacher seats, an end date, AI included or not. A teacher may be in several. |
+| **Organization** ("Tổ chức") | A centre or school on the organization plan: teacher seats, an end date, AI included or not. A teacher may be in several. |
 | **Learning record** ("Học bạ") | A student's history of solved problems and finished sessions; kept even if a class is deleted. |
 | **Integrity hints** ("Cần xem lại") | Automatic hints of copied or AI-written code. Never a verdict, never changes scores. |
 | **Verdicts** | "Chấp nhận" (AC), "Sai kết quả" (WA), "Quá thời gian" (TLE), "Quá bộ nhớ" (MLE), "Lỗi khi chạy" (RE), "Lỗi biên dịch" (CE), "Lỗi hệ thống" (IE). |
@@ -33,6 +33,12 @@ Contents
 
 Languages: "C++17", "C11", "Python 3", "Java 17", "JavaScript (Node.js)". Programs read **standard input** and
 write **standard output** (no files).
+
+Interface language (OJ-12): Vietnamese by default. The **VI / EN** switch in the header (in the mobile menu on a phone)
+and on the sign-in, register, invite and forgot-password pages changes every label, button and message to English
+and back. The browser remembers the choice (a cookie, one year), also after signing out. It changes only the
+interface: problem statements, test data, class names, posts, AI output and emails stay as they were written
+(emails are always Vietnamese). This manual quotes the Vietnamese labels.
 
 Who can do what (summary)
 

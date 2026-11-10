@@ -40,8 +40,9 @@ Principles
   dropped afterwards, and its own Redis database (HTTP suite 1, browser suite 5).
 - Gate before any push: `pnpm build:shared && pnpm typecheck && pnpm test`. Before a release: [section 8](#8-regression-checklist-before-a-release).
 
-Counts on 2026-11-08 (node --test and Playwright summaries, local run): unit 416 (frontend 22, backend 228, engine
-166), integration 36, HTTP end-to-end 17, browser end-to-end 8; all passing. CI has never run (K-9).
+Counts on 2026-11-11 (node --test and Playwright summaries, local run): unit 429 (frontend 34, backend 229, engine
+166), browser end-to-end 9; all passing. Integration (36) and HTTP end-to-end (17) last run 2026-11-08 and not touched
+by OJ-12 (frontend only). CI has never run (K-9).
 
 ---
 
@@ -65,7 +66,7 @@ Counts on 2026-11-08 (node --test and Playwright summaries, local run): unit 416
 | Integrity and class board | `integrity-community`, `fingerprint`, `integrity-pair` (one flag per copied pair) |
 | Wiring, seed guard | `wiring`, `seed-guard` |
 | Engine: sandbox flags, supervisor, verdicts, limits, clean-up | `docker-sandbox-flags`, `docker-sandbox`, `judge`, `classify`, `resource-plan`, `leftovers`, `deadline`, `process`, `supervisor-protocol`, `self-check`, `shutdown`, `sweeper`, `language` |
-| Frontend logic | `lib.test.ts` (points identical to the backend's rounding, score labels, dates, class codes, sessions, exam settings, countdown), `last-problem.test.ts` ("Làm tiếp" per account, cleared on sign-out), `exam-home.test.ts` (waiting exams on the home page, exam settings by set type), `translation-safe-dom.test.ts` |
+| Frontend logic | `lib.test.ts` (points identical to the backend's rounding, score labels, dates, class codes, sessions, exam settings, countdown), `last-problem.test.ts` ("Làm tiếp" per account, cleared on sign-out), `exam-home.test.ts` (waiting exams on the home page, exam settings by set type), `translation-safe-dom.test.ts`, `i18n.test.ts` (locale cookie, English keys and arguments match Vietnamese, every message is valid ICU, plurals, dates, API errors by code), `i18n-coverage.test.ts` (no Vietnamese text left outside the Vietnamese dictionary) |
 
 ### 2.2 Integration (`pnpm infra:test:up` → `pnpm test:integration`)
 - Where: `src/backend/test/*.integration.test.ts`; each run creates a throwaway schema and drops it.
@@ -101,7 +102,8 @@ Counts on 2026-11-08 (node --test and Playwright summaries, local run): unit 416
   reads a problem (hidden test absent), types in the code editor, submits, sees exactly one Python row under "Bài nộp
   của tôi"; the org admin invites from the organization page; the invited teacher joins from the home page and gets
   "Tổ chức" in the menu; a new teacher opens the emailed link, the code is pre-filled and removed from the address bar,
-  activates and is in the organization.
+  activates and is in the organization; a student switches to English on the sign-in page, signs in, sees English
+  menu labels after a reload and switches back to Vietnamese from the header (`language`).
 - Failure artefacts: `test-results/` (trace, screenshot); in CI the HTML report is uploaded.
 
 ### 2.5 Engine live sandbox (inside `pnpm test`)
@@ -235,6 +237,12 @@ Mark each step Pass / Fail / Blocked; attach a screenshot and ids for every Fail
 | A-06 | admin | Delete gv.lan | Refused: she is the only "Quản lý" of the center |
 | A-07 | admin | Bank "Tất cả"; any class; any session | Full access |
 
+### 4.6 Any role: interface language (OJ-12)
+
+| ID | Account | Steps | Expected |
+|---|---|---|---|
+| X-01 | each role, phone (375 px) and desktop | On the sign-in page press "EN"; sign in; open every menu item and one dialog per page; reload; sign out and in; press "VI" | All labels, buttons, empty states, toasts and API errors in English (user content as written); nothing cut off, overlapping or scrolling sideways; still English after reload and sign-in; "VI" brings back the same Vietnamese text |
+
 **Exit criteria**: every script Pass, or Fail with a defect accepted and logged as a known issue; no open Critical or
 High defect; sign-off by the product owner (Cường) and the developer (Htet).
 
@@ -300,6 +308,7 @@ No automated load, accessibility or cross-browser tests exist yet (G-3).
 | OJ-9 test suites | this plan | — |
 | OJ-10 review fixes (K-1, K-2, K-3, K-11, K-13) | frontend `lib.test`, `last-problem`; backend `document-signature`, `integrity-pair`, `integrity.integration`, `api-errors`; e2e `access-control` | S-03, T-06, T-10 |
 | OJ-11 exam visibility and defaults | frontend `exam-home` | S-06, T-16 |
+| OJ-12 interface languages (vi, en) | frontend `i18n`, `i18n-coverage`; browser `language` | X-01 |
 
 ---
 

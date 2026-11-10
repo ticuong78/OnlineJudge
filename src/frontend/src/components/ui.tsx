@@ -1,9 +1,6 @@
 'use client';
 
 import {
-  DifficultyLabels,
-  ProblemSetTypeLabels,
-  VerdictLabels,
   type Difficulty,
   type ProblemSetType,
   type SubmissionStatus,
@@ -12,6 +9,7 @@ import {
 import { AlertTriangle, ChevronLeft, ChevronRight, Inbox, Loader2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { useTranslations } from 'use-intl';
 import { cn } from '@/lib/utils';
 
 // ---------- Buttons ----------
@@ -156,23 +154,25 @@ export function Spinner({ className }: { className?: string }) {
   return <Loader2 className={cn('h-5 w-5 animate-spin text-ink-600', className)} />;
 }
 
-export function LoadingState({ label = 'Đang tải...' }: { label?: string }) {
+export function LoadingState({ label }: { label?: string }) {
+  const t = useTranslations('common');
   return (
     <div className="flex items-center justify-center gap-2 py-16 text-sm text-slate-500">
       <Spinner />
-      {label}
+      {label ?? t('loading')}
     </div>
   );
 }
 
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  const t = useTranslations('common');
   return (
     <div className="flex flex-col items-center gap-3 rounded-panel border border-mark-200 bg-mark-50 px-4 py-8 text-center">
       <AlertTriangle className="h-6 w-6 text-mark-500" />
       <p className="text-sm text-mark-700">{message}</p>
       {onRetry && (
         <Button variant="secondary" size="sm" onClick={onRetry}>
-          Thử lại
+          {t('retry')}
         </Button>
       )}
     </div>
@@ -227,7 +227,8 @@ const difficultyClass: Record<Difficulty, string> = {
 };
 
 export function DifficultyBadge({ difficulty }: { difficulty: Difficulty }) {
-  return <Badge className={difficultyClass[difficulty]}>{DifficultyLabels[difficulty] ?? difficulty}</Badge>;
+  const t = useTranslations('enums.difficulty');
+  return <Badge className={difficultyClass[difficulty]}>{t(difficulty)}</Badge>;
 }
 
 const verdictClass: Record<Verdict, string> = {
@@ -249,18 +250,19 @@ export function VerdictBadge({
   status?: SubmissionStatus;
   short?: boolean;
 }) {
+  const t = useTranslations();
   if (status && status !== 'DONE') {
     return (
       <Badge className="bg-ink-50 text-ink-700">
         <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-        {status === 'PENDING' ? 'Đang chờ' : 'Đang chấm'}
+        {status === 'PENDING' ? t('common.status.pending') : t('common.status.judging')}
       </Badge>
     );
   }
   if (!verdict) return <Badge>—</Badge>;
   return (
     <Badge className={verdictClass[verdict]}>
-      {short ? verdict : (VerdictLabels[verdict] ?? verdict)}
+      {short ? verdict : t(`enums.verdict.${verdict}`)}
     </Badge>
   );
 }
@@ -273,7 +275,8 @@ const setTypeClass: Record<ProblemSetType, string> = {
 };
 
 export function ProblemSetTypeBadge({ type }: { type: ProblemSetType }) {
-  return <Badge className={setTypeClass[type]}>{ProblemSetTypeLabels[type] ?? type}</Badge>;
+  const t = useTranslations('enums.problemSetType');
+  return <Badge className={setTypeClass[type]}>{t(type)}</Badge>;
 }
 
 // ---------- Pagination ----------
@@ -288,6 +291,7 @@ export function Pagination({
   total: number;
   onChange: (p: number) => void;
 }) {
+  const t = useTranslations('common.pagination');
   const pages = Math.max(1, Math.ceil(total / pageSize));
   if (pages <= 1) return null;
   const nums: number[] = [];
@@ -297,10 +301,10 @@ export function Pagination({
   return (
     <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-3 text-sm">
       <span className="text-slate-500">
-        Trang {page}/{pages}, {total} kết quả
+        {t('summary', { page, pages, total })}
       </span>
       <div className="flex items-center gap-1">
-        <Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => onChange(page - 1)} aria-label="Trang trước">
+        <Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => onChange(page - 1)} aria-label={t('previous')}>
           <ChevronLeft className="h-4 w-4" />
         </Button>
         {nums.map((n) => (
@@ -316,7 +320,7 @@ export function Pagination({
             {n}
           </button>
         ))}
-        <Button variant="ghost" size="sm" disabled={page >= pages} onClick={() => onChange(page + 1)} aria-label="Trang sau">
+        <Button variant="ghost" size="sm" disabled={page >= pages} onClick={() => onChange(page + 1)} aria-label={t('next')}>
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
@@ -340,6 +344,7 @@ export function Modal({
   footer?: ReactNode;
   wide?: boolean;
 }) {
+  const tc = useTranslations('common');
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -360,12 +365,12 @@ export function Modal({
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
           <h2 className="font-semibold text-slate-900">{title}</h2>
-          <button type="button" onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-100" aria-label="Đóng">
+          <button type="button" onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-100" aria-label={tc('close')}>
             <X className="h-4 w-4" />
           </button>
         </div>
         <div className="overflow-y-auto px-5 py-4">{children}</div>
-        {footer && <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3">{footer}</div>}
+        {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 px-5 py-3">{footer}</div>}
       </div>
     </div>
   );
@@ -375,7 +380,7 @@ export function ConfirmDialog({
   open,
   title,
   message,
-  confirmLabel = 'Xóa',
+  confirmLabel,
   danger = true,
   loading,
   onConfirm,
@@ -390,6 +395,7 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onClose: () => void;
 }) {
+  const t = useTranslations('common');
   return (
     <Modal
       open={open}
@@ -398,10 +404,10 @@ export function ConfirmDialog({
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={loading}>
-            Hủy
+            {t('cancel')}
           </Button>
           <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} loading={loading}>
-            {confirmLabel}
+            {confirmLabel ?? t('delete')}
           </Button>
         </>
       }

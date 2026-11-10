@@ -1,15 +1,21 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { useTranslations } from 'use-intl';
 import { Spinner } from './ui';
+
+function EditorLoading() {
+  const t = useTranslations('common');
+  return (
+    <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500">
+      <Spinner /> {t('editorLoading')}
+    </div>
+  );
+}
 
 const Monaco = dynamic(() => import('@monaco-editor/react').then((m) => m.default), {
   ssr: false,
-  loading: () => (
-    <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500">
-      <Spinner /> Đang tải trình soạn thảo...
-    </div>
-  ),
+  loading: () => <EditorLoading />,
 });
 
 export function CodeEditor({
@@ -32,11 +38,7 @@ export function CodeEditor({
       value={value}
       theme="vs"
       onChange={(v) => onChange?.(v ?? '')}
-      loading={
-        <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500">
-          <Spinner /> Đang tải trình soạn thảo...
-        </div>
-      }
+      loading={<EditorLoading />}
       options={{
         readOnly,
         fontSize: 14,

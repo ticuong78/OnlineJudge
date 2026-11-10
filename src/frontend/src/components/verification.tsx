@@ -2,6 +2,8 @@
 
 import type { VerificationTicketDto } from '@oj/contracts';
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
+import { useTranslations } from 'use-intl';
+import { intlTag } from '@/i18n/runtime';
 import { api, errorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useToast } from './toast';
@@ -43,7 +45,7 @@ export function useEmailLink(): EmailLink | null | undefined {
 }
 
 function formatClock(iso: string) {
-  return new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString(intlTag(), { hour: '2-digit', minute: '2-digit' });
 }
 
 /**
@@ -65,6 +67,7 @@ export function OtpInput({
   autoFocus?: boolean;
   invalid?: boolean;
 }) {
+  const t = useTranslations('auth.verification');
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   const digits = Array.from({ length: OTP_LENGTH }, (_, i) => value[i] ?? '');
 
@@ -119,7 +122,7 @@ export function OtpInput({
   };
 
   return (
-    <div className="flex gap-2" role="group" aria-label="Mã xác minh 6 chữ số">
+    <div className="flex gap-2" role="group" aria-label={t('otpGroup')}>
       {digits.map((d, i) => (
         <input
           key={i}
@@ -132,7 +135,7 @@ export function OtpInput({
           autoComplete={i === 0 ? 'one-time-code' : 'off'}
           pattern="[0-9]*"
           maxLength={i === 0 ? OTP_LENGTH : 1}
-          aria-label={`Chữ số ${i + 1}`}
+          aria-label={t('otpDigit', { n: i + 1 })}
           onChange={(e) => onInput(i, e.target.value)}
           onKeyDown={(e) => onKeyDown(i, e)}
           onPaste={onPaste}
@@ -151,25 +154,27 @@ export function OtpInput({
 
 /** Expiry line for a code: neutral while valid, red with the next step once expired. */
 export function CodeExpiry({ ticket, now }: { ticket: VerificationTicketDto; now: number }) {
+  const t = useTranslations('auth.verification');
   const expired = new Date(ticket.expiresAt).getTime() <= now;
   if (expired) {
-    return <p className="text-sm text-mark-700">Mã đã hết hạn. Bấm “Gửi lại mã” để nhận mã mới.</p>;
+    return <p className="text-sm text-mark-700">{t('expired')}</p>;
   }
-  return <p className="text-sm text-slate-500">Mã có hiệu lực đến {formatClock(ticket.expiresAt)}.</p>;
+  return <p className="text-sm text-slate-500">{t('validUntil', { time: formatClock(ticket.expiresAt) })}</p>;
 }
 
-/** "Gửi lại mã" button, disabled with a countdown until `resendAvailableAt`. `what` names what is sent again. */
+/** "Resend code" button, disabled with a countdown until `resendAvailableAt`. `what` names what is sent again. */
 export function ResendCodeButton({
   ticket,
   now,
   onResent,
-  what = 'mã',
+  what = 'code',
 }: {
   ticket: VerificationTicketDto;
   now: number;
   onResent: (t: VerificationTicketDto) => void;
-  what?: string;
+  what?: 'code' | 'email';
 }) {
+  const t = useTranslations('auth.verification');
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const wait = Math.max(0, Math.ceil((new Date(ticket.resendAvailableAt).getTime() - now) / 1000));
@@ -177,9 +182,9 @@ export function ResendCodeButton({
   const resend = async () => {
     setBusy(true);
     try {
-      const t = await api.resendCode({ verificationId: ticket.verificationId });
-      onResent(t);
-      toast.success(`Đã gửi lại ${what} tới ${t.email}`);
+      const next = await api.resendCode({ verificationId: ticket.verificationId });
+      onResent(next);
+      toast.success(t(`resent.${what}`, { email: next.email }));
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
@@ -189,7 +194,7 @@ export function ResendCodeButton({
 
   return (
     <Button variant="ghost" size="sm" onClick={resend} disabled={wait > 0} loading={busy} className="text-ink-700">
-      {wait > 0 ? `Gửi lại ${what} sau ${wait} giây` : `Gửi lại ${what}`}
+      {wait > 0 ? t(`resendIn.${what}`, { seconds: wait }) : t(`resend.${what}`)}
     </Button>
   );
 }

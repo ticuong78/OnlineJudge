@@ -26,12 +26,6 @@ export function isStaffRole(role: Role | undefined | null) {
   return role === 'ADMIN' || role === 'TEACHER';
 }
 
-export const RoleLabels: Record<Role, string> = {
-  ADMIN: 'Quản trị viên',
-  TEACHER: 'Giáo viên',
-  STUDENT: 'Học sinh',
-};
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserDto | null>(null);
   const [loading, setLoading] = useState(true);

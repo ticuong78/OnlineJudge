@@ -34,6 +34,7 @@ Hệ thống chấm bài lập trình tự động cho lớp học:
   - Giáo viên của tổ chức còn hạn và có kèm AI được dùng các tính năng AI (như tài khoản VIP). Hết hạn thì tắt AI và không mời thêm; lớp, bài và dữ liệu vẫn giữ nguyên.
   - Khi giáo viên rời tổ chức: lớp của tổ chức do họ dạy **ở lại tổ chức** (chuyển cho quản lý); giáo viên giữ bài của mình, tổ chức giữ một bản sao các bài đã chia sẻ trong tổ chức.
 - Chấm tự động C, C++, Python, Java, JavaScript; bảng điểm theo phiên; in đề và in đáp án từ ngân hàng.
+- **Hai ngôn ngữ giao diện**: tiếng Việt (mặc định) và tiếng Anh, đổi bằng nút **VI / EN** ở thanh trên cùng và ở các trang đăng nhập. Lựa chọn được nhớ trong cookie `oj_locale`. Chỉ giao diện đổi ngôn ngữ; đề bài, nội dung người dùng và email giữ nguyên. Chữ giao diện nằm trong `src/frontend/src/i18n/messages/{vi,en}` (thư viện `use-intl`); thêm chữ mới thì thêm vào cả hai file, thiếu khóa tiếng Anh là lỗi typecheck.
 
 ## Kiến trúc
 

@@ -2,7 +2,6 @@
 
 import {
   Difficulties,
-  DifficultyLabels,
   fileIoFields,
   type Difficulty,
   type UpsertProblemRequest,
@@ -10,6 +9,7 @@ import {
 } from '@oj/contracts';
 import { Save } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
+import { useTranslations } from 'use-intl';
 import { api } from '@/lib/api';
 import { TagsInput } from '../form-fields';
 import { Button, Card, Field, InlineAlert, inputClass } from '../ui';
@@ -35,7 +35,7 @@ export const emptyProblem: UpsertProblemRequest = {
 export function ProblemForm({
   initial,
   onSubmit,
-  submitLabel = 'Lưu',
+  submitLabel,
   withTests = false,
 }: {
   initial: UpsertProblemRequest;
@@ -43,6 +43,9 @@ export function ProblemForm({
   submitLabel?: string;
   withTests?: boolean;
 }) {
+  const t = useTranslations('authoring.form');
+  const tc = useTranslations('common');
+  const td = useTranslations('enums.difficulty');
   const [v, setV] = useState<UpsertProblemRequest>(initial);
   const [tests, setTests] = useState<UpsertTestCaseRequest[]>([]);
   const samples = tests.filter((t) => t.isSample);
@@ -62,13 +65,13 @@ export function ProblemForm({
     e.preventDefault();
     setError(null);
     if (blocked) return;
-    if (!v.title.trim()) return setError('Vui lòng nhập tên bài.');
-    if (!(v.timeLimitMs > 0) || !(v.memoryLimitMb > 0)) return setError('Giới hạn thời gian/bộ nhớ phải lớn hơn 0.');
+    if (!v.title.trim()) return setError(t('titleRequired'));
+    if (!(v.timeLimitMs > 0) || !(v.memoryLimitMb > 0)) return setError(t('limitsPositive'));
     setSaving(true);
     try {
       await onSubmit({ ...v, title: v.title.trim() }, tests);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Lỗi khi lưu');
+      setError(err instanceof Error ? err.message : t('saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -78,10 +81,10 @@ export function ProblemForm({
     <form onSubmit={submit} className="space-y-5">
       <Card className="space-y-4 p-5">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <Field label="Tên bài *" className="md:col-span-2">
+          <Field label={t('title')} className="md:col-span-2">
             <input className={inputClass} value={v.title} onChange={(e) => set('title', e.target.value)} required />
           </Field>
-          <Field label="Độ khó">
+          <Field label={t('difficulty')}>
             <select
               className={inputClass}
               value={v.difficulty}
@@ -89,18 +92,18 @@ export function ProblemForm({
             >
               {Difficulties.map((d) => (
                 <option key={d} value={d}>
-                  {DifficultyLabels[d]}
+                  {td(d)}
                 </option>
               ))}
             </select>
           </Field>
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <Field label="Chủ đề (tags)" className="md:col-span-2">
+          <Field label={t('tags')} className="md:col-span-2">
             <TagsInput value={v.tags} onChange={(t) => set('tags', t)} />
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Thời gian (ms)">
+            <Field label={t('timeLimit')}>
               <input
                 type="number"
                 min={100}
@@ -110,7 +113,7 @@ export function ProblemForm({
                 onChange={(e) => set('timeLimitMs', Number(e.target.value))}
               />
             </Field>
-            <Field label="Bộ nhớ (MB)">
+            <Field label={t('memoryLimit')}>
               <input
                 type="number"
                 min={16}
@@ -126,10 +129,10 @@ export function ProblemForm({
 
       <Card className="space-y-5 p-5">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-          <h2 className="font-semibold text-slate-800">Nội dung đề</h2>
+          <h2 className="font-semibold text-slate-800">{t('content')}</h2>
           <SuggestionSwitch
-            label="Dùng gợi ý của AI cho tất cả các mục"
-            text="Dùng gợi ý cho cả bài"
+            label={t('suggestAllLabel')}
+            text={t('suggestAllText')}
             suggestion={suggestions.all}
             className="text-sm"
             showLocked
@@ -168,7 +171,7 @@ export function ProblemForm({
         <div className="flex justify-end">
           <Button type="submit" loading={saving} disabled={blocked}>
             <Save className="h-4 w-4" />
-            {submitLabel}
+            {submitLabel ?? tc('save')}
           </Button>
         </div>
       </div>

@@ -1,40 +1,40 @@
 'use client';
 
-import type { OrganizationDto, OrganizationRole, UpsertOrganizationRequest } from '@oj/contracts';
+import type { OrganizationDto, UpsertOrganizationRequest } from '@oj/contracts';
 import { Building2, Sparkles } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
+import { useTranslations } from 'use-intl';
 import { cn, formatPlanDate } from '@/lib/utils';
 import { Badge, Button, Field, InlineAlert, inputClass, Modal } from './ui';
 
-export const OrganizationRoleLabels: Record<OrganizationRole, string> = {
-  ADMIN: 'Quản lý',
-  TEACHER: 'Giáo viên',
-};
-
-/** "Đang hoạt động" until the last day of the plan (inclusive), then "Hết hạn". */
+/** "Until <date>" through the last day of the plan (inclusive), then "Expired since <date>". */
 export function OrganizationStatus({ org }: { org: Pick<OrganizationDto, 'active' | 'activeUntil'> }) {
+  const t = useTranslations('admin.organizations');
+  const date = formatPlanDate(org.activeUntil);
   return (
     <Badge className={org.active ? 'bg-chalk-50 text-chalk-700 ring-1 ring-chalk-200' : 'bg-mark-50 text-mark-700 ring-1 ring-mark-200'}>
-      <span>{org.active ? `Đến hết ${formatPlanDate(org.activeUntil)}` : `Hết hạn từ ${formatPlanDate(org.activeUntil)}`}</span>
+      <span>{org.active ? t('activeUntil', { date }) : t('expiredSince', { date })}</span>
     </Badge>
   );
 }
 
 export function AiIncludedBadge({ included }: { included: boolean }) {
+  const t = useTranslations('admin.organizations');
   if (!included) return null;
   return (
     <Badge className="bg-ink-50 text-ink-700 ring-1 ring-ink-200">
-      <Sparkles className="h-3 w-3" />
-      <span>Có AI</span>
+      <Sparkles className="h-3 w-3 shrink-0" />
+      <span>{t('aiIncluded')}</span>
     </Badge>
   );
 }
 
 export function SeatsMeter({ used, seats }: { used: number; seats: number }) {
+  const t = useTranslations('admin.organizations');
   const full = used >= seats;
   return (
-    <span className={cn('tabular-nums', full ? 'font-semibold text-mark-700' : 'text-slate-700')}>
-      {used}/{seats} chỗ{full ? ' (đã đầy)' : ''}
+    <span className={cn('whitespace-nowrap tabular-nums', full ? 'font-semibold text-mark-700' : 'text-slate-700')}>
+      {t(full ? 'seatsFull' : 'seats', { used, seats })}
     </span>
   );
 }
@@ -61,6 +61,8 @@ export function OrganizationTermsModal({
   onClose: () => void;
   onSubmit: (terms: UpsertOrganizationRequest, adminUserId: string | null) => Promise<void>;
 }) {
+  const t = useTranslations('admin.organizations.terms');
+  const tc = useTranslations('common');
   const [name, setName] = useState(initial?.name ?? '');
   const [seats, setSeats] = useState(String(initial?.seats ?? 10));
   const [activeUntil, setActiveUntil] = useState(initial?.activeUntil ?? defaultEndDate());
@@ -73,10 +75,10 @@ export function OrganizationTermsModal({
     e?.preventDefault();
     setError(null);
     const n = Number(seats);
-    if (name.trim().length < 2) return setError('Nhập tên tổ chức.');
-    if (!Number.isInteger(n) || n < 1) return setError('Số chỗ giáo viên phải là số nguyên từ 1.');
-    if (!activeUntil) return setError('Chọn ngày hết hạn.');
-    if (teachers && !adminUserId) return setError('Chọn giáo viên làm quản lý tổ chức.');
+    if (name.trim().length < 2) return setError(t('nameMissing'));
+    if (!Number.isInteger(n) || n < 1) return setError(t('seatsInvalid'));
+    if (!activeUntil) return setError(t('dateMissing'));
+    if (teachers && !adminUserId) return setError(t('managerMissing'));
     setSaving(true);
     try {
       await onSubmit({ name: name.trim(), seats: n, activeUntil, aiIncluded }, teachers ? adminUserId : null);
@@ -95,46 +97,44 @@ export function OrganizationTermsModal({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
-            Hủy
+            {tc('cancel')}
           </Button>
           <Button onClick={() => submit()} loading={saving}>
-            Lưu
+            {tc('save')}
           </Button>
         </>
       }
     >
       <form onSubmit={submit} className="space-y-3">
         {error && <InlineAlert>{error}</InlineAlert>}
-        <Field label="Tên tổ chức (trung tâm, trường)">
+        <Field label={t('name')}>
           <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} autoFocus maxLength={120} />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Số chỗ giáo viên">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label={t('seats')}>
             <input type="number" min={1} max={1000} className={inputClass} value={seats} onChange={(e) => setSeats(e.target.value)} />
           </Field>
-          <Field label="Hoạt động đến hết ngày">
+          <Field label={t('activeUntil')}>
             <input type="date" className={inputClass} value={activeUntil} onChange={(e) => setActiveUntil(e.target.value)} />
           </Field>
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input type="checkbox" checked={aiIncluded} onChange={(e) => setAiIncluded(e.target.checked)} />
-          <span>Giáo viên của tổ chức được dùng các tính năng AI khi gói còn hạn</span>
+        <label className="flex items-start gap-2 text-sm text-slate-700">
+          <input type="checkbox" className="mt-0.5 shrink-0" checked={aiIncluded} onChange={(e) => setAiIncluded(e.target.checked)} />
+          <span>{t('ai')}</span>
         </label>
         {teachers && (
-          <Field label="Quản lý tổ chức (giáo viên có sẵn)">
+          <Field label={t('manager')}>
             <select className={inputClass} value={adminUserId} onChange={(e) => setAdminUserId(e.target.value)}>
-              <option value="">Chọn giáo viên…</option>
-              {teachers.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.displayName} ({t.email})
+              <option value="">{t('pickTeacher')}</option>
+              {teachers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.displayName} ({u.email})
                 </option>
               ))}
             </select>
           </Field>
         )}
-        <p className="text-xs text-slate-500">
-          Mỗi giáo viên và mỗi lời mời đang chờ dùng một chỗ. Hết hạn thì tắt AI và không mời thêm được; dữ liệu vẫn giữ nguyên.
-        </p>
+        <p className="text-xs text-slate-500">{t('note')}</p>
         <button type="submit" className="hidden" />
       </form>
     </Modal>

@@ -5,11 +5,11 @@ import { ChevronRight, LogOut, MailPlus, Pencil, UserMinus, UserPlus, X } from '
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
+import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { RequireRole, STAFF } from '@/components/guards';
 import {
   AiIncludedBadge,
-  OrganizationRoleLabels,
   OrganizationStatus,
   OrganizationTermsModal,
   SeatsMeter,
@@ -43,6 +43,9 @@ export default function OrganizationPage() {
 }
 
 function Organization() {
+  const t = useTranslations('admin.organizations.detail');
+  const tRole = useTranslations('admin.orgRole');
+  const tList = useTranslations('admin.organizations.list');
   const { id } = useParams<{ id: string }>();
   const { user, isAdmin, refresh } = useAuth();
   const router = useRouter();
@@ -55,7 +58,7 @@ function Organization() {
   const [busy, setBusy] = useState(false);
 
   if (org.loading) return <Container><LoadingState /></Container>;
-  if (org.error || !org.data) return <Container><ErrorState message={org.error ?? 'Không tìm thấy tổ chức.'} onRetry={org.reload} /></Container>;
+  if (org.error || !org.data) return <Container><ErrorState message={org.error ?? t('notFound')} onRetry={org.reload} /></Container>;
   const o = org.data;
   const manager = isAdmin || o.myRole === 'ADMIN';
   const adminCount = o.members.filter((m) => m.role === 'ADMIN').length;
@@ -68,11 +71,11 @@ function Organization() {
       await api.removeOrganizationMember(o.id, removing.userId);
       if (removing.userId === user?.id) {
         await refresh();
-        toast.success(`Bạn đã rời tổ chức ${o.name}`);
+        toast.success(t('left', { name: o.name }));
         router.push('/organizations');
         return;
       }
-      toast.success(`Đã mời ${removing.displayName} ra khỏi tổ chức. Lớp của tổ chức do giáo viên này dạy được chuyển cho bạn.`);
+      toast.success(t('removed', { name: removing.displayName }));
       setRemoving(null);
       org.reload();
     } catch (e) {
@@ -94,27 +97,27 @@ function Organization() {
   return (
     <Container>
       <PageHeader
-        back={{ href: '/organizations', label: 'Tổ chức' }}
+        back={{ href: '/organizations', label: tList('title') }}
         title={o.name}
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
             <OrganizationStatus org={o} />
             <AiIncludedBadge included={o.aiIncluded} />
-            {o.myRole && <Badge className="bg-slate-100 text-slate-700">Bạn là {OrganizationRoleLabels[o.myRole].toLowerCase()}</Badge>}
+            {o.myRole && <Badge className="bg-slate-100 text-slate-700">{t(`youAre.${o.myRole}`)}</Badge>}
           </span>
         }
         actions={
           <>
             {isAdmin && (
               <Button variant="secondary" onClick={() => setEditing(true)}>
-                <Pencil className="h-4 w-4" />
-                <span>Sửa gói</span>
+                <Pencil className="h-4 w-4 shrink-0" />
+                <span>{t('editPlan')}</span>
               </Button>
             )}
             {manager && (
               <Button onClick={() => setInviting(true)} disabled={!o.active}>
-                <MailPlus className="h-4 w-4" />
-                <span>Mời giáo viên</span>
+                <MailPlus className="h-4 w-4 shrink-0" />
+                <span>{t('invite')}</span>
               </Button>
             )}
           </>
@@ -123,25 +126,23 @@ function Organization() {
 
       {!o.active && (
         <div className="mb-4">
-          <InlineAlert kind="warning">
-            Gói của tổ chức đã hết hạn: tính năng AI của tổ chức đã tắt và không mời thêm giáo viên được. Lớp, bài và dữ liệu vẫn giữ nguyên.
-          </InlineAlert>
+          <InlineAlert kind="warning">{t('expiredAlert')}</InlineAlert>
         </div>
       )}
 
       <Card className="mb-5 grid grid-cols-1 gap-4 p-5 sm:grid-cols-3">
-        <Stat label="Chỗ giáo viên"><SeatsMeter used={o.seatsUsed} seats={o.seats} /></Stat>
-        <Stat label="Giáo viên">{o.memberCount}</Stat>
-        <Stat label="Lời mời đang chờ">{manager ? o.invitations.length : '—'}</Stat>
+        <Stat label={t('statSeats')}><SeatsMeter used={o.seatsUsed} seats={o.seats} /></Stat>
+        <Stat label={t('statTeachers')}>{o.memberCount}</Stat>
+        <Stat label={t('statPending')}>{manager ? o.invitations.length : '—'}</Stat>
       </Card>
 
       <Card className="mb-5">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-3">
-          <h2 className="font-semibold">Giáo viên</h2>
+          <h2 className="font-semibold">{t('membersTitle')}</h2>
           {isAdmin && (
             <Button variant="ghost" size="sm" onClick={() => setAdding(true)} disabled={!o.active}>
-              <UserPlus className="h-4 w-4" />
-              <span>Thêm giáo viên có sẵn</span>
+              <UserPlus className="h-4 w-4 shrink-0" />
+              <span>{t('addExisting')}</span>
             </Button>
           )}
         </div>
@@ -154,22 +155,22 @@ function Organization() {
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-slate-900">
                     {m.displayName}
-                    {self && <span className="ml-1 text-sm font-normal text-slate-500">(bạn)</span>}
+                    {self && <span className="ml-1 text-sm font-normal text-slate-500">{t('you')}</span>}
                   </div>
-                  <div className="text-sm text-slate-500">{m.email} · vào {formatDate(m.joinedAt)}</div>
+                  <div className="text-sm break-words text-slate-500">{t('memberLine', { email: m.email, date: formatDate(m.joinedAt) })}</div>
                 </div>
                 <Badge className={m.role === 'ADMIN' ? 'bg-mark-50 text-mark-700 ring-1 ring-mark-200' : 'bg-ink-50 text-ink-700 ring-1 ring-ink-200'}>
-                  <span>{OrganizationRoleLabels[m.role]}</span>
+                  <span>{tRole(m.role)}</span>
                 </Badge>
                 {manager && (
-                  <Button variant="ghost" size="sm" onClick={() => setRole(m)} disabled={lastAdmin} title={lastAdmin ? 'Tổ chức cần ít nhất một quản lý' : undefined}>
-                    <span key={m.role}>{m.role === 'ADMIN' ? 'Bỏ quyền quản lý' : 'Cho làm quản lý'}</span>
+                  <Button variant="ghost" size="sm" onClick={() => setRole(m)} disabled={lastAdmin} title={lastAdmin ? t('needManager') : undefined}>
+                    <span key={m.role}>{m.role === 'ADMIN' ? t('revokeManager') : t('makeManager')}</span>
                   </Button>
                 )}
                 {(manager || self) && (
-                  <Button variant="ghost" size="sm" onClick={() => setRemoving(m)} disabled={lastAdmin} title={lastAdmin ? 'Tổ chức cần ít nhất một quản lý' : undefined}>
-                    {self ? <LogOut className="h-4 w-4" /> : <UserMinus className="h-4 w-4" />}
-                    <span>{self ? 'Rời tổ chức' : 'Mời ra'}</span>
+                  <Button variant="ghost" size="sm" onClick={() => setRemoving(m)} disabled={lastAdmin} title={lastAdmin ? t('needManager') : undefined}>
+                    {self ? <LogOut className="h-4 w-4 shrink-0" /> : <UserMinus className="h-4 w-4 shrink-0" />}
+                    <span>{self ? t('leave') : t('remove')}</span>
                   </Button>
                 )}
               </li>
@@ -184,14 +185,14 @@ function Organization() {
       {isAdmin && editing && (
         <OrganizationTermsModal
           open
-          title="Sửa gói tổ chức"
+          title={t('editTitle')}
           initial={{ name: o.name, seats: o.seats, activeUntil: o.activeUntil, aiIncluded: o.aiIncluded }}
           onClose={() => setEditing(false)}
           onSubmit={async (terms) => {
             try {
               update(await api.updateOrganization(o.id, terms));
               setEditing(false);
-              toast.success('Đã lưu gói tổ chức');
+              toast.success(t('saved'));
             } catch (e) {
               throw new Error(errorMessage(e));
             }
@@ -205,27 +206,31 @@ function Organization() {
           onInvited={(inv) => {
             setInviting(false);
             org.reload();
-            toast.success(inv.forExistingAccount
-              ? `Đã mời ${inv.displayName}. Lời mời hiện ở trang chủ của giáo viên này.`
-              : `Đã gửi email mời ${inv.email} tạo tài khoản giáo viên.`);
+            toast.success(
+              inv.forExistingAccount
+                ? t('invitedExisting', { name: inv.displayName })
+                : t('invitedNew', { email: inv.email }),
+            );
           }}
         />
       )}
       {isAdmin && adding && <AddExistingModal org={o} onClose={() => setAdding(false)} onAdded={(next) => { update(next); setAdding(false); }} />}
       <ConfirmDialog
         open={!!removing}
-        title={removing?.userId === user?.id ? 'Rời tổ chức?' : 'Mời giáo viên ra khỏi tổ chức?'}
-        confirmLabel={removing?.userId === user?.id ? 'Rời tổ chức' : 'Mời ra'}
+        title={removing?.userId === user?.id ? t('leaveTitle') : t('removeTitle')}
+        confirmLabel={removing?.userId === user?.id ? t('leave') : t('remove')}
         loading={busy}
         onClose={() => setRemoving(null)}
         onConfirm={remove}
         message={
           <div className="space-y-2 text-sm">
             <p>
-              {removing?.userId === user?.id ? 'Bạn' : removing?.displayName} sẽ không còn ở tổ chức {o.name}. Chỗ giáo viên được trả lại.
+              {removing?.userId === user?.id
+                ? t('removeBodySelf', { org: o.name })
+                : t('removeBodyOther', { name: removing?.displayName ?? '', org: o.name })}
             </p>
-            <p>Các lớp của tổ chức do giáo viên này dạy vẫn thuộc tổ chức và được chuyển cho quản lý tổ chức.</p>
-            <p>Giáo viên giữ bài tập của mình; tổ chức giữ một bản sao của các bài đã chia sẻ trong tổ chức.</p>
+            <p>{t('removeClasses')}</p>
+            <p>{t('removeProblems')}</p>
           </div>
         }
       />
@@ -243,6 +248,7 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
 }
 
 function Invitations({ org, onChange }: { org: OrganizationDetailDto; onChange: () => void }) {
+  const t = useTranslations('admin.organizations.invitations');
   const toast = useToast();
   const [busyId, setBusyId] = useState<string | null>(null);
   if (!org.invitations.length) return null;
@@ -250,7 +256,7 @@ function Invitations({ org, onChange }: { org: OrganizationDetailDto; onChange: 
     setBusyId(inv.id);
     try {
       await api.cancelOrganizationInvitation(org.id, inv.id);
-      toast.success(`Đã hủy lời mời ${inv.email}`);
+      toast.success(t('cancelled', { email: inv.email }));
       onChange();
     } catch (e) {
       toast.error(errorMessage(e));
@@ -260,19 +266,23 @@ function Invitations({ org, onChange }: { org: OrganizationDetailDto; onChange: 
   };
   return (
     <Card className="mb-5">
-      <h2 className="border-b border-slate-100 px-5 py-3 font-semibold">Lời mời đang chờ</h2>
+      <h2 className="border-b border-slate-100 px-5 py-3 font-semibold">{t('title')}</h2>
       <ul className="divide-y divide-slate-100">
         {org.invitations.map((inv) => (
           <li key={inv.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
             <div className="min-w-0 flex-1">
               <div className="font-medium text-slate-900">{inv.displayName}</div>
-              <div className="text-sm text-slate-500">
-                {inv.email} · {inv.forExistingAccount ? 'đã có tài khoản, chờ chấp nhận' : 'chờ tạo tài khoản'} · hết hạn {formatDateTime(inv.expiresAt)}
+              <div className="text-sm break-words text-slate-500">
+                {t('line', {
+                  email: inv.email,
+                  state: inv.forExistingAccount ? t('existingWaiting') : t('newWaiting'),
+                  expires: formatDateTime(inv.expiresAt),
+                })}
               </div>
             </div>
             <Button variant="ghost" size="sm" onClick={() => cancel(inv)} loading={busyId === inv.id}>
-              <X className="h-4 w-4" />
-              <span>Hủy lời mời</span>
+              <X className="h-4 w-4 shrink-0" />
+              <span>{t('cancel')}</span>
             </Button>
           </li>
         ))}
@@ -282,17 +292,18 @@ function Invitations({ org, onChange }: { org: OrganizationDetailDto; onChange: 
 }
 
 function OrganizationClasses({ id }: { id: string }) {
+  const t = useTranslations('admin.organizations.classes');
   const classes = useAsync(() => api.organizationClasses(id), [id]);
   return (
     <Card>
-      <h2 className="border-b border-slate-100 px-5 py-3 font-semibold">Lớp của tổ chức</h2>
+      <h2 className="border-b border-slate-100 px-5 py-3 font-semibold">{t('title')}</h2>
       {classes.loading ? (
         <LoadingState />
       ) : classes.error ? (
         <ErrorState message={classes.error} onRetry={classes.reload} />
       ) : !classes.data?.length ? (
         <div className="p-5">
-          <EmptyState title="Chưa có lớp nào">Giáo viên chọn tổ chức khi tạo lớp, hoặc chuyển lớp riêng vào tổ chức ở trang lớp.</EmptyState>
+          <EmptyState title={t('empty')}>{t('emptyBody')}</EmptyState>
         </div>
       ) : (
         <ul className="divide-y divide-slate-100">
@@ -302,11 +313,13 @@ function OrganizationClasses({ id }: { id: string }) {
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-slate-900">{c.name}</div>
                   <div className="text-sm text-slate-500">
-                    {c.code} · {c.teacherName} · {c.studentCount} học sinh{c.status === 'ARCHIVED' ? ' · đã lưu trữ' : ''}
+                    {t(c.status === 'ARCHIVED' ? 'lineArchived' : 'line', { code: c.code ?? '', teacher: c.teacherName ?? '', count: c.studentCount })}
                   </div>
                 </div>
-                {!!c.pendingRequestCount && <Badge className="bg-amber-50 text-amber-800">{c.pendingRequestCount} yêu cầu chờ</Badge>}
-                <ChevronRight className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                {!!c.pendingRequestCount && (
+                  <Badge className="bg-amber-50 text-amber-800">{t('pending', { count: c.pendingRequestCount })}</Badge>
+                )}
+                <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
               </Link>
             </li>
           ))}
@@ -325,6 +338,8 @@ function InviteModal({
   onClose: () => void;
   onInvited: (inv: OrganizationInvitationDto) => void;
 }) {
+  const t = useTranslations('admin.organizations.inviteModal');
+  const tc = useTranslations('common');
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -332,7 +347,7 @@ function InviteModal({
   const submit = async (e?: FormEvent) => {
     e?.preventDefault();
     setError(null);
-    if (!email.trim() || displayName.trim().length < 2) return setError('Nhập email và họ tên của giáo viên.');
+    if (!email.trim() || displayName.trim().length < 2) return setError(t('missing'));
     setSaving(true);
     try {
       onInvited(await api.inviteToOrganization(org.id, { email: email.trim(), displayName: displayName.trim() }));
@@ -346,28 +361,25 @@ function InviteModal({
     <Modal
       open
       onClose={onClose}
-      title={`Mời giáo viên vào ${org.name}`}
+      title={t('title', { name: org.name })}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
-            Hủy
+            {tc('cancel')}
           </Button>
           <Button onClick={() => submit()} loading={saving}>
-            Gửi lời mời
+            {t('send')}
           </Button>
         </>
       }
     >
       <form onSubmit={submit} className="space-y-3">
-        <p className="text-sm text-slate-600">
-          Còn {Math.max(0, org.seats - org.seatsUsed)} chỗ. Giáo viên đã có tài khoản chấp nhận lời mời ở trang chủ; email mới nhận
-          đường link và mã để tạo tài khoản. Lời mời giữ một chỗ trong 7 ngày.
-        </p>
+        <p className="text-sm text-slate-600">{t('intro', { count: Math.max(0, org.seats - org.seatsUsed) })}</p>
         {error && <InlineAlert>{error}</InlineAlert>}
-        <Field label="Email">
+        <Field label={t('email')}>
           <input type="email" className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
         </Field>
-        <Field label="Họ và tên (dùng khi email chưa có tài khoản)">
+        <Field label={t('displayName')}>
           <input className={inputClass} value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
         </Field>
         <button type="submit" className="hidden" />
@@ -385,6 +397,9 @@ function AddExistingModal({
   onClose: () => void;
   onAdded: (next: OrganizationDetailDto) => void;
 }) {
+  const t = useTranslations('admin.organizations.addModal');
+  const tRole = useTranslations('admin.orgRole');
+  const tc = useTranslations('common');
   const users = useAsync(() => api.listUsers(), []);
   const [userId, setUserId] = useState('');
   const [role, setRole] = useState<'TEACHER' | 'ADMIN'>('TEACHER');
@@ -393,7 +408,7 @@ function AddExistingModal({
   const memberIds = new Set(org.members.map((m) => m.userId));
   const candidates = (users.data ?? []).filter((u) => u.role === 'TEACHER' && !memberIds.has(u.id));
   const submit = async () => {
-    if (!userId) return setError('Chọn giáo viên.');
+    if (!userId) return setError(t('missing'));
     setSaving(true);
     try {
       onAdded(await api.addOrganizationMember(org.id, { userId, role }));
@@ -407,23 +422,23 @@ function AddExistingModal({
     <Modal
       open
       onClose={onClose}
-      title="Thêm giáo viên có sẵn"
+      title={t('title')}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
-            Hủy
+            {tc('cancel')}
           </Button>
           <Button onClick={submit} loading={saving}>
-            Thêm vào tổ chức
+            {t('submit')}
           </Button>
         </>
       }
     >
       <div className="space-y-3">
         {error && <InlineAlert>{error}</InlineAlert>}
-        <Field label="Giáo viên">
+        <Field label={t('teacher')}>
           <select className={inputClass} value={userId} onChange={(e) => setUserId(e.target.value)}>
-            <option value="">{users.loading ? 'Đang tải…' : 'Chọn giáo viên…'}</option>
+            <option value="">{users.loading ? t('loading') : t('pick')}</option>
             {candidates.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.displayName} ({u.email})
@@ -431,10 +446,10 @@ function AddExistingModal({
             ))}
           </select>
         </Field>
-        <Field label="Vai trò trong tổ chức">
+        <Field label={t('role')}>
           <select className={inputClass} value={role} onChange={(e) => setRole(e.target.value as 'TEACHER' | 'ADMIN')}>
-            <option value="TEACHER">Giáo viên</option>
-            <option value="ADMIN">Quản lý</option>
+            <option value="TEACHER">{tRole('TEACHER')}</option>
+            <option value="ADMIN">{tRole('ADMIN')}</option>
           </select>
         </Field>
       </div>

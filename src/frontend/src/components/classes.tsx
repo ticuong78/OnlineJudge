@@ -3,6 +3,7 @@
 import type { ClassroomDto, UpsertClassroomRequest } from '@oj/contracts';
 import { Check, Copy, Wand2 } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
+import { useTranslations } from 'use-intl';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { CLASS_CODE_RE, normalizeClassCode, suggestClassCode } from '@/lib/classes';
@@ -13,17 +14,20 @@ import { Badge, Button, Field, InlineAlert, inputClass, Modal } from './ui';
 
 /** A class join code, set large so it can be read aloud or copied onto the board. */
 export function ClassCode({ code, size = 'md' }: { code: string; size?: 'sm' | 'md' | 'lg' }) {
+  const t = useTranslations('classes.code');
+  const tc = useTranslations('common');
   const [copied, setCopied] = useState(false);
   return (
-    <span className="inline-flex items-center gap-1.5">
+    <span className="inline-flex shrink-0 items-center gap-1.5">
       <span
         className={cn(
-          'grid-paper rounded-control border border-rule font-mono font-semibold tracking-[0.18em] text-ink-700 select-all',
+          // Never split a code across lines (a broken "SAOMAI-/HSG" reads as two codes); phones get a smaller size instead.
+          'grid-paper rounded-control border border-rule font-mono font-semibold tracking-[0.18em] whitespace-nowrap text-ink-700 select-all',
           size === 'sm' && 'px-2 py-0.5 text-base',
           size === 'md' && 'px-3 py-1 text-xl',
-          size === 'lg' && 'px-4 py-2 text-3xl',
+          size === 'lg' && 'px-3 py-1.5 text-xl sm:px-4 sm:py-2 sm:text-3xl',
         )}
-        aria-label={`Mã lớp ${code.split('').join(' ')}`}
+        aria-label={t('spoken', { code: code.split('').join(' ') })}
       >
         {code}
       </span>
@@ -38,8 +42,8 @@ export function ClassCode({ code, size = 'md' }: { code: string; size?: 'sm' | '
           }
         }}
         className="rounded-control p-1.5 text-slate-500 hover:bg-slate-100 hover:text-ink-700"
-        aria-label={copied ? 'Đã sao chép mã lớp' : 'Sao chép mã lớp'}
-        title={copied ? 'Đã sao chép' : 'Sao chép mã lớp'}
+        aria-label={copied ? t('copied') : t('copy')}
+        title={copied ? tc('copied') : t('copy')}
       >
         {copied ? <Check className="h-4 w-4 text-chalk-600" /> : <Copy className="h-4 w-4" />}
       </button>
@@ -59,21 +63,22 @@ export function ClassCodeInput({
   name: string;
   autoFocus?: boolean;
 }) {
+  const t = useTranslations('classes.code');
   return (
     <div className="flex gap-2">
       <input
-        className={cn(inputClass, 'font-mono tracking-[0.15em]')}
+        className={cn(inputClass, 'min-w-0 font-mono tracking-[0.15em]')}
         value={value}
         onChange={(e) => onChange(normalizeClassCode(e.target.value))}
         placeholder="22DTHC5"
         autoFocus={autoFocus}
         spellCheck={false}
         autoComplete="off"
-        aria-label="Mã lớp"
+        aria-label={t('label')}
       />
-      <Button variant="secondary" onClick={() => onChange(suggestClassCode(name || 'LOP'))} title="Tạo mã từ tên lớp">
-        <Wand2 className="h-4 w-4" />
-        Gợi ý
+      <Button variant="secondary" className="shrink-0" onClick={() => onChange(suggestClassCode(name || 'LOP'))} title={t('suggestTitle')}>
+        <Wand2 className="h-4 w-4 shrink-0" />
+        {t('suggest')}
       </Button>
     </div>
   );
@@ -81,25 +86,37 @@ export function ClassCodeInput({
 
 /** "3 yêu cầu chờ duyệt" on class cards; nothing when there are none. */
 export function PendingRequestsBadge({ count, className }: { count: number | undefined; className?: string }) {
+  const t = useTranslations('classes');
   if (!count) return null;
   return (
     <Badge className={cn('bg-amber-100 text-amber-800 ring-1 ring-amber-200 tabular-nums', className)}>
-      {count} yêu cầu chờ duyệt
+      {t('pendingRequests', { count })}
     </Badge>
   );
 }
 
+/**
+ * True when a display name already says "administrator" (the seeded "Quản trị viên"), so the suffix is not doubled.
+ * Same test as before OJ-12 ("quản trị", accents included), written with escapes because it matches user data, not
+ * interface text: a plain "Quân Trí" must still get the suffix.
+ */
+function namesAdmin(displayName: string) {
+  return displayName.normalize('NFC').toLowerCase().includes('qu\u1ea3n tr\u1ecb'); // i18n-ignore: data, not UI text
+}
+
 /** Teachers who can own a class (TEACHER and ADMIN). Admin only. */
 export function TeacherSelect({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  const t = useTranslations('classes');
+  const tc = useTranslations('common');
   const { data, loading } = useAsync(() => api.listUsers(), []);
   const teachers = (data ?? []).filter((u) => u.role === 'TEACHER' || u.role === 'ADMIN');
   return (
     <select className={inputClass} value={value} onChange={(e) => onChange(e.target.value)} disabled={loading}>
-      {loading && <option value={value}>Đang tải...</option>}
-      {teachers.map((t) => (
-        <option key={t.id} value={t.id}>
-          {t.displayName}
-          {t.role === 'ADMIN' && !/quản trị/i.test(t.displayName) ? ' (quản trị viên)' : ''}
+      {loading && <option value={value}>{tc('loading')}</option>}
+      {teachers.map((u) => (
+        <option key={u.id} value={u.id}>
+          {u.displayName}
+          {u.role === 'ADMIN' && !namesAdmin(u.displayName) ? ` ${t('adminSuffix')}` : ''}
         </option>
       ))}
     </select>
@@ -117,6 +134,8 @@ export function ClassFormModal({
   initial?: ClassroomDto;
   onSaved: (c: ClassroomDto) => void;
 }) {
+  const t = useTranslations('classes');
+  const tc = useTranslations('common');
   const { user, isAdmin } = useAuth();
   const toast = useToast();
   const [name, setName] = useState('');
@@ -148,15 +167,15 @@ export function ClassFormModal({
   const submit = async (e?: FormEvent) => {
     e?.preventDefault();
     setError(null);
-    if (!name.trim()) return setError('Nhập tên lớp, ví dụ "Tin học 11A1".');
-    if (!CLASS_CODE_RE.test(code)) return setError('Mã lớp cần 4 đến 20 ký tự gồm chữ, số hoặc dấu gạch ngang.');
+    if (!name.trim()) return setError(t('form.nameRequired'));
+    if (!CLASS_CODE_RE.test(code)) return setError(t('code.invalid'));
     setSaving(true);
     try {
       const body: UpsertClassroomRequest = { name: name.trim(), code };
       if (isAdmin || orgAdminOfClass) body.teacherId = teacherId || null;
       if (!initial && organizationId) body.organizationId = organizationId;
       const c = initial ? await api.updateClass(initial.id, body) : await api.createClass(body);
-      toast.success(initial ? 'Đã lưu lớp' : `Đã tạo lớp ${c.name}`);
+      toast.success(initial ? t('form.saved') : t('form.created', { name: c.name }));
       onSaved(c);
     } catch (err) {
       setError(errorMessage(err));
@@ -169,20 +188,20 @@ export function ClassFormModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={initial ? 'Sửa lớp' : 'Tạo lớp'}
+      title={initial ? t('form.editTitle') : t('form.createTitle')}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={saving}>
-            Hủy
+            {tc('cancel')}
           </Button>
           <Button onClick={() => submit()} loading={saving}>
-            {initial ? 'Lưu lớp' : 'Tạo lớp'}
+            {initial ? t('form.save') : t('form.create')}
           </Button>
         </>
       }
     >
       <form onSubmit={submit} className="space-y-4">
-        <Field label="Tên lớp">
+        <Field label={t('form.nameLabel')}>
           <input
             className={inputClass}
             value={name}
@@ -190,11 +209,11 @@ export function ClassFormModal({
               setName(e.target.value);
               if (!codeTouched) setCode(e.target.value.trim() ? suggestClassCode(e.target.value) : '');
             }}
-            placeholder="Tin học 11A1"
+            placeholder={t('form.namePlaceholder')}
             autoFocus
           />
         </Field>
-        <Field label="Mã lớp" hint="Học sinh nhập mã này để xin vào lớp. Tự đặt mã dễ đọc, ví dụ 22DTHC5.">
+        <Field label={t('code.label')} hint={t('form.codeHint')}>
           <ClassCodeInput
             value={code}
             name={name}
@@ -205,12 +224,12 @@ export function ClassFormModal({
           />
         </Field>
         {isAdmin && (
-          <Field label="Giáo viên phụ trách">
+          <Field label={t('form.teacherLabel')}>
             <TeacherSelect value={teacherId} onChange={setTeacherId} />
           </Field>
         )}
         {orgAdminOfClass && (
-          <Field label="Giáo viên phụ trách" hint={`Chọn một giáo viên của ${initial?.organization?.name}.`}>
+          <Field label={t('form.teacherLabel')} hint={t('form.orgTeacherHint', { org: initial?.organization?.name ?? '' })}>
             <select className={inputClass} value={teacherId} onChange={(e) => setTeacherId(e.target.value)}>
               {(orgMembers.data ?? []).map((m) => (
                 <option key={m.userId} value={m.userId}>
@@ -223,11 +242,11 @@ export function ClassFormModal({
         )}
         {!initial && !isAdmin && myOrganizations.length > 0 && (
           <Field
-            label="Lớp thuộc"
-            hint="Lớp của tổ chức do quản lý tổ chức cùng quản lý và thuộc về tổ chức khi bạn rời đi. Lớp cá nhân chỉ bạn quản lý."
+            label={t('form.ownerLabel')}
+            hint={t('form.ownerHint')}
           >
             <select className={inputClass} value={organizationId} onChange={(e) => setOrganizationId(e.target.value)}>
-              <option value="">Cá nhân</option>
+              <option value="">{t('form.personal')}</option>
               {myOrganizations.map((o) => (
                 <option key={o.organizationId} value={o.organizationId}>
                   {o.organizationName}
@@ -251,7 +270,7 @@ export function MoveStudentControl({
   studentId,
   excludeClassId,
   classes,
-  label = 'Thêm vào lớp khác',
+  label,
   onMoved,
 }: {
   studentId: string;
@@ -261,18 +280,20 @@ export function MoveStudentControl({
   label?: string;
   onMoved: (classId: string) => void;
 }) {
+  const t = useTranslations('classes.move');
   const toast = useToast();
+  const shown = label ?? t('label');
   const options = classes.filter((c) => c.id !== excludeClassId);
   const [target, setTarget] = useState('');
   const [busy, setBusy] = useState(false);
-  if (options.length === 0) return excludeClassId ? null : <span className="text-xs text-slate-400">Chưa có lớp nào đang học</span>;
+  if (options.length === 0) return excludeClassId ? null : <span className="text-xs text-slate-400">{t('noClasses')}</span>;
   const add = async () => {
     if (!target) return;
     setBusy(true);
     try {
       await api.moveStudent(studentId, target);
       const c = classes.find((x) => x.id === target);
-      toast.success(`Đã thêm vào lớp ${c?.name ?? ''}`);
+      toast.success(t('added', { name: c?.name ?? '' }));
       setTarget('');
       onMoved(target);
     } catch (e) {
@@ -284,12 +305,12 @@ export function MoveStudentControl({
   return (
     <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
       <select
-        className={cn(inputClass, 'w-auto py-1 text-sm')}
+        className={cn(inputClass, 'w-auto max-w-full min-w-0 py-1 text-sm')}
         value={target}
         onChange={(e) => setTarget(e.target.value)}
-        aria-label={label}
+        aria-label={shown}
       >
-        <option value="">{label}…</option>
+        <option value="">{shown}…</option>
         {options.map((c) => (
           <option key={c.id} value={c.id}>
             {c.name}
@@ -297,7 +318,7 @@ export function MoveStudentControl({
         ))}
       </select>
       <Button size="sm" variant="secondary" onClick={add} disabled={!target} loading={busy}>
-        Thêm vào lớp
+        {t('submit')}
       </Button>
     </span>
   );

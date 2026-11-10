@@ -3,16 +3,16 @@
 import {
   LanguageLabels,
   Languages,
-  type FeedbackMode,
   type Language,
   type SessionDto,
   type SessionSettingsDto,
 } from '@oj/contracts';
 import { Bell, BellOff, BellRing, ChevronDown, ChevronRight, Hourglass, ShieldCheck, Timer } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { api } from '@/lib/api';
+import { useTranslations } from 'use-intl';
+import { api, errorMessage } from '@/lib/api';
 import { isMuted, playChime, setMuted, unlockAudio, type ChimeKind } from '@/lib/chime';
-import { FeedbackLabels, formatClock, integritySummary, isExamLike, settingsSummary, TEST_PRESET } from '@/lib/exam';
+import { FEEDBACK_MODES, feedbackLabel, formatClock, integritySummary, isExamLike, settingsSummary, TEST_PRESET } from '@/lib/exam';
 import { cn, formatDateTime } from '@/lib/utils';
 import { useCanUseAi, VipOnly } from './ai-access';
 import { useToast } from './toast';
@@ -28,6 +28,8 @@ export function SessionSettingsFields({
   value: SessionSettingsDto;
   onChange: (v: SessionSettingsDto) => void;
 }) {
+  const t = useTranslations('assign.settings');
+  const tc = useTranslations('common');
   const canUseAi = useCanUseAi();
   const [open, setOpen] = useState(() => isExamLike(value) || value.checkPlagiarism || value.checkAiUsage);
   const examLike = isExamLike(value);
@@ -53,28 +55,28 @@ export function SessionSettingsFields({
         className="flex w-full items-center gap-2 px-4 py-3 text-left"
         aria-expanded={open}
       >
-        {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-        <span className="font-medium">Chế độ thi / Cài đặt</span>
-        <span className="ml-auto truncate text-xs text-slate-500">
-          {isExamLike(value) ? settingsSummary(value).slice(0, 2).join(', ') : 'Mặc định: không giới hạn'}
+        {open ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+        <span className="shrink-0 font-medium">{t('heading')}</span>
+        <span className="ml-auto min-w-0 truncate text-xs text-slate-500">
+          {isExamLike(value) ? settingsSummary(value).slice(0, 2).join(' · ') : t('defaultSummary')}
         </span>
       </button>
       {open && (
         <div className="space-y-5 border-t border-rule px-4 py-4">
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="secondary" onClick={() => onChange({ ...value, ...TEST_PRESET })}>
-              <ShieldCheck className="h-4 w-4" />
-              Bài kiểm tra
+              <ShieldCheck className="h-4 w-4 shrink-0" />
+              {t('testPreset')}
             </Button>
-            <span className="text-xs text-slate-500">45 phút, 3 lần nộp mỗi bài, chỉ hiện điểm</span>
+            <span className="text-xs text-slate-500">{t('testPresetHint')}</span>
           </div>
 
           <fieldset>
-            <legend className="mb-1 text-sm font-medium text-slate-700">Thời gian làm bài</legend>
+            <legend className="mb-1 text-sm font-medium text-slate-700">{t('duration')}</legend>
             <div className="flex flex-wrap items-center gap-2">
               <label className="flex items-center gap-1.5 text-sm">
                 <input type="radio" checked={!value.durationMinutes} onChange={() => set('durationMinutes', null)} />
-                Không giới hạn
+                {t('unlimited')}
               </label>
               <label className="flex items-center gap-1.5 text-sm">
                 <input
@@ -90,9 +92,9 @@ export function SessionSettingsFields({
                   value={value.durationMinutes ?? ''}
                   placeholder="45"
                   onChange={(e) => set('durationMinutes', e.target.value ? Math.max(1, Math.round(Number(e.target.value))) : null)}
-                  aria-label="Số phút"
+                  aria-label={t('minutesLabel')}
                 />
-                phút
+                {t('minutesUnit')}
               </label>
               {DURATION_PRESETS.map((m) => (
                 <button
@@ -100,25 +102,23 @@ export function SessionSettingsFields({
                   type="button"
                   onClick={() => set('durationMinutes', m)}
                   className={cn(
-                    'rounded-full px-3 py-1 text-sm ring-1',
+                    'rounded-full px-3 py-1 text-sm whitespace-nowrap ring-1',
                     value.durationMinutes === m ? 'bg-ink-600 text-white ring-ink-600' : 'bg-white text-slate-700 ring-rule hover:bg-ink-50',
                   )}
                 >
-                  {m} phút
+                  {t('minutes', { count: m })}
                 </button>
               ))}
             </div>
-            <p className="mt-1 text-xs text-slate-500">
-              Mỗi học sinh bấm “Bắt đầu làm bài” và có đúng chừng ấy phút, nhưng không quá giờ đóng phiên.
-            </p>
+            <p className="mt-1 text-xs text-slate-500">{t('durationHint')}</p>
           </fieldset>
 
           <fieldset>
-            <legend className="mb-1 text-sm font-medium text-slate-700">Ngôn ngữ được phép</legend>
+            <legend className="mb-1 text-sm font-medium text-slate-700">{t('languages')}</legend>
             <div className="flex flex-wrap gap-x-4 gap-y-2">
               <label className="flex items-center gap-1.5 text-sm">
                 <input type="checkbox" checked={allLangs} onChange={() => set('allowedLanguages', allLangs ? ['cpp'] : [])} />
-                Tất cả
+                {tc('all')}
               </label>
               {Languages.map((l) => (
                 <label key={l} className={cn('flex items-center gap-1.5 text-sm', allLangs && 'text-slate-400')}>
@@ -135,7 +135,7 @@ export function SessionSettingsFields({
           </fieldset>
 
           <fieldset>
-            <legend className="mb-1 text-sm font-medium text-slate-700">Số lần nộp tối đa mỗi bài</legend>
+            <legend className="mb-1 text-sm font-medium text-slate-700">{t('maxSubmissions')}</legend>
             <div className="flex flex-wrap items-center gap-4 text-sm">
               <label className="flex items-center gap-1.5">
                 <input
@@ -143,7 +143,7 @@ export function SessionSettingsFields({
                   checked={!value.maxSubmissionsPerProblem}
                   onChange={() => set('maxSubmissionsPerProblem', null)}
                 />
-                Không giới hạn
+                {t('unlimited')}
               </label>
               <label className="flex items-center gap-1.5">
                 <input
@@ -161,31 +161,31 @@ export function SessionSettingsFields({
                   onChange={(e) =>
                     set('maxSubmissionsPerProblem', e.target.value ? Math.max(1, Math.round(Number(e.target.value))) : null)
                   }
-                  aria-label="Số lần nộp"
+                  aria-label={t('submissionsLabel')}
                 />
-                lần
+                {t('submissionsUnit')}
               </label>
             </div>
           </fieldset>
 
           <fieldset>
-            <legend className="mb-1 text-sm font-medium text-slate-700">Hiển thị kết quả cho học sinh</legend>
+            <legend className="mb-1 text-sm font-medium text-slate-700">{t('feedback')}</legend>
             <div className="space-y-2">
-              {(Object.keys(FeedbackLabels) as FeedbackMode[]).map((f) => (
+              {FEEDBACK_MODES.map((f) => (
                 <label key={f} className="flex items-start gap-2 text-sm">
                   <input type="radio" className="mt-1" checked={value.feedback === f} onChange={() => set('feedback', f)} />
                   <span>
-                    <span className="font-medium">{FeedbackLabels[f].label}</span>
-                    <span className="block text-xs text-slate-500">{FeedbackLabels[f].hint}</span>
+                    <span className="font-medium">{feedbackLabel(f).label}</span>
+                    <span className="block text-xs text-slate-500">{feedbackLabel(f).hint}</span>
                   </span>
                 </label>
               ))}
             </div>
-            <p className="mt-1 text-xs text-slate-500">Giáo viên luôn thấy đầy đủ. Khi phiên đóng, học sinh thấy hết.</p>
+            <p className="mt-1 text-xs text-slate-500">{t('feedbackNote')}</p>
           </fieldset>
 
           <fieldset>
-            <legend className="mb-1 text-sm font-medium text-slate-700">Kiểm tra liêm chính</legend>
+            <legend className="mb-1 text-sm font-medium text-slate-700">{t('integrity')}</legend>
             <div className="space-y-2">
               <label className="flex items-start gap-2 text-sm">
                 <input
@@ -195,8 +195,8 @@ export function SessionSettingsFields({
                   onChange={(e) => set('checkPlagiarism', e.target.checked)}
                 />
                 <span>
-                  <span className="font-medium">Kiểm tra đạo văn</span>
-                  <span className="block text-xs text-slate-500">So sánh code giữa các học sinh trong phiên này.</span>
+                  <span className="font-medium">{t('plagiarism')}</span>
+                  <span className="block text-xs text-slate-500">{t('plagiarismHint')}</span>
                 </span>
               </label>
               <label className="flex items-start gap-2 text-sm">
@@ -209,17 +209,13 @@ export function SessionSettingsFields({
                   onChange={(e) => set('checkAiUsage', e.target.checked)}
                 />
                 <span>
-                  <span className="font-medium">Kiểm tra dùng AI</span>
+                  <span className="font-medium">{t('aiUsage')}</span>
                   {!canUseAi && <VipOnly className="ml-2" />}
-                  <span className="block text-xs text-slate-500">
-                    Claude xem từng bài nộp. Cần khóa API trên máy chủ và tốn một khoản phí nhỏ.
-                  </span>
+                  <span className="block text-xs text-slate-500">{t('aiUsageHint')}</span>
                 </span>
               </label>
             </div>
-            <p className="mt-1 text-xs text-slate-500">
-              Kết quả chỉ là gợi ý cho giáo viên: học sinh không bao giờ thấy, và điểm không bị thay đổi.
-            </p>
+            <p className="mt-1 text-xs text-slate-500">{t('integrityNote')}</p>
           </fieldset>
         </div>
       )}
@@ -255,12 +251,6 @@ export function useServerOffset(serverNow: string | undefined) {
 }
 
 const THRESHOLDS: ChimeKind[] = [15, 5, 1, 0];
-const MESSAGES: Record<ChimeKind, string> = {
-  15: 'Còn 15 phút.',
-  5: 'Còn 5 phút. Kiểm tra lại và nộp bài.',
-  1: 'Còn 1 phút. Nộp bài ngay nếu chưa nộp.',
-  0: 'Đã hết giờ. Không nộp bài được nữa.',
-};
 
 function firedKey(id: string, endsAt: number) {
   return `oj:timer:${id}:${endsAt}`;
@@ -299,12 +289,17 @@ export function ExamTimer({
   onTimeUp?: () => void;
   size?: 'sm' | 'md';
 }) {
+  const t = useTranslations('assign.timer');
+  const tc = useTranslations('common');
   const toast = useToast();
   const [now, setNow] = useState(() => Date.now() + offset);
   const [muted, setMutedState] = useState(false);
   const [perm, setPerm] = useState<NotificationPermission | 'unsupported'>('unsupported');
   const onTimeUpRef = useRef(onTimeUp);
   onTimeUpRef.current = onTimeUp;
+  // Read through a ref so the countdown effect does not restart when the translator's identity changes.
+  const textRef = useRef({ t, appName: tc('appName') });
+  textRef.current = { t, appName: tc('appName') };
 
   useEffect(() => {
     setMutedState(isMuted());
@@ -334,18 +329,20 @@ export function ExamTimer({
       const n = Date.now() + offset;
       setNow(n);
       const left = endsAt - n;
-      for (const t of THRESHOLDS) {
-        if (left <= t * 60_000 && !fired.has(t)) {
-          fired.add(t);
+      const { t: text, appName } = textRef.current;
+      for (const th of THRESHOLDS) {
+        if (left <= th * 60_000 && !fired.has(th)) {
+          fired.add(th);
           writeFired(key, fired);
-          playChime(t);
-          if (t === 0) {
-            toast.error(kind === 'attempt' ? MESSAGES[0] : 'Phiên đã đóng. Không nộp bài được nữa.');
+          playChime(th);
+          const message = text(`chime.m${th}`);
+          if (th === 0) {
+            toast.error(kind === 'attempt' ? message : text('sessionClosed'));
             onTimeUpRef.current?.();
-          } else toast.info(MESSAGES[t]);
+          } else toast.info(message);
           try {
             if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.hidden) {
-              new Notification('Online Judge', { body: t === 0 ? MESSAGES[0] : MESSAGES[t], tag: key });
+              new Notification(appName, { body: message, tag: key });
             }
           } catch {
             /* ignore */
@@ -373,19 +370,23 @@ export function ExamTimer({
         tone === 'mark' && 'border-mark-300 bg-mark-50 text-mark-800',
       )}
       role="timer"
-      aria-label={over ? 'Đã hết giờ' : `Còn khoảng ${minutesLeft} phút`}
+      aria-label={over ? t('timeUp') : t('ariaLeft', { minutes: minutesLeft })}
     >
-      {over ? <Hourglass className="h-4 w-4" aria-hidden="true" /> : <Timer className="h-4 w-4" aria-hidden="true" />}
-      <span className="text-xs">{over ? '' : kind === 'attempt' ? 'Còn' : 'Đóng sau'}</span>
+      {over ? (
+        <Hourglass className="h-4 w-4 shrink-0" aria-hidden="true" />
+      ) : (
+        <Timer className="h-4 w-4 shrink-0" aria-hidden="true" />
+      )}
+      <span className="text-xs whitespace-nowrap">{over ? '' : kind === 'attempt' ? t('left') : t('closesIn')}</span>
       <span
         className={cn(
-          'font-mono font-semibold tabular-nums',
+          'font-mono font-semibold whitespace-nowrap tabular-nums',
           size === 'md' ? 'text-xl' : 'text-base',
           !over && left <= 60_000 && 'motion-safe:animate-pulse',
         )}
         aria-hidden="true"
       >
-        {over ? 'Đã hết giờ' : formatClock(left)}
+        {over ? t('timeUp') : formatClock(left)}
       </span>
       <button
         type="button"
@@ -395,8 +396,8 @@ export function ExamTimer({
           setMutedState(!muted);
         }}
         className="rounded p-1 hover:bg-white/70"
-        aria-label={muted ? 'Bật âm báo' : 'Tắt âm báo'}
-        title={muted ? 'Bật âm báo' : 'Tắt âm báo'}
+        aria-label={muted ? t('soundOn') : t('soundOff')}
+        title={muted ? t('soundOn') : t('soundOff')}
       >
         {muted ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
       </button>
@@ -411,8 +412,8 @@ export function ExamTimer({
             }
           }}
           className="rounded p-1 hover:bg-white/70"
-          aria-label="Nhận thông báo của trình duyệt khi sắp hết giờ"
-          title="Nhận thông báo của trình duyệt khi sắp hết giờ"
+          aria-label={t('notify')}
+          title={t('notify')}
         >
           <BellRing className="h-4 w-4" />
         </button>
@@ -423,6 +424,7 @@ export function ExamTimer({
 
 // ---------- start screen ----------
 export function StartScreen({ session, onStarted }: { session: SessionDto; onStarted: (s: SessionDto) => void }) {
+  const t = useTranslations('assign.start');
   const toast = useToast();
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -434,9 +436,9 @@ export function StartScreen({ session, onStarted }: { session: SessionDto; onSta
       const s = await api.startSession(session.id);
       setConfirm(false);
       onStarted(s);
-      toast.success('Đã bắt đầu. Chúc bạn làm bài tốt!');
+      toast.success(t('started'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Không bắt đầu được. Thử lại.');
+      toast.error(e instanceof Error && e.message ? errorMessage(e) : t('failed'));
     } finally {
       setBusy(false);
     }
@@ -444,39 +446,42 @@ export function StartScreen({ session, onStarted }: { session: SessionDto; onSta
   return (
     <div className="grid-paper mx-auto max-w-xl rounded-panel border border-rule px-6 py-8 text-center">
       <Timer className="mx-auto h-8 w-8 text-ink-500" aria-hidden="true" />
-      <h2 className="mt-3 text-xl font-semibold">Phiên này tính giờ</h2>
+      <h2 className="mt-3 text-xl font-semibold">{t('title')}</h2>
       <p className="mt-1 text-slate-700">
-        Bạn có <b className="text-ink-700">{minutes} phút</b> kể từ lúc bấm bắt đầu
-        {session.closesAt ? (
-          <>
-            , nhưng không quá giờ đóng phiên <b>{formatDateTime(session.closesAt)}</b>
-          </>
-        ) : null}
-        .
+        {session.closesAt
+          ? t.rich('introWithClose', {
+              minutes,
+              at: formatDateTime(session.closesAt),
+              m: (c) => <b className="text-ink-700">{c}</b>,
+              b: (c) => <b>{c}</b>,
+            })
+          : t.rich('intro', { minutes, m: (c) => <b className="text-ink-700">{c}</b> })}
       </p>
       <ul className="mx-auto mt-5 max-w-sm space-y-1.5 text-left text-sm text-slate-700">
         {settingsSummary(session.settings)
           .slice(1)
-          .map((t) => (
-            <li key={t} className="flex gap-2">
+          .map((line) => (
+            <li key={line} className="flex gap-2">
               <span aria-hidden="true">•</span>
-              {t}
+              {line}
             </li>
           ))}
         <li className="flex gap-2">
           <span aria-hidden="true">•</span>
-          {session.problems.length} bài, tổng {session.totalPoints} điểm
+          {t('size', { count: session.problems.length, points: session.totalPoints })}
         </li>
       </ul>
       <Button className="mt-6" onClick={() => setConfirm(true)} disabled={session.state !== 'OPEN'}>
-        Bắt đầu làm bài
+        {t('button')}
       </Button>
       {session.state === 'UPCOMING' && (
         <p className="mt-2 text-sm text-amber-800">
-          {session.opensAt ? <>Phiên mở lúc <b>{formatDateTime(session.opensAt)}</b>.</> : 'Phiên chưa mở.'}
+          {session.opensAt
+            ? t.rich('opensAt', { at: formatDateTime(session.opensAt), b: (c) => <b>{c}</b> })
+            : t('notOpen')}
         </p>
       )}
-      {session.state === 'CLOSED' && <p className="mt-2 text-sm text-amber-800">Phiên đã đóng, không nhận bài nộp mới.</p>}
+      {session.state === 'CLOSED' && <p className="mt-2 text-sm text-amber-800">{t('closed')}</p>}
       <StartConfirm open={confirm} busy={busy} minutes={minutes} onClose={() => setConfirm(false)} onStart={start} />
     </div>
   );
@@ -495,19 +500,15 @@ function StartConfirm({
   onClose: () => void;
   onStart: () => void;
 }) {
+  const t = useTranslations('assign.start');
   return (
     <ConfirmDialog
       open={open}
-      title="Bắt đầu tính giờ?"
+      title={t('confirmTitle')}
       danger={false}
-      confirmLabel="Bắt đầu"
+      confirmLabel={t('confirmLabel')}
       loading={busy}
-      message={
-        <>
-          Đồng hồ {minutes} phút chạy ngay và <b>không tạm dừng được</b>, kể cả khi bạn đóng trang. Hết giờ thì không nộp bài
-          được nữa.
-        </>
-      }
+      message={t.rich('confirmBody', { minutes, b: (c) => <b>{c}</b> })}
       onConfirm={onStart}
       onClose={onClose}
     />

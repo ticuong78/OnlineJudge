@@ -21,12 +21,15 @@ import {
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
-import { RoleLabels, useAuth } from '@/lib/auth';
+import { useTranslations } from 'use-intl';
+import { useAuth } from '@/lib/auth';
+import type { Messages } from '@/i18n/messages';
+import { LocaleSwitch } from './locale-switch';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
   href: string;
-  label: string;
+  label: keyof Messages['shell']['nav'];
   icon: LucideIcon;
   roles?: Role[];
   /** Extra condition on the signed-in user (e.g. teachers who belong to an organization). */
@@ -35,23 +38,23 @@ interface NavItem {
 
 const STAFF_ROLES: Role[] = ['ADMIN', 'TEACHER'];
 const NAV: NavItem[] = [
-  { href: '/', label: 'Trang chủ', icon: Home },
-  { href: '/bank', label: 'Ngân hàng', icon: Library, roles: STAFF_ROLES },
-  { href: '/classes', label: 'Lớp', icon: School, roles: STAFF_ROLES },
-  { href: '/my-class', label: 'Lớp của tôi', icon: School, roles: ['STUDENT'] },
-  { href: '/practice', label: 'Luyện tập', icon: Dumbbell, roles: ['STUDENT'] },
-  { href: '/progress', label: 'Học bạ', icon: NotebookPen, roles: ['STUDENT'] },
-  { href: '/import', label: 'Nhập đề', icon: FileUp, roles: STAFF_ROLES },
-  { href: '/integrity', label: 'Cần xem lại', icon: ShieldAlert, roles: STAFF_ROLES },
+  { href: '/', label: 'home', icon: Home },
+  { href: '/bank', label: 'bank', icon: Library, roles: STAFF_ROLES },
+  { href: '/classes', label: 'classes', icon: School, roles: STAFF_ROLES },
+  { href: '/my-class', label: 'myClass', icon: School, roles: ['STUDENT'] },
+  { href: '/practice', label: 'practice', icon: Dumbbell, roles: ['STUDENT'] },
+  { href: '/progress', label: 'progress', icon: NotebookPen, roles: ['STUDENT'] },
+  { href: '/import', label: 'import', icon: FileUp, roles: STAFF_ROLES },
+  { href: '/integrity', label: 'integrity', icon: ShieldAlert, roles: STAFF_ROLES },
   {
     href: '/organizations',
-    label: 'Tổ chức',
+    label: 'organizations',
     icon: Building2,
     roles: STAFF_ROLES,
     when: (u) => u.role === 'ADMIN' || u.organizations.length > 0,
   },
-  { href: '/submissions', label: 'Bài nộp', icon: Send },
-  { href: '/admin/users', label: 'Người dùng', icon: Users, roles: ['ADMIN'] },
+  { href: '/submissions', label: 'submissions', icon: Send },
+  { href: '/admin/users', label: 'users', icon: Users, roles: ['ADMIN'] },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -64,6 +67,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? '/';
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const t = useTranslations('shell');
+  const tRole = useTranslations('enums.role');
 
   // The menu floats over the page, so it must not stay open on the next page or block the keyboard.
   useEffect(() => setOpen(false), [pathname]);
@@ -75,6 +80,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [open]);
 
   const items = NAV.filter((i) => !i.roles || (user && i.roles.includes(user.role) && (!i.when || i.when(user))));
+  // Up to seven items plus the language switch fit on one line from lg (1024px), in both languages. The administrator's
+  // eight do not (measured: 58px too wide in Vietnamese), so for them the inline menu starts at xl (1280px).
+  // The name block and the sign-out label join once there is room: xl for seven items, 2xl for eight.
+  const bp = items.length > 7
+    ? { show: 'xl:flex', hide: 'xl:hidden', brand: 'hidden sm:inline', who: 'hidden 2xl:block', signOut: 'hidden 2xl:inline' }
+    : { show: 'lg:flex', hide: 'lg:hidden', brand: 'hidden sm:inline lg:hidden xl:inline', who: 'hidden xl:block', signOut: 'hidden xl:inline' };
 
   const doLogout = () => {
     logout();
@@ -90,11 +101,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Code2 className="h-4 w-4" />
             </span>
             {/* Hidden at lg, where the full menu needs the room; back from xl. */}
-            <span className="hidden sm:inline lg:hidden xl:inline">Online Judge</span>
+            <span className={bp.brand}>Online Judge</span>
           </Link>
 
-          {/* Inline from lg (1024px): with seven items (admin) the labels do not fit on one line below that. */}
-          <nav className="hidden flex-1 items-center gap-1 lg:flex">
+          {/* Inline from lg or xl (see bp above); below that the menu button opens the same items. */}
+          <nav className={cn('hidden flex-1 items-center gap-1', bp.show)}>
             {items.map((i) => (
               <Link
                 key={i.href}
@@ -106,36 +117,37 @@ export function AppShell({ children }: { children: ReactNode }) {
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
                 )}
               >
-                <i.icon className="h-4 w-4" />
-                <span>{i.label}</span>
+                <i.icon className="h-4 w-4 shrink-0" />
+                <span>{t(`nav.${i.label}`)}</span>
               </Link>
             ))}
           </nav>
 
-          <div className="ml-auto hidden items-center gap-3 lg:flex">
+          <div className={cn('ml-auto hidden items-center gap-3', bp.show)}>
+            <LocaleSwitch />
             {user && (
-              <div className="hidden text-right leading-tight xl:block">
+              <div className={cn('text-right leading-tight', bp.who)}>
                 <div className="text-sm font-medium text-slate-800">{user.displayName}</div>
-                <div className="text-xs text-slate-500">{RoleLabels[user.role]}</div>
+                <div className="text-xs text-slate-500">{tRole(user.role)}</div>
               </div>
             )}
             <button
               type="button"
               onClick={doLogout}
               className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
-              title="Đăng xuất"
-              aria-label="Đăng xuất"
+              title={t('signOut')}
+              aria-label={t('signOut')}
             >
-              <LogOut className="h-4 w-4" />
-              <span className="hidden xl:inline">Đăng xuất</span>
+              <LogOut className="h-4 w-4 shrink-0" />
+              <span className={cn('whitespace-nowrap', bp.signOut)}>{t('signOut')}</span>
             </button>
           </div>
 
           <button
             type="button"
-            className="ml-auto rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
+            className={cn('ml-auto rounded-lg p-2 text-slate-600 hover:bg-slate-100', bp.hide)}
             onClick={() => setOpen((o) => !o)}
-            aria-label="Menu"
+            aria-label={t('menu')}
             aria-expanded={open}
           >
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -144,7 +156,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         {open && (
           // Floats over the page (the sticky header is its positioning context) instead of pushing the content down.
-          <nav className="absolute inset-x-0 top-full max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 py-2 shadow-lg lg:hidden">
+          <nav
+            className={cn(
+              'absolute inset-x-0 top-full max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 py-2 shadow-lg',
+              bp.hide,
+            )}
+          >
             {items.map((i) => (
               <Link
                 key={i.href}
@@ -155,26 +172,35 @@ export function AppShell({ children }: { children: ReactNode }) {
                   isActive(pathname, i.href) ? 'bg-ink-50 text-ink-700' : 'text-slate-700',
                 )}
               >
-                <i.icon className="h-4 w-4" />
-                {i.label}
+                <i.icon className="h-4 w-4 shrink-0" />
+                {t(`nav.${i.label}`)}
               </Link>
             ))}
-            <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2">
-              <span className="text-sm text-slate-600">
-                {user?.displayName}, {user && RoleLabels[user.role]}
+            <div className="mt-2 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+              <span className="min-w-0 truncate text-sm text-slate-600">
+                {user?.displayName}, {user && tRole(user.role)}
               </span>
-              <button type="button" onClick={doLogout} className="flex items-center gap-1 text-sm text-mark-600">
-                <LogOut className="h-4 w-4" />
-                Đăng xuất
-              </button>
+              <LocaleSwitch className="shrink-0" />
             </div>
+            <button
+              type="button"
+              onClick={doLogout}
+              className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-mark-600 hover:bg-mark-50"
+            >
+              <LogOut className="h-4 w-4 shrink-0" />
+              {t('signOut')}
+            </button>
           </nav>
         )}
       </header>
       {open && (
         // Dims the page under the menu; tapping it closes the menu. Outside the header: its backdrop-blur would
         // make it the containing block of a fixed element and shrink this to the header's height.
-        <div className="fixed inset-x-0 bottom-0 top-14 z-30 bg-slate-900/20 lg:hidden" aria-hidden="true" onClick={() => setOpen(false)} />
+        <div
+          className={cn('fixed inset-x-0 bottom-0 top-14 z-30 bg-slate-900/20', bp.hide)}
+          aria-hidden="true"
+          onClick={() => setOpen(false)}
+        />
       )}
       <main className="flex-1">{children}</main>
     </div>

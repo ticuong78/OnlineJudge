@@ -3,6 +3,7 @@
 import type { SessionDto } from '@oj/contracts';
 import { RefreshCcw, RotateCw } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { api, errorMessage } from '@/lib/api';
 import { useToast } from './toast';
 import { Button, Card, ConfirmDialog, inputClass } from './ui';
@@ -12,6 +13,7 @@ type Pending = { kind: 'rejudge'; key: string | null } | { kind: 'refresh' } | n
 
 /** Manager tools: rejudge (all or one problem) and refresh problems from the bank, then rejudge. */
 export function RejudgeTools({ session, onSession }: { session: SessionDto; onSession: (s: SessionDto) => void }) {
+  const t = useTranslations('assign.rejudge');
   const toast = useToast();
   const [key, setKey] = useState('');
   const [pending, setPending] = useState<Pending>(null);
@@ -27,12 +29,12 @@ export function RejudgeTools({ session, onSession }: { session: SessionDto; onSe
         const s = await api.refreshSession(session.id);
         onSession(s);
         const r = await api.rejudgeSession(session.id, {});
-        toast.success(`Đã cập nhật nội dung bài và đưa ${r.queued} bài nộp vào hàng chờ chấm lại`);
-        setNote(`Đã cập nhật nội dung bài từ ngân hàng. ${r.queued} bài nộp đang được chấm lại.`);
+        toast.success(t('refreshedToast', { count: r.queued }));
+        setNote(t('refreshedNote', { count: r.queued }));
       } else {
         const r = await api.rejudgeSession(session.id, pending.key ? { problemKey: pending.key } : {});
-        toast.success(`Đã đưa ${r.queued} bài nộp vào hàng chờ chấm lại`);
-        setNote(`${r.queued} bài nộp đang được chấm lại.`);
+        toast.success(t('queuedToast', { count: r.queued }));
+        setNote(t('queuedNote', { count: r.queued }));
       }
       setPending(null);
     } catch (e) {
@@ -46,18 +48,21 @@ export function RejudgeTools({ session, onSession }: { session: SessionDto; onSe
 
   return (
     <Card className="p-5">
-      <h2 className="font-semibold">Chấm lại</h2>
-      <p className="mt-1 text-sm text-slate-600">
-        Dùng khi bạn sửa test hoặc phát hiện lỗi đề. Điểm và học bạ của học sinh được tính lại theo kết quả mới.
-      </p>
+      <h2 className="font-semibold">{t('title')}</h2>
+      <p className="mt-1 text-sm text-slate-600">{t('intro')}</p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button variant="secondary" size="sm" onClick={() => setPending({ kind: 'rejudge', key: null })}>
-          <RotateCw className="h-4 w-4" />
-          Chấm lại tất cả
+          <RotateCw className="h-4 w-4 shrink-0" />
+          {t('all')}
         </Button>
-        <span className="inline-flex items-center gap-1.5">
-          <select className={cn(inputClass, 'w-auto py-1 text-sm')} value={key} onChange={(e) => setKey(e.target.value)} aria-label="Bài cần chấm lại">
-            <option value="">Chọn bài…</option>
+        <span className="inline-flex max-w-full min-w-0 items-center gap-1.5">
+          <select
+            className={cn(inputClass, 'w-auto max-w-[16rem] min-w-0 py-1 text-sm')}
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            aria-label={t('pickLabel')}
+          >
+            <option value="">{t('pick')}</option>
             {problems.map((p) => (
               <option key={p.key} value={p.key}>
                 {p.key}. {p.title}
@@ -65,17 +70,23 @@ export function RejudgeTools({ session, onSession }: { session: SessionDto; onSe
             ))}
           </select>
           <Button variant="secondary" size="sm" disabled={!key} onClick={() => setPending({ kind: 'rejudge', key })}>
-            Chấm lại bài {key || '…'}
+            {t('one', { key: key || '…' })}
           </Button>
         </span>
-        <Button variant="secondary" size="sm" onClick={() => setPending({ kind: 'refresh' })}>
-          <RefreshCcw className="h-4 w-4" />
-          Cập nhật nội dung bài từ ngân hàng & chấm lại
+        <Button
+          variant="secondary"
+          size="sm"
+          // The longest label here: let it wrap on a phone instead of overflowing the card.
+          className="whitespace-normal text-left"
+          onClick={() => setPending({ kind: 'refresh' })}
+        >
+          <RefreshCcw className="h-4 w-4 shrink-0" />
+          {t('refresh')}
         </Button>
       </div>
       {note && (
         <p className="mt-3 text-sm text-slate-600">
-          {note} Trong lúc chấm lại, bảng điểm có thể tạm thấp hơn; tải lại sau ít phút.
+          {note} {t('noteTail')}
         </p>
       )}
       <ConfirmDialog
@@ -84,24 +95,22 @@ export function RejudgeTools({ session, onSession }: { session: SessionDto; onSe
         loading={busy}
         title={
           pending?.kind === 'refresh'
-            ? 'Cập nhật nội dung bài từ ngân hàng và chấm lại?'
+            ? t('refreshTitle')
             : target
-              ? `Chấm lại bài ${target.key}?`
-              : 'Chấm lại mọi bài nộp?'
+              ? t('oneTitle', { key: target.key })
+              : t('allTitle')
         }
-        confirmLabel={pending?.kind === 'refresh' ? 'Cập nhật và chấm lại' : 'Chấm lại'}
+        confirmLabel={pending?.kind === 'refresh' ? t('refreshConfirm') : t('confirm')}
         message={
           pending?.kind === 'refresh' ? (
             <>
-              Đề, giới hạn và bộ test của các bài đang có trong phiên sẽ được lấy lại từ ngân hàng (giữ nguyên danh sách bài,
-              thứ tự và điểm). Sau đó mọi bài nộp được chấm lại, nên điểm của học sinh có thể thay đổi theo test mới.
-              {session.sourceSetId && ' Muốn lấy cả bài thêm/bớt và điểm mới của đề, hãy dùng "Đồng bộ với đề gốc".'}
+              {t('refreshBody')}
+              {session.sourceSetId && ` ${t('refreshSyncHint')}`}
             </>
+          ) : target ? (
+            t('oneBody', { key: target.key, title: target.title })
           ) : (
-            <>
-              {target ? `Mọi bài nộp của bài ${target.key}. ${target.title}` : 'Mọi bài nộp trong phiên'} sẽ được chấm lại với
-              bộ test hiện tại của phiên. Điểm và học bạ được tính lại theo kết quả mới.
-            </>
+            t('allBody')
           )
         }
         onConfirm={run}

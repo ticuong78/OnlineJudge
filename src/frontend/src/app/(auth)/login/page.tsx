@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
+import { useTranslations } from 'use-intl';
 import { Button, Card, Field, InlineAlert, inputClass, LoadingState } from '@/components/ui';
 import { errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -12,6 +13,7 @@ function safeNext(next: string | null) {
 }
 
 function LoginForm() {
+  const t = useTranslations('auth');
   const { login, user, loading } = useAuth();
   const router = useRouter();
   const params = useSearchParams();
@@ -41,10 +43,10 @@ function LoginForm() {
 
   return (
     <Card className="p-6">
-      <h2 className="mb-4 text-lg font-semibold">Đăng nhập</h2>
+      <h2 className="mb-4 text-lg font-semibold">{t('login.title')}</h2>
       <form onSubmit={onSubmit} className="space-y-4">
         {error && <InlineAlert>{error}</InlineAlert>}
-        <Field label="Email">
+        <Field label={t('fields.email')}>
           <input
             type="email"
             required
@@ -52,10 +54,10 @@ function LoginForm() {
             className={inputClass}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="ten@truong.edu.vn"
+            placeholder={t('login.emailPlaceholder')}
           />
         </Field>
-        <Field label="Mật khẩu">
+        <Field label={t('fields.password')}>
           <input
             type="password"
             required
@@ -67,17 +69,17 @@ function LoginForm() {
         </Field>
         <div className="-mt-2 text-right">
           <Link href="/forgot-password" className="text-sm text-ink-600 hover:underline">
-            Quên mật khẩu?
+            {t('login.forgot')}
           </Link>
         </div>
         <Button type="submit" className="w-full" loading={submitting}>
-          Đăng nhập
+          {t('login.submit')}
         </Button>
       </form>
       <p className="mt-4 text-center text-sm text-slate-500">
-        Chưa có tài khoản?{' '}
+        {t('login.noAccount')}{' '}
         <Link href="/register" className="font-medium text-ink-600 hover:underline">
-          Đăng ký (học sinh)
+          {t('login.register')}
         </Link>
       </p>
     </Card>

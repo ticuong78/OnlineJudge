@@ -1,9 +1,10 @@
 'use client';
 
-import { Difficulties, DifficultyLabels, type BankScope, type Difficulty } from '@oj/contracts';
+import { Difficulties, type BankScope, type Difficulty } from '@oj/contracts';
 import { BookOpenCheck, Clock, Cpu, FileUp, Plus, Search, X } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { BankTabs, CopiedFrom, OwnerNote, ScopeSwitch, SharingBadge } from '@/components/bank';
 import { RequireRole, STAFF } from '@/components/guards';
@@ -28,6 +29,8 @@ const PAGE_SIZE = 20;
 const SCOPE_KEY = 'oj:bankScope';
 
 export default function BankProblemsPage() {
+  const t = useTranslations('bank');
+  const tDifficulty = useTranslations('enums.difficulty');
   const { user } = useAuth();
   const [scope, setScopeState] = useState<BankScope>('mine');
   const [searchInput, setSearchInput] = useState('');
@@ -49,11 +52,11 @@ export default function BankProblemsPage() {
   };
 
   useEffect(() => {
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       setSearch(searchInput.trim());
       setTag(tagInput.trim());
     }, 350);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [searchInput, tagInput]);
   useEffect(() => setPage(1), [search, difficulty, tag, scope]);
 
@@ -67,17 +70,17 @@ export default function BankProblemsPage() {
     <RequireRole roles={STAFF}>
       <Container>
         <PageHeader
-          title="Ngân hàng"
-          subtitle="Bài và đề của bạn là bản gốc để giao cho lớp. Bài công khai của giáo viên khác có thể lưu về ngân hàng của bạn."
+          title={t('title')}
+          subtitle={t('problems.subtitle')}
           actions={
             <>
               <LinkButton href="/import" variant="secondary">
-                <FileUp className="h-4 w-4" />
-                Nhập đề từ file
+                <FileUp className="h-4 w-4 shrink-0" />
+                {t('problems.importFile')}
               </LinkButton>
               <LinkButton href="/bank/problems/new">
-                <Plus className="h-4 w-4" />
-                Tạo bài
+                <Plus className="h-4 w-4 shrink-0" />
+                {t('problems.create')}
               </LinkButton>
             </>
           }
@@ -91,14 +94,14 @@ export default function BankProblemsPage() {
               <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 className={cn(inputClass, 'pl-9')}
-                placeholder="Tìm theo tên hoặc mã bài"
+                placeholder={t('filters.searchProblems')}
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
               />
             </div>
             <input
               className={cn(inputClass, 'lg:w-40')}
-              placeholder="Chủ đề (tag)"
+              placeholder={t('filters.tag')}
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
             />
@@ -106,27 +109,27 @@ export default function BankProblemsPage() {
               className={cn(inputClass, 'lg:w-36')}
               value={difficulty}
               onChange={(e) => setDifficulty(e.target.value as Difficulty | '')}
-              aria-label="Độ khó"
+              aria-label={t('filters.difficulty')}
             >
-              <option value="">Mọi độ khó</option>
+              <option value="">{t('filters.anyDifficulty')}</option>
               {Difficulties.map((d) => (
                 <option key={d} value={d}>
-                  {DifficultyLabels[d]}
+                  {tDifficulty(d)}
                 </option>
               ))}
             </select>
             {hasFilter && (
               <button
                 type="button"
-                className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800"
+                className="flex shrink-0 items-center gap-1 text-sm whitespace-nowrap text-slate-500 hover:text-slate-800"
                 onClick={() => {
                   setSearchInput('');
                   setTagInput('');
                   setDifficulty('');
                 }}
               >
-                <X className="h-4 w-4" />
-                Xóa lọc
+                <X className="h-4 w-4 shrink-0" />
+                {t('filters.clear')}
               </button>
             )}
           </div>
@@ -143,21 +146,28 @@ export default function BankProblemsPage() {
             <EmptyState
               title={
                 hasFilter
-                  ? 'Không tìm thấy bài phù hợp'
+                  ? t('problems.emptyFiltered')
                   : scope === 'mine'
-                    ? 'Ngân hàng của bạn chưa có bài nào'
+                    ? t('problems.emptyMine')
                     : scope === 'organization'
-                      ? 'Chưa có bài nào được chia sẻ trong tổ chức'
-                      : 'Chưa có bài công khai nào'
+                      ? t('problems.emptyOrganization')
+                      : t('problems.emptyPublic')
               }
             >
               {scope === 'mine' && !hasFilter && (
                 <span>
-                  <Link href="/bank/problems/new" className="text-ink-600 hover:underline">
-                    Tạo bài
-                  </Link>
-                  , <Link href="/import" className="text-ink-600 hover:underline">nhập đề từ file</Link>, hoặc xem
-                  tab Công khai để lưu bài của giáo viên khác.
+                  {t.rich('problems.emptyMineHint', {
+                    create: (c) => (
+                      <Link href="/bank/problems/new" className="text-ink-600 hover:underline">
+                        {c}
+                      </Link>
+                    ),
+                    import: (c) => (
+                      <Link href="/import" className="text-ink-600 hover:underline">
+                        {c}
+                      </Link>
+                    ),
+                  })}
                 </span>
               )}
             </EmptyState>
@@ -165,14 +175,14 @@ export default function BankProblemsPage() {
             <>
               <div className={cn('overflow-x-auto', loading && 'opacity-60')}>
                 <table className="w-full text-sm">
-                  <thead className="border-b border-rule bg-slate-50 text-left text-xs font-medium text-slate-500">
+                  <thead className="border-b border-rule bg-slate-50 text-left text-xs font-medium whitespace-nowrap text-slate-500">
                     <tr>
-                      <th className="w-20 px-4 py-2.5">Mã</th>
-                      <th className="px-4 py-2.5">Tên bài</th>
-                      <th className="w-28 px-4 py-2.5">Độ khó</th>
-                      <th className="hidden px-4 py-2.5 lg:table-cell">Chủ đề</th>
-                      <th className="hidden px-4 py-2.5 md:table-cell">Chia sẻ</th>
-                      <th className="hidden w-40 px-4 py-2.5 xl:table-cell">Giới hạn</th>
+                      <th className="w-20 px-4 py-2.5">{t('problems.col.code')}</th>
+                      <th className="px-4 py-2.5">{t('problems.col.title')}</th>
+                      <th className="w-28 px-4 py-2.5">{t('problems.col.difficulty')}</th>
+                      <th className="hidden px-4 py-2.5 lg:table-cell">{t('problems.col.tags')}</th>
+                      <th className="hidden px-4 py-2.5 md:table-cell">{t('problems.col.sharing')}</th>
+                      <th className="hidden w-40 px-4 py-2.5 xl:table-cell">{t('problems.col.limits')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -184,7 +194,7 @@ export default function BankProblemsPage() {
                             {p.title}
                           </Link>
                           {p.hasSolution && (
-                            <span title="Có lời giải" className="ml-2 inline-flex align-middle text-chalk-500">
+                            <span title={t('problems.hasSolution')} className="ml-2 inline-flex align-middle text-chalk-500">
                               <BookOpenCheck className="h-3.5 w-3.5" />
                             </span>
                           )}
@@ -208,7 +218,7 @@ export default function BankProblemsPage() {
                         <td className="hidden px-4 py-2.5 md:table-cell">
                           <SharingBadge isPublic={p.sharing.isPublic} organizationCount={p.sharing.organizationIds.length} />
                         </td>
-                        <td className="hidden px-4 py-2.5 text-xs text-slate-500 xl:table-cell">
+                        <td className="hidden px-4 py-2.5 text-xs whitespace-nowrap text-slate-500 xl:table-cell">
                           <span className="mr-3 inline-flex items-center gap-1">
                             <Clock className="h-3.5 w-3.5" />
                             {p.timeLimitMs} ms

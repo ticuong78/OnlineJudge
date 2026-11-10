@@ -5,10 +5,12 @@ import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
+import { useTranslations } from 'use-intl';
 import { Button, Card, Field, InlineAlert, inputClass } from '@/components/ui';
 import { ResendCodeButton, useEmailLink, useNow, type EmailLink } from '@/components/verification';
 import { useToast } from '@/components/toast';
 import { api, errorMessage } from '@/lib/api';
+import { intlTag } from '@/i18n/runtime';
 import { useAuth } from '@/lib/auth';
 
 /**
@@ -16,6 +18,7 @@ import { useAuth } from '@/lib/auth';
  * email, and the link brings the user back here to choose the new password.
  */
 export default function ForgotPasswordPage() {
+  const t = useTranslations('auth');
   const now = useNow();
   const link = useEmailLink();
 
@@ -44,13 +47,13 @@ export default function ForgotPasswordPage() {
     return (
       <Card className="p-6">
         <Link href="/login" className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600 hover:text-ink-700">
-          <ChevronLeft className="h-4 w-4" />
-          Đăng nhập
+          <ChevronLeft className="h-4 w-4 shrink-0" />
+          {t('forgot.signIn')}
         </Link>
-        <h2 className="text-lg font-semibold">Quên mật khẩu</h2>
-        <p className="mb-4 text-sm text-slate-500">Nhập email bạn dùng để đăng nhập. Chúng tôi sẽ gửi liên kết để đặt mật khẩu mới.</p>
+        <h2 className="text-lg font-semibold">{t('forgot.title')}</h2>
+        <p className="mb-4 text-sm text-slate-500">{t('forgot.intro')}</p>
         <form onSubmit={sendLink} className="space-y-4">
-          <Field label="Email">
+          <Field label={t('fields.email')}>
             <input
               type="email"
               required
@@ -62,7 +65,7 @@ export default function ForgotPasswordPage() {
           </Field>
           {error && <InlineAlert>{error}</InlineAlert>}
           <Button type="submit" className="w-full" loading={submitting}>
-            Gửi liên kết
+            {t('forgot.sendLink')}
           </Button>
         </form>
       </Card>
@@ -79,21 +82,21 @@ export default function ForgotPasswordPage() {
         }}
         className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600 hover:text-ink-700"
       >
-        <ChevronLeft className="h-4 w-4" />
-        Đổi email
+        <ChevronLeft className="h-4 w-4 shrink-0" />
+        {t('changeEmail')}
       </button>
-      <h2 className="text-lg font-semibold">Kiểm tra email</h2>
+      <h2 className="text-lg font-semibold">{t('forgot.checkTitle')}</h2>
       <p className="mt-1 text-sm text-slate-600">
-        Nếu email có tài khoản, liên kết đặt mật khẩu mới đã được gửi tới <b className="text-slate-900">{ticket.email}</b>.
-        Mở email và bấm vào liên kết để đặt mật khẩu mới.
+        {t.rich('forgot.checkBody', { email: ticket.email, b: (c) => <b className="text-slate-900">{c}</b> })}
       </p>
       <p className="mt-2 text-sm text-slate-500">
-        Liên kết có hiệu lực đến {new Date(ticket.expiresAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} và
-        chỉ dùng được một lần.
+        {t('forgot.linkValid', {
+          time: new Date(ticket.expiresAt).toLocaleTimeString(intlTag(), { hour: '2-digit', minute: '2-digit' }),
+        })}
       </p>
-      <div className="mt-3 flex items-center justify-between text-sm text-slate-500">
-        <span>Không thấy email? Xem cả thư mục Spam.</span>
-        <ResendCodeButton ticket={ticket} now={now} what="email" onResent={(t) => { setTicket(t); setError(null); }} />
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm text-slate-500">
+        <span>{t('noEmail')}</span>
+        <ResendCodeButton ticket={ticket} now={now} what="email" onResent={(next) => { setTicket(next); setError(null); }} />
       </div>
     </Card>
   );
@@ -101,6 +104,7 @@ export default function ForgotPasswordPage() {
 
 /** Opened from the link in the reset email: the only way to set a new password. */
 function ResetFromLink({ link }: { link: EmailLink }) {
+  const t = useTranslations('auth');
   const { signIn } = useAuth();
   const router = useRouter();
   const toast = useToast();
@@ -112,12 +116,12 @@ function ResetFromLink({ link }: { link: EmailLink }) {
   const reset = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (password.length < 6) return setError('Mật khẩu mới cần ít nhất 6 ký tự.');
-    if (password !== confirm) return setError('Hai mật khẩu chưa khớp. Nhập lại mật khẩu ở ô thứ hai.');
+    if (password.length < 6) return setError(t('forgot.newPasswordTooShort'));
+    if (password !== confirm) return setError(t('validation.passwordMismatch'));
     setSubmitting(true);
     try {
       signIn(await api.resetPassword({ ...link, newPassword: password }));
-      toast.success('Đã đặt lại mật khẩu');
+      toast.success(t('forgot.resetDone'));
       router.replace('/');
     } catch (err) {
       setError(errorMessage(err));
@@ -127,10 +131,10 @@ function ResetFromLink({ link }: { link: EmailLink }) {
 
   return (
     <Card className="p-6">
-      <h2 className="text-lg font-semibold">Đặt mật khẩu mới</h2>
+      <h2 className="text-lg font-semibold">{t('forgot.resetTitle')}</h2>
       <form onSubmit={reset} className="mt-5 space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Mật khẩu mới">
+          <Field label={t('forgot.newPassword')}>
             <input
               type="password"
               required
@@ -140,7 +144,7 @@ function ResetFromLink({ link }: { link: EmailLink }) {
               onChange={(e) => setPassword(e.target.value)}
             />
           </Field>
-          <Field label="Nhập lại mật khẩu mới">
+          <Field label={t('forgot.confirmNewPassword')}>
             <input
               type="password"
               required
@@ -153,13 +157,13 @@ function ResetFromLink({ link }: { link: EmailLink }) {
         </div>
         {error && <InlineAlert>{error}</InlineAlert>}
         <Button type="submit" className="w-full" loading={submitting}>
-          Đặt lại mật khẩu
+          {t('forgot.resetSubmit')}
         </Button>
       </form>
       <p className="mt-4 text-center text-sm text-slate-500">
-        Liên kết hết hạn hoặc đã dùng?{' '}
+        {t('forgot.linkUsed')}{' '}
         <a href="/forgot-password" className="font-medium text-ink-600 hover:underline">
-          Gửi lại email
+          {t('forgot.resendEmail')}
         </a>
       </p>
     </Card>

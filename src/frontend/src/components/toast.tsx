@@ -2,6 +2,7 @@
 
 import { CheckCircle2, Info, X, XCircle } from 'lucide-react';
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { useTranslations } from 'use-intl';
 import { cn } from '@/lib/utils';
 
 type ToastKind = 'success' | 'error' | 'info';
@@ -21,6 +22,7 @@ const ToastContext = createContext<ToastApi | null>(null);
 let nextId = 1;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const tc = useTranslations('common');
   const [items, setItems] = useState<ToastItem[]>([]);
 
   const remove = useCallback((id: number) => setItems((xs) => xs.filter((x) => x.id !== id)), []);
@@ -59,8 +61,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             {t.kind === 'success' && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-chalk-600" />}
             {t.kind === 'error' && <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-mark-600" />}
             {t.kind === 'info' && <Info className="mt-0.5 h-4 w-4 shrink-0 text-ink-600" />}
-            <span className="flex-1 text-slate-700">{t.message}</span>
-            <button type="button" onClick={() => remove(t.id)} className="text-slate-400 hover:text-slate-600" aria-label="Đóng">
+            <span className="min-w-0 flex-1 break-words text-slate-700">{t.message}</span>
+            <button type="button" onClick={() => remove(t.id)} className="text-slate-400 hover:text-slate-600" aria-label={tc('close')}>
               <X className="h-4 w-4" />
             </button>
           </div>

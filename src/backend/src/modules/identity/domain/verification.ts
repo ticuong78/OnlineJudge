@@ -44,10 +44,14 @@ export interface VerificationState {
 export const invalidCode = () =>
   DomainError.validation('identity.invalid_code', 'Mã xác thực không đúng hoặc đã hết hạn. Hãy kiểm tra lại email hoặc gửi lại mã.');
 
-/** `attemptsLeft` is what remains after the wrong attempt that was just spent. */
+/**
+ * `attemptsLeft` is what remains after the wrong attempt that was just spent. It is also sent as data, so a client
+ * showing its own wording (the English interface) can still say how many tries are left.
+ */
 export const wrongCode = (attemptsLeft: number) =>
   DomainError.validation('identity.wrong_code',
-    attemptsLeft > 0 ? `Mã xác thực không đúng. Bạn còn ${attemptsLeft} lần thử.` : 'Bạn đã nhập sai quá nhiều lần. Hãy gửi lại mã mới.');
+    attemptsLeft > 0 ? `Mã xác thực không đúng. Bạn còn ${attemptsLeft} lần thử.` : 'Bạn đã nhập sai quá nhiều lần. Hãy gửi lại mã mới.',
+    { attemptsLeft: String(Math.max(0, attemptsLeft)) });
 
 /**
  * A one-time code sent to an email address to prove ownership before something happens

@@ -8,7 +8,8 @@ the role and name come from the account, and a token stops working as soon as th
 changed or reset (signing in again gives a new one).
 Errors: JSON `ApiErrorBody` `{ statusCode, message, code, details? }`. `message` is human readable (Vietnamese); `code` is a
 stable English identifier on every error, so clients branch on `code`, never on `message`:
-domain codes (`identity.wrong_code`, `organization.no_seats`, …, listed per endpoint); request errors raised before the
+domain codes (`identity.wrong_code`, `organization.no_seats`, …, listed per endpoint; `identity.wrong_code` carries
+`details.attemptsLeft`, so a client using its own wording can still show it); request errors raised before the
 use case: `request.invalid` (400, body checks; `message` joins the reasons with "; "), `auth.required` (401),
 `auth.forbidden` (403, role), `request.not_found` (404, unknown route), `request.too_large` (413), other statuses
 `request.failed`; unexpected failures `server.error` (500, generic message, details only in the server log).

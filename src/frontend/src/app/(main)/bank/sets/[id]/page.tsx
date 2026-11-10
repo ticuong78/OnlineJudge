@@ -5,6 +5,7 @@ import { BookmarkPlus, FileKey2, Globe2, Lock, Pencil, Printer, Send, Trash2 } f
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { CopiedFrom, SharingBadge } from '@/components/bank';
 import { RequireRole, STAFF } from '@/components/guards';
@@ -28,6 +29,7 @@ import { api, errorMessage } from '@/lib/api';
 import { useAsync } from '@/lib/use-async';
 
 function ShareCard({ set, onChange }: { set: ProblemSetDto; onChange: (s: ProblemSetDto) => void }) {
+  const t = useTranslations('bank');
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +39,7 @@ function ShareCard({ set, onChange }: { set: ProblemSetDto; onChange: (s: Proble
     try {
       const s = await api.updateProblemSetSharing(set.id, !set.isPublic);
       onChange(s);
-      toast.success(s.isPublic ? 'Đã công khai đề' : 'Đã chuyển đề về riêng tư');
+      toast.success(s.isPublic ? t('set.madePublic') : t('set.madePrivate'));
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -46,11 +48,9 @@ function ShareCard({ set, onChange }: { set: ProblemSetDto; onChange: (s: Proble
   };
   return (
     <Card className="p-5">
-      <h2 className="font-semibold">Chia sẻ</h2>
+      <h2 className="font-semibold">{t('sharing.title')}</h2>
       <p className="mt-1 text-sm text-slate-600">
-        {set.isPublic
-          ? 'Giáo viên khác xem được đề này và lưu về ngân hàng của họ.'
-          : 'Chỉ bạn thấy đề này. Muốn công khai đề thì mọi bài trong đề phải được công khai đề bài.'}
+        {set.isPublic ? t('set.publicHint') : t('set.privateHint')}
       </p>
       {error && (
         <div className="mt-3">
@@ -58,14 +58,16 @@ function ShareCard({ set, onChange }: { set: ProblemSetDto; onChange: (s: Proble
         </div>
       )}
       <Button variant="secondary" className="mt-3" onClick={toggle} loading={busy}>
-        {set.isPublic ? <Lock className="h-4 w-4" /> : <Globe2 className="h-4 w-4" />}
-        <span key={set.isPublic ? 'public' : 'private'}>{set.isPublic ? 'Chuyển về riêng tư' : 'Công khai đề'}</span>
+        {set.isPublic ? <Lock className="h-4 w-4 shrink-0" /> : <Globe2 className="h-4 w-4 shrink-0" />}
+        <span key={set.isPublic ? 'public' : 'private'}>{set.isPublic ? t('set.makePrivate') : t('set.makePublic')}</span>
       </Button>
     </Card>
   );
 }
 
 export default function BankSetPage() {
+  const t = useTranslations('bank');
+  const tc = useTranslations('common');
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const toast = useToast();
@@ -79,7 +81,7 @@ export default function BankSetPage() {
   if (error || !set)
     return (
       <Container>
-        <ErrorState message={error ?? 'Không tìm thấy đề'} onRetry={reload} />
+        <ErrorState message={error ?? t('set.notFound')} onRetry={reload} />
       </Container>
     );
 
@@ -89,7 +91,7 @@ export default function BankSetPage() {
     setDeleting(true);
     try {
       await api.deleteProblemSet(set.id);
-      toast.success('Đã xóa đề');
+      toast.success(t('set.deleted'));
       router.replace('/bank/sets');
     } catch (e) {
       toast.error(errorMessage(e));
@@ -101,7 +103,7 @@ export default function BankSetPage() {
     setCopying(true);
     try {
       const c = await api.copyProblemSet(set.id);
-      toast.success('Đã lưu đề và các bài vào ngân hàng của bạn');
+      toast.success(t('set.copied'));
       router.push(`/bank/sets/${c.id}`);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -113,16 +115,14 @@ export default function BankSetPage() {
     <RequireRole roles={STAFF}>
       <Container>
         <PageHeader
-          back={{ href: '/bank/sets', label: 'Ngân hàng' }}
+          back={{ href: '/bank/sets', label: t('title') }}
           title={set.title}
           subtitle={
             <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <ProblemSetTypeBadge type={set.type} />
               <SharingBadge isPublic={set.isPublic} />
-              <span>
-                {items.length} bài, {set.totalPoints} điểm
-              </span>
-              <span>Của {set.ownerName}</span>
+              <span>{t('countSummary', { count: items.length, points: set.totalPoints })}</span>
+              <span>{t('ownedBy', { name: set.ownerName })}</span>
               <CopiedFrom src={set.copiedFrom} />
             </span>
           }
@@ -130,29 +130,29 @@ export default function BankSetPage() {
             set.canEdit ? (
               <>
                 <Button onClick={() => setAssigning(true)} disabled={items.length === 0}>
-                  <Send className="h-4 w-4" />
-                  Giao bài
+                  <Send className="h-4 w-4 shrink-0" />
+                  {t('assign')}
                 </Button>
                 <LinkButton href={`/bank/sets/${set.id}/print`} variant="secondary" target="_blank">
-                  <Printer className="h-4 w-4" />
-                  In đề
+                  <Printer className="h-4 w-4 shrink-0" />
+                  {t('set.print')}
                 </LinkButton>
                 <LinkButton href={`/bank/sets/${set.id}/answer-key`} variant="secondary" target="_blank">
-                  <FileKey2 className="h-4 w-4" />
-                  In đáp án
+                  <FileKey2 className="h-4 w-4 shrink-0" />
+                  {t('set.printAnswerKey')}
                 </LinkButton>
                 <LinkButton href={`/bank/sets/${set.id}/edit`} variant="secondary">
-                  <Pencil className="h-4 w-4" />
-                  Sửa
+                  <Pencil className="h-4 w-4 shrink-0" />
+                  {tc('edit')}
                 </LinkButton>
-                <Button variant="ghost" className="text-mark-600 hover:bg-mark-50" onClick={() => setConfirmDelete(true)} aria-label="Xóa đề">
+                <Button variant="ghost" className="text-mark-600 hover:bg-mark-50" onClick={() => setConfirmDelete(true)} aria-label={t('set.delete')}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </>
             ) : (
               <Button onClick={copy} loading={copying}>
-                <BookmarkPlus className="h-4 w-4" />
-                Lưu vào ngân hàng của tôi
+                <BookmarkPlus className="h-4 w-4 shrink-0" />
+                {t('saveToMyBank')}
               </Button>
             )
           }
@@ -167,10 +167,10 @@ export default function BankSetPage() {
             )}
             <Card>
               <div className="border-b border-slate-100 px-5 py-3">
-                <h2 className="font-semibold">Các bài trong đề</h2>
+                <h2 className="font-semibold">{t('set.problems')}</h2>
               </div>
               {items.length === 0 ? (
-                <EmptyState title="Đề chưa có bài nào" />
+                <EmptyState title={t('set.empty')} />
               ) : (
                 <ol className="divide-y divide-slate-100">
                   {items.map((it, idx) => {
@@ -178,7 +178,9 @@ export default function BankSetPage() {
                     const unavailable = it.problemCode === '?';
                     const row = (
                       <>
-                        <span className="w-12 text-sm font-semibold text-slate-500 tabular-nums">Bài {idx + 1}</span>
+                        <span className="min-w-12 text-sm font-semibold whitespace-nowrap text-slate-500 tabular-nums">
+                          {t('set.problemNumber', { n: idx + 1 })}
+                        </span>
                         <div className="min-w-0 flex-1">
                           <div className={unavailable ? 'font-medium text-slate-400 italic' : 'font-medium text-slate-900'}>
                             {it.problemTitle}
@@ -190,7 +192,7 @@ export default function BankSetPage() {
                             </div>
                           )}
                         </div>
-                        <span className="text-sm text-slate-600 tabular-nums">{it.points} điểm</span>
+                        <span className="text-sm whitespace-nowrap text-slate-600 tabular-nums">{t('set.points', { points: it.points })}</span>
                       </>
                     );
                     const rowClass = 'flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3';
@@ -215,8 +217,7 @@ export default function BankSetPage() {
               <ShareCard set={set} onChange={(s) => setData(s)} />
             ) : (
               <Card className="p-5 text-sm text-slate-600">
-                Lưu về ngân hàng sẽ sao chép đề và các bài trong đề. Bài có chia sẻ test ẩn hoặc lời giải thì bản sao có
-                kèm; nếu không, bản sao chỉ có test ví dụ.
+                {t('set.copyNote')}
               </Card>
             )}
           </div>
@@ -231,12 +232,8 @@ export default function BankSetPage() {
         />
         <ConfirmDialog
           open={confirmDelete}
-          title="Xóa đề này?"
-          message={
-            <>
-              Đề <b>{set.title}</b> sẽ bị xóa khỏi ngân hàng. Các bài trong đề và các phiên đã giao vẫn được giữ.
-            </>
-          }
+          title={t('set.deleteTitle')}
+          message={t.rich('set.deleteBody', { title: set.title, b: (c) => <b>{c}</b> })}
           loading={deleting}
           onConfirm={remove}
           onClose={() => setConfirmDelete(false)}

@@ -3,6 +3,7 @@
 import type { ClassroomDto, ClassStudentDto, MembershipRequestDto, MembershipRequestKind, MembershipRequestStatus } from '@oj/contracts';
 import { Check, LogOut, UserMinus, UserPlus, X } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
+import { useTranslations } from 'use-intl';
 import { api, errorMessage } from '@/lib/api';
 import { normalizeClassCode } from '@/lib/classes';
 import { useAsync } from '@/lib/use-async';
@@ -10,22 +11,16 @@ import { cn, formatDateTime } from '@/lib/utils';
 import { useToast } from './toast';
 import { Badge, Button, Card, ConfirmDialog, ErrorState, Field, InlineAlert, inputClass, LoadingState, Modal } from './ui';
 
-const kindLabel: Record<MembershipRequestKind, string> = { JOIN: 'Xin vào lớp', LEAVE: 'Xin rời lớp' };
 const kindClass: Record<MembershipRequestKind, string> = {
   JOIN: 'bg-chalk-50 text-chalk-700 ring-1 ring-chalk-200',
   LEAVE: 'bg-mark-50 text-mark-700 ring-1 ring-mark-200',
 };
 
 export function RequestKindBadge({ kind }: { kind: MembershipRequestKind }) {
-  return <Badge className={kindClass[kind]}>{kindLabel[kind]}</Badge>;
+  const t = useTranslations('classes.membership.kind');
+  return <Badge className={kindClass[kind]}>{t(kind)}</Badge>;
 }
 
-const statusLabel: Record<MembershipRequestStatus, string> = {
-  PENDING: 'Chờ giáo viên duyệt',
-  APPROVED: 'Đã duyệt',
-  REJECTED: 'Bị từ chối',
-  CANCELLED: 'Đã hủy',
-};
 const statusClass: Record<MembershipRequestStatus, string> = {
   PENDING: 'bg-amber-100 text-amber-800 ring-1 ring-amber-200',
   APPROVED: 'bg-chalk-100 text-chalk-700',
@@ -34,7 +29,8 @@ const statusClass: Record<MembershipRequestStatus, string> = {
 };
 
 export function RequestStatusBadge({ status }: { status: MembershipRequestStatus }) {
-  return <Badge className={statusClass[status]}>{statusLabel[status]}</Badge>;
+  const t = useTranslations('classes.membership.status');
+  return <Badge className={statusClass[status]}>{t(status)}</Badge>;
 }
 
 /** The student's own note on a request, quoted. */
@@ -47,6 +43,7 @@ function RequestMessage({ message }: { message: string | null }) {
 
 /** "Tham gia lớp": class code plus an optional note; sends a join request. */
 export function JoinClassForm({ onSent }: { onSent: (r: MembershipRequestDto) => void }) {
+  const t = useTranslations('classes');
   const toast = useToast();
   const [code, setCode] = useState('');
   const [message, setMessage] = useState('');
@@ -56,11 +53,11 @@ export function JoinClassForm({ onSent }: { onSent: (r: MembershipRequestDto) =>
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (code.length < 4) return setError('Nhập mã lớp giáo viên đưa, ví dụ 22DTHC5.');
+    if (code.length < 4) return setError(t('membership.join.codeRequired'));
     setSending(true);
     try {
       const r = await api.joinClass({ classCode: code, message: message.trim() || null });
-      toast.success(`Đã gửi yêu cầu vào lớp ${r.className}`);
+      toast.success(t('membership.join.sent', { name: r.className }));
       setCode('');
       setMessage('');
       onSent(r);
@@ -73,7 +70,7 @@ export function JoinClassForm({ onSent }: { onSent: (r: MembershipRequestDto) =>
 
   return (
     <form onSubmit={submit} className="space-y-3">
-      <Field label="Mã lớp">
+      <Field label={t('code.label')}>
         <input
           className={cn(inputClass, 'font-mono tracking-[0.15em]')}
           value={code}
@@ -83,21 +80,21 @@ export function JoinClassForm({ onSent }: { onSent: (r: MembershipRequestDto) =>
           autoComplete="off"
         />
       </Field>
-      <Field label="Lời nhắn cho giáo viên (không bắt buộc)">
+      <Field label={t('membership.join.messageLabel')}>
         <input
           className={inputClass}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           maxLength={500}
-          placeholder="Em là Nguyễn Văn A, lớp 11A1"
+          placeholder={t('membership.join.messagePlaceholder')}
         />
       </Field>
       {error && <InlineAlert>{error}</InlineAlert>}
       <Button type="submit" loading={sending}>
-        <UserPlus className="h-4 w-4" />
-        Gửi yêu cầu vào lớp
+        <UserPlus className="h-4 w-4 shrink-0" />
+        {t('membership.join.submit')}
       </Button>
-      <p className="text-xs text-slate-500">Giáo viên duyệt xong, lớp sẽ hiện trong danh sách của bạn.</p>
+      <p className="text-xs text-slate-500">{t('membership.join.note')}</p>
     </form>
   );
 }
@@ -114,6 +111,8 @@ export function LeaveClassButton({
   onSent: (r: MembershipRequestDto) => void;
   onCancel: (r: MembershipRequestDto) => void;
 }) {
+  const t = useTranslations('classes.membership.leave');
+  const tc = useTranslations('common');
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState('');
@@ -123,7 +122,7 @@ export function LeaveClassButton({
   if (pending) {
     return (
       <span className="inline-flex flex-wrap items-center gap-2">
-        <Badge className={statusClass.PENDING}>Đang chờ duyệt rời lớp</Badge>
+        <Badge className={statusClass.PENDING}>{t('pending')}</Badge>
         <CancelRequestButton request={pending} onCancelled={onCancel} />
       </span>
     );
@@ -135,7 +134,7 @@ export function LeaveClassButton({
     setError(null);
     try {
       const r = await api.leaveClass(cls.id, { message: message.trim() || null });
-      toast.success('Đã gửi yêu cầu rời lớp');
+      toast.success(t('sent'));
       setOpen(false);
       setMessage('');
       onSent(r);
@@ -149,30 +148,27 @@ export function LeaveClassButton({
   return (
     <>
       <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
-        <LogOut className="h-4 w-4" />
-        Xin rời lớp
+        <LogOut className="h-4 w-4 shrink-0" />
+        {t('button')}
       </Button>
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title={`Xin rời lớp ${cls.name}?`}
+        title={t('title', { name: cls.name })}
         footer={
           <>
             <Button variant="secondary" onClick={() => setOpen(false)} disabled={busy}>
-              Hủy
+              {tc('cancel')}
             </Button>
             <Button variant="danger" onClick={send} loading={busy}>
-              Gửi yêu cầu rời lớp
+              {t('submit')}
             </Button>
           </>
         }
       >
         <div className="space-y-3 text-sm text-slate-600">
-          <p>
-            Giáo viên {cls.teacherName} sẽ duyệt yêu cầu. Khi đã rời lớp, bạn vẫn xem lại được các phiên cũ và bảng tin của lớp,
-            nhưng không nộp bài mới.
-          </p>
-          <Field label="Lý do (không bắt buộc)">
+          <p>{t('body', { teacher: cls.teacherName })}</p>
+          <Field label={t('reasonLabel')}>
             <textarea
               className={cn(inputClass, 'min-h-20')}
               value={message}
@@ -195,6 +191,7 @@ export function CancelRequestButton({
   request: MembershipRequestDto;
   onCancelled: (r: MembershipRequestDto) => void;
 }) {
+  const t = useTranslations('classes.membership');
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   return (
@@ -206,7 +203,7 @@ export function CancelRequestButton({
         setBusy(true);
         try {
           const r = await api.cancelMembershipRequest(request.id);
-          toast.success('Đã hủy yêu cầu');
+          toast.success(t('cancelled'));
           onCancelled(r);
         } catch (e) {
           toast.error(errorMessage(e));
@@ -215,7 +212,7 @@ export function CancelRequestButton({
         }
       }}
     >
-      Hủy yêu cầu
+      {t('cancel')}
     </Button>
   );
 }
@@ -228,6 +225,7 @@ export function MyRequestList({
   requests: MembershipRequestDto[];
   onChange: (r: MembershipRequestDto) => void;
 }) {
+  const t = useTranslations('classes.membership');
   const pending = requests.filter((r) => r.status === 'PENDING');
   const decided = requests.filter((r) => r.status !== 'PENDING').slice(0, 5);
   if (requests.length === 0) return null;
@@ -242,12 +240,12 @@ export function MyRequestList({
               <RequestStatusBadge status={r.status} />
             </div>
             <div className="mt-0.5 flex flex-wrap gap-x-4 text-xs text-slate-500">
-              <span>Giáo viên {r.teacherName}</span>
-              <span>Gửi {formatDateTime(r.createdAt)}</span>
+              <span>{t('teacher', { name: r.teacherName })}</span>
+              <span>{t('sentAt', { date: formatDateTime(r.createdAt) })}</span>
               {r.decidedAt && r.status !== 'CANCELLED' && (
                 <span>
-                  {r.status === 'APPROVED' ? 'Duyệt' : 'Từ chối'} {formatDateTime(r.decidedAt)}
-                  {r.decidedByName ? `, bởi ${r.decidedByName}` : ''}
+                  {t(r.status === 'APPROVED' ? 'approvedAt' : 'rejectedAt', { date: formatDateTime(r.decidedAt) })}
+                  {r.decidedByName ? t('decidedBy', { name: r.decidedByName }) : ''}
                 </span>
               )}
             </div>
@@ -264,6 +262,8 @@ export function MyRequestList({
 
 /** Pending join and leave requests of one class, with approve / reject. Read-only while the class is archived. */
 export function ClassRequestsPanel({ cls, onDecided }: { cls: ClassroomDto; onDecided: () => void }) {
+  const t = useTranslations('classes.membership.panel');
+  const tm = useTranslations('classes.membership');
   const toast = useToast();
   const { data, error, loading, reload, setData } = useAsync(() => api.listClassRequests(cls.id), [cls.id]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -281,9 +281,9 @@ export function ClassRequestsPanel({ cls, onDecided }: { cls: ClassroomDto; onDe
       toast.success(
         approve
           ? r.kind === 'JOIN'
-            ? `Đã nhận ${r.studentName} vào lớp`
-            : `Đã cho ${r.studentName} rời lớp`
-          : `Đã từ chối yêu cầu của ${r.studentName}`,
+            ? t('joined', { name: r.studentName })
+            : t('left', { name: r.studentName })
+          : t('rejected', { name: r.studentName }),
       );
       setData((prev) => (prev ?? []).filter((x) => x.id !== r.id));
       onDecided();
@@ -299,7 +299,7 @@ export function ClassRequestsPanel({ cls, onDecided }: { cls: ClassroomDto; onDe
     setBusy('all');
     try {
       const { approved } = await api.approveAllJoinRequests(cls.id);
-      toast.success(`Đã nhận ${approved} học sinh vào lớp`);
+      toast.success(t('approvedAll', { count: approved }));
       setData((prev) => (prev ?? []).filter((x) => x.kind !== 'JOIN'));
       onDecided();
     } catch (e) {
@@ -314,19 +314,19 @@ export function ClassRequestsPanel({ cls, onDecided }: { cls: ClassroomDto; onDe
     <Card className="mb-6 border-amber-200">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-3">
         <h2 className="font-semibold">
-          Yêu cầu chờ duyệt
+          {t('title')}
           {list.length > 0 && <span className="ml-2 text-sm font-normal text-slate-500 tabular-nums">{list.length}</span>}
         </h2>
         {!archived && joins > 0 && (
           <Button size="sm" variant="success" onClick={approveAll} loading={busy === 'all'} disabled={!!busy && busy !== 'all'}>
-            <Check className="h-4 w-4" />
-            Duyệt tất cả yêu cầu vào lớp ({joins})
+            <Check className="h-4 w-4 shrink-0" />
+            {t('approveAll', { count: joins })}
           </Button>
         )}
       </div>
       {archived && (
         <p className="border-b border-slate-100 px-5 py-2 text-xs text-slate-500">
-          Lớp đã lưu trữ nên chưa duyệt được. Các yêu cầu vẫn được giữ, khôi phục lớp để duyệt.
+          {t('archivedNote')}
         </p>
       )}
       {loading && !data ? (
@@ -345,11 +345,11 @@ export function ClassRequestsPanel({ cls, onDecided }: { cls: ClassroomDto; onDe
                   <span className="font-medium text-slate-900">{r.studentName}</span>
                   <span className="text-sm break-all text-slate-500">{r.studentEmail}</span>
                 </div>
-                <div className="mt-0.5 text-xs text-slate-500">Gửi {formatDateTime(r.createdAt)}</div>
+                <div className="mt-0.5 text-xs text-slate-500">{tm('sentAt', { date: formatDateTime(r.createdAt) })}</div>
                 <RequestMessage message={r.message} />
               </div>
               {!archived && (
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"
                     variant={r.kind === 'LEAVE' ? 'secondary' : 'success'}
@@ -357,12 +357,12 @@ export function ClassRequestsPanel({ cls, onDecided }: { cls: ClassroomDto; onDe
                     disabled={!!busy}
                     onClick={() => decide(r, true)}
                   >
-                    <Check className="h-4 w-4" />
-                    {r.kind === 'JOIN' ? 'Duyệt vào lớp' : 'Duyệt rời lớp'}
+                    <Check className="h-4 w-4 shrink-0" />
+                    {r.kind === 'JOIN' ? t('approveJoin') : t('approveLeave')}
                   </Button>
                   <Button size="sm" variant="ghost" loading={busy === r.id + ':no'} disabled={!!busy} onClick={() => decide(r, false)}>
-                    <X className="h-4 w-4" />
-                    Từ chối
+                    <X className="h-4 w-4 shrink-0" />
+                    {t('reject')}
                   </Button>
                 </div>
               )}
@@ -376,6 +376,7 @@ export function ClassRequestsPanel({ cls, onDecided }: { cls: ClassroomDto; onDe
 
 /** "Thêm học sinh" by account email: no request, the student is in the class at once. */
 export function AddStudentForm({ classId, onAdded }: { classId: string; onAdded: (s: ClassStudentDto) => void }) {
+  const t = useTranslations('classes.membership.add');
   const toast = useToast();
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -384,11 +385,11 @@ export function AddStudentForm({ classId, onAdded }: { classId: string; onAdded:
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!email.trim()) return setError('Nhập email tài khoản học sinh.');
+    if (!email.trim()) return setError(t('emailRequired'));
     setBusy(true);
     try {
       const s = await api.addStudent(classId, { email: email.trim() });
-      toast.success(`Đã thêm ${s.displayName} vào lớp`);
+      toast.success(t('added', { name: s.displayName }));
       setEmail('');
       onAdded(s);
     } catch (err) {
@@ -401,22 +402,22 @@ export function AddStudentForm({ classId, onAdded }: { classId: string; onAdded:
   return (
     <form onSubmit={submit} className="border-b border-slate-100 px-5 py-3">
       <div className="flex flex-wrap items-end gap-2">
-        <Field label="Thêm học sinh bằng email" className="min-w-0 flex-1 basis-56">
+        <Field label={t('label')} className="min-w-0 flex-1 basis-56">
           <input
             type="email"
             className={inputClass}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="hocsinh@gmail.com"
+            placeholder={t('placeholder')}
             autoComplete="off"
           />
         </Field>
         <Button type="submit" variant="secondary" loading={busy}>
-          <UserPlus className="h-4 w-4" />
-          Thêm học sinh
+          <UserPlus className="h-4 w-4 shrink-0" />
+          {t('submit')}
         </Button>
       </div>
-      <p className="mt-1 text-xs text-slate-500">Học sinh cần đăng ký tài khoản trước. Thêm bằng email thì vào lớp ngay, không cần duyệt.</p>
+      <p className="mt-1 text-xs text-slate-500">{t('note')}</p>
       {error && (
         <div className="mt-2">
           <InlineAlert>{error}</InlineAlert>
@@ -436,32 +437,33 @@ export function RemoveStudentButton({
   student: ClassStudentDto;
   onRemoved: () => void;
 }) {
+  const t = useTranslations('classes.membership.remove');
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   return (
     <>
       <Button size="sm" variant="ghost" className="text-mark-600 hover:bg-mark-50" onClick={() => setOpen(true)}>
-        <UserMinus className="h-4 w-4" />
-        Mời ra khỏi lớp
+        <UserMinus className="h-4 w-4 shrink-0" />
+        {t('button')}
       </Button>
       <ConfirmDialog
         open={open}
-        title={`Mời ${student.displayName} ra khỏi lớp?`}
-        confirmLabel="Mời ra khỏi lớp"
+        title={t('title', { name: student.displayName })}
+        confirmLabel={t('button')}
         loading={busy}
         message={
           <ul className="list-disc space-y-1 pl-5">
-            <li>Học sinh không còn trong lớp {cls.name}, không nộp bài mới cho lớp này.</li>
-            <li>Các phiên đã làm, bài nộp và học bạ vẫn được giữ; học sinh vẫn xem lại được lớp ở mục lớp cũ.</li>
-            <li>Muốn nhận lại, thêm học sinh bằng email hoặc duyệt khi học sinh xin vào lớp.</li>
+            <li>{t('notInClass', { name: cls.name })}</li>
+            <li>{t('kept')}</li>
+            <li>{t('readd')}</li>
           </ul>
         }
         onConfirm={async () => {
           setBusy(true);
           try {
             await api.removeStudent(cls.id, student.userId);
-            toast.success(`Đã mời ${student.displayName} ra khỏi lớp`);
+            toast.success(t('removed', { name: student.displayName }));
             setOpen(false);
             onRemoved();
           } catch (e) {

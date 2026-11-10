@@ -20,7 +20,7 @@ it safe, how it is configured and run, and what is known to be missing. Rules fo
 | `@oj/contracts` | `src/shared` | DTOs, enums, judge queue messages; the single source of request/response shapes |
 | `@oj/backend` | `src/backend` | REST API under `/api`; DDD bounded contexts; TypeORM; BullMQ producer and result consumer |
 | `@oj/engine` | `src/engine` | Judge worker: compiles and runs code in Docker via the `oj-run` supervisor; never reads the database |
-| `@oj/frontend` | `src/frontend` | Next.js UI; `lib/api.ts` is the only HTTP client; business rules stay in the backend |
+| `@oj/frontend` | `src/frontend` | Next.js UI; `lib/api.ts` is the only HTTP client; business rules stay in the backend; interface in Vietnamese and English (`src/i18n`, `use-intl`, cookie `oj_locale`, OJ-12) |
 
 ## 2. Backend bounded contexts
 

@@ -5,6 +5,7 @@ import { Pin, PinOff, Send, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
+import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { MarkdownField } from '@/components/form-fields';
 import { Markdown } from '@/components/markdown';
@@ -21,6 +22,9 @@ type Deleting = { kind: 'thread' } | { kind: 'reply'; reply: ThreadReplyDto } | 
 
 export default function ThreadPage() {
   const { id } = useParams<{ id: string }>();
+  const tr = useTranslations('classes.thread');
+  const tt = useTranslations('classes.threads');
+  const tc = useTranslations('common');
   const router = useRouter();
   const toast = useToast();
   const { isStaff } = useAuth();
@@ -35,22 +39,22 @@ export default function ThreadPage() {
   if (error || !t)
     return (
       <Container>
-        <ErrorState message={error ?? 'Không tìm thấy bài đăng'} onRetry={reload} />
+        <ErrorState message={error ?? tr('notFound')} onRetry={reload} />
       </Container>
     );
 
-  const back = { href: isStaff ? `/classes/${t.classId}` : `/my-class/${t.classId}`, label: 'Về lớp' };
+  const back = { href: isStaff ? `/classes/${t.classId}` : `/my-class/${t.classId}`, label: tr('back') };
 
   const send = async (e: FormEvent) => {
     e.preventDefault();
-    if (!reply.trim()) return setReplyError('Viết nội dung trả lời trước khi gửi.');
+    if (!reply.trim()) return setReplyError(tr('replyRequired'));
     setSending(true);
     setReplyError(null);
     try {
       const r = await api.replyThread(t.id, { body: reply });
       setData({ ...t, replies: [...t.replies, r], replyCount: t.replyCount + 1, lastActivityAt: r.createdAt });
       setReply('');
-      toast.success('Đã gửi trả lời');
+      toast.success(tr('replySent'));
     } catch (err) {
       setReplyError(errorMessage(err));
     } finally {
@@ -63,7 +67,7 @@ export default function ThreadPage() {
     try {
       const n = await api.pinThread(t.id, !t.pinned);
       setData({ ...t, ...n, replies: n.replies ?? t.replies });
-      toast.success(n.pinned ? 'Đã ghim lên đầu bảng tin' : 'Đã bỏ ghim');
+      toast.success(n.pinned ? tr('pinnedToast') : tr('unpinnedToast'));
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
@@ -77,13 +81,13 @@ export default function ThreadPage() {
     try {
       if (deleting.kind === 'thread') {
         await api.deleteThread(t.id);
-        toast.success('Đã xóa bài đăng');
+        toast.success(tr('deletedThread'));
         router.replace(back.href);
         return;
       }
       await api.deleteReply(t.id, deleting.reply.id);
       setData({ ...t, replies: t.replies.filter((r) => r.id !== deleting.reply.id), replyCount: Math.max(0, t.replyCount - 1) });
-      toast.success('Đã xóa trả lời');
+      toast.success(tr('deletedReply'));
       setDeleting(null);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -101,8 +105,8 @@ export default function ThreadPage() {
           <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
             {t.pinned && (
               <span className="inline-flex items-center gap-1 text-ink-700">
-                <Pin className="h-3.5 w-3.5" aria-hidden="true" />
-                Đã ghim
+                <Pin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                {tt('pinned')}
               </span>
             )}
             <ThreadKindBadge kind={t.kind} />
@@ -110,8 +114,9 @@ export default function ThreadPage() {
             <span>{formatDateTime(t.createdAt)}</span>
             {t.sessionId && t.sessionTitle && (
               <Link href={t.problemKey ? solveHref(t.sessionId, t.problemKey) : sessionHref(t.sessionId)} className="hover:text-ink-700">
-                Về {t.problemKey ? `bài ${t.problemKey}, ` : ''}
-                {t.sessionTitle}
+                {t.problemKey
+                  ? tt('aboutProblem', { problem: t.problemKey, session: t.sessionTitle })
+                  : tt('aboutSession', { session: t.sessionTitle })}
               </Link>
             )}
           </span>
@@ -120,14 +125,14 @@ export default function ThreadPage() {
           <>
             {t.canPin && (
               <Button variant="secondary" onClick={togglePin} loading={busy && !deleting}>
-                {t.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
-                <span key={t.pinned ? 'pinned' : 'unpinned'}>{t.pinned ? 'Bỏ ghim' : 'Ghim'}</span>
+                {t.pinned ? <PinOff className="h-4 w-4 shrink-0" /> : <Pin className="h-4 w-4 shrink-0" />}
+                <span key={t.pinned ? 'pinned' : 'unpinned'}>{t.pinned ? tr('unpin') : tr('pin')}</span>
               </Button>
             )}
             {t.canDelete && (
               <Button variant="ghost" className="text-mark-600 hover:bg-mark-50" onClick={() => setDeleting({ kind: 'thread' })}>
-                <Trash2 className="h-4 w-4" />
-                Xóa
+                <Trash2 className="h-4 w-4 shrink-0" />
+                {tc('delete')}
               </Button>
             )}
           </>
@@ -138,7 +143,7 @@ export default function ThreadPage() {
         <Markdown className="max-w-[72ch]">{t.body}</Markdown>
       </Card>
 
-      <h2 className="mb-3 font-semibold">{t.replies.length ? `${t.replies.length} trả lời` : 'Chưa có trả lời'}</h2>
+      <h2 className="mb-3 font-semibold">{t.replies.length ? tt('replyCount', { count: t.replies.length }) : tr('noReplies')}</h2>
       <ol className="mb-6 space-y-3">
         {t.replies.map((r) => {
           const staff = r.authorRole === 'TEACHER' || r.authorRole === 'ADMIN';
@@ -156,7 +161,7 @@ export default function ThreadPage() {
                     className="ml-auto text-xs text-slate-500 hover:text-mark-600"
                     onClick={() => setDeleting({ kind: 'reply', reply: r })}
                   >
-                    Xóa
+                    {tc('delete')}
                   </button>
                 )}
               </div>
@@ -169,24 +174,24 @@ export default function ThreadPage() {
       {t.canReply ? (
         <Card className="p-5">
           <form onSubmit={send} className="space-y-3">
-            <MarkdownField label="Trả lời" value={reply} onChange={setReply} rows={4} />
+            <MarkdownField label={tr('replyLabel')} value={reply} onChange={setReply} rows={4} />
             {replyError && <InlineAlert>{replyError}</InlineAlert>}
             <div className="flex justify-end">
               <Button type="submit" loading={sending}>
-                <Send className="h-4 w-4" />
-                Gửi trả lời
+                <Send className="h-4 w-4 shrink-0" />
+                {tr('sendReply')}
               </Button>
             </div>
           </form>
         </Card>
       ) : (
-        <p className="text-sm text-slate-500">Bảng tin chỉ còn để đọc: lớp đã lưu trữ hoặc bạn không còn trong lớp.</p>
+        <p className="text-sm text-slate-500">{tr('readOnly')}</p>
       )}
 
       <ConfirmDialog
         open={!!deleting}
-        title={deleting?.kind === 'thread' ? 'Xóa bài đăng này?' : 'Xóa trả lời này?'}
-        message={deleting?.kind === 'thread' ? 'Bài đăng và mọi trả lời sẽ bị xóa.' : 'Trả lời sẽ bị xóa khỏi bài đăng.'}
+        title={deleting?.kind === 'thread' ? tr('deleteThreadTitle') : tr('deleteReplyTitle')}
+        message={deleting?.kind === 'thread' ? tr('deleteThreadBody') : tr('deleteReplyBody')}
         loading={busy}
         onConfirm={doDelete}
         onClose={() => setDeleting(null)}

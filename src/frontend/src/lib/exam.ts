@@ -1,4 +1,5 @@
 import { LanguageLabels, Languages, type FeedbackMode, type Language, type ProblemSetType, type SessionDto, type SessionSettingsDto } from '@oj/contracts';
+import { tr } from '@/i18n/runtime';
 
 export const DEFAULT_SETTINGS: SessionSettingsDto = {
   durationMinutes: null,
@@ -33,14 +34,14 @@ export function defaultSettingsFor(type: ProblemSetType | undefined): SessionSet
   return DEFAULT_SETTINGS;
 }
 
-export const FeedbackLabels: Record<FeedbackMode, { label: string; hint: string }> = {
-  FULL: { label: 'Đầy đủ', hint: 'Học sinh thấy kết quả từng test ngay sau khi chấm.' },
-  SCORE_ONLY: { label: 'Chỉ điểm', hint: 'Học sinh thấy kết quả chung và điểm, không thấy từng test.' },
-  HIDDEN_UNTIL_CLOSED: {
-    label: 'Ẩn đến khi phiên đóng',
-    hint: 'Học sinh chỉ thấy “Đã nộp”. Kết quả hiện khi phiên đóng.',
-  },
-};
+/** Feedback modes in the order the settings form lists them. */
+export const FEEDBACK_MODES: FeedbackMode[] = ['FULL', 'SCORE_ONLY', 'HIDDEN_UNTIL_CLOSED'];
+
+/** Label and hint for a feedback mode, in the active language (looked up at call time). */
+export function feedbackLabel(f: FeedbackMode): { label: string; hint: string } {
+  const t = tr();
+  return { label: t(`assign.feedback.${f}.label`), hint: t(`assign.feedback.${f}.hint`) };
+}
 
 export function allowedLanguages(settings: SessionSettingsDto | undefined): Language[] {
   const list = settings?.allowedLanguages ?? [];
@@ -49,31 +50,39 @@ export function allowedLanguages(settings: SessionSettingsDto | undefined): Lang
 
 /** Short lines describing the rules, for the session page and the start screen. */
 export function settingsSummary(s: SessionSettingsDto): string[] {
+  const t = tr();
   const out: string[] = [];
-  if (s.durationMinutes) out.push(`Làm trong ${s.durationMinutes} phút từ lúc bấm bắt đầu`);
+  if (s.durationMinutes) out.push(t('assign.summary.duration', { minutes: s.durationMinutes }));
   out.push(
     s.allowedLanguages.length
-      ? `Ngôn ngữ: ${allowedLanguages(s)
-          .map((l) => LanguageLabels[l])
-          .join(', ')}`
-      : 'Dùng ngôn ngữ nào cũng được',
+      ? t('assign.summary.languages', {
+          list: allowedLanguages(s)
+            .map((l) => LanguageLabels[l])
+            .join(', '),
+        })
+      : t('assign.summary.anyLanguage'),
   );
-  out.push(s.maxSubmissionsPerProblem ? `Tối đa ${s.maxSubmissionsPerProblem} lần nộp mỗi bài` : 'Nộp không giới hạn số lần');
+  out.push(
+    s.maxSubmissionsPerProblem
+      ? t('assign.summary.maxSubmissions', { count: s.maxSubmissionsPerProblem })
+      : t('assign.summary.unlimitedSubmissions'),
+  );
   out.push(
     s.feedback === 'FULL'
-      ? 'Xem kết quả từng test ngay'
+      ? t('assign.summary.feedbackFull')
       : s.feedback === 'SCORE_ONLY'
-        ? 'Chỉ xem kết quả chung và điểm'
-        : 'Kết quả hiện sau khi phiên đóng',
+        ? t('assign.summary.feedbackScoreOnly')
+        : t('assign.summary.feedbackHidden'),
   );
   return out;
 }
 
 /** Teacher-only chips: integrity checks are never shown to students. */
 export function integritySummary(s: SessionSettingsDto): string[] {
+  const t = tr();
   const out: string[] = [];
-  if (s.checkPlagiarism) out.push('Kiểm tra đạo văn');
-  if (s.checkAiUsage) out.push('Kiểm tra dùng AI');
+  if (s.checkPlagiarism) out.push(t('assign.summary.plagiarism'));
+  if (s.checkAiUsage) out.push(t('assign.summary.aiUsage'));
   return out;
 }
 
