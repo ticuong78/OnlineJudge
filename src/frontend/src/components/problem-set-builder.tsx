@@ -14,9 +14,11 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslations } from 'use-intl';
 import { api } from '@/lib/api';
 import { useAsync } from '@/lib/use-async';
+import { isDirty } from '@/lib/unsaved';
 import { cn } from '@/lib/utils';
 import { MarkdownField } from './form-fields';
-import { Button, Card, DifficultyBadge, EmptyState, Field, InlineAlert, inputClass, LoadingState, Pagination } from './ui';
+import { LeaveGuard } from './leave-guard';
+import { Button, Card, DifficultyBadge, EmptyState, Field, InlineAlert, inputClass, ListSkeleton, Pagination } from './ui';
 
 type Item = Omit<ProblemSetItemDto, 'order'>;
 
@@ -47,6 +49,7 @@ function ProblemPicker({ selected, onAdd }: { selected: Set<string>; onAdd: (i: 
           <input
             className={cn(inputClass, 'pl-9')}
             placeholder={t('filters.searchProblems')}
+            aria-label={t('filters.searchProblems')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -66,7 +69,7 @@ function ProblemPicker({ selected, onAdd }: { selected: Set<string>; onAdd: (i: 
         </select>
       </div>
       {loading && !data ? (
-        <LoadingState />
+        <ListSkeleton />
       ) : error ? (
         <p className="p-4 text-sm text-mark-600">{error}</p>
       ) : !data || data.items.length === 0 ? (
@@ -134,6 +137,9 @@ export function ProblemSetBuilder({
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const current = { title, description, type, items };
+  const [loaded] = useState(current);
+  const dirty = isDirty(current, loaded);
 
   const total = items.reduce((s, i) => s + (Number(i.points) || 0), 0);
   const selected = new Set(items.map((i) => i.problemId));
@@ -170,6 +176,7 @@ export function ProblemSetBuilder({
 
   return (
     <form onSubmit={submit} className="space-y-5">
+      <LeaveGuard dirty={dirty && !saving} />
       <Card className="space-y-4 p-5">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <Field label={t('name')} className="md:col-span-2">
@@ -261,7 +268,7 @@ export function ProblemSetBuilder({
       </div>
 
       {error && <InlineAlert>{error}</InlineAlert>}
-      <div className="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center justify-end gap-3 border-t border-rule bg-white/95 px-4 py-3">
+      <div className="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center justify-end gap-3 border-t border-rule bg-surface/95 px-4 py-3">
         <span className="text-sm text-slate-600">{tb('countSummary', { count: items.length, points: total })}</span>
         <Button type="submit" loading={saving}>
           <Save className="h-4 w-4 shrink-0" />

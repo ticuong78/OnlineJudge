@@ -286,7 +286,7 @@ export function MoveStudentControl({
   const options = classes.filter((c) => c.id !== excludeClassId);
   const [target, setTarget] = useState('');
   const [busy, setBusy] = useState(false);
-  if (options.length === 0) return excludeClassId ? null : <span className="text-xs text-slate-400">{t('noClasses')}</span>;
+  if (options.length === 0) return excludeClassId ? null : <span className="text-xs text-slate-500">{t('noClasses')}</span>;
   const add = async () => {
     if (!target) return;
     setBusy(true);

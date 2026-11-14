@@ -14,6 +14,7 @@ export const authoring = {
     saveFailed: 'Lỗi khi lưu',
   },
   suggestion: {
+    titleShort: 'Tên gợi ý',
     use: 'Dùng gợi ý',
     useFor: 'Dùng gợi ý cho mục {label}',
     aiLabel: 'Gợi ý AI',
@@ -124,6 +125,8 @@ export const authoring = {
     },
     drop: 'Kéo thả file đề vào đây hoặc bấm để chọn',
     dropHint: 'Hỗ trợ .docx và .pdf, tối đa 10MB',
+    photoHint: 'Ảnh chụp đề (.png, .jpg, .webp, tối đa 5MB) được đọc bằng AI.',
+    photoVip: 'Ảnh chụp đề được đọc bằng AI: dành cho tài khoản VIP.',
     paste: {
       intro:
         'Dán nội dung đề (một hoặc nhiều bài) từ Word, trang web hay tin nhắn. AI sẽ tách từng bài và sắp xếp lại thành đề bài, dữ liệu vào, kết quả, ràng buộc và ví dụ, giống như khi tải file lên.',
@@ -132,6 +135,7 @@ export const authoring = {
       label: 'Nội dung đề',
       counter: '{count} / {max} ký tự',
       tooLong: ' (quá dài, hãy chia thành nhiều lần)',
+      submitBasic: 'Tách đề theo mẫu',
       submit: 'Tái cấu trúc bằng AI',
     },
     draft: {
@@ -173,6 +177,7 @@ export const authoring = {
     found: 'tách được {count} bài, đã chọn {picked}',
     selectAll: 'Chọn tất cả',
     deselectAll: 'Bỏ chọn',
+    basicQuota: 'Đề được đọc theo mẫu có sẵn vì bạn đã dùng hết lượt đọc đề bằng AI của tháng này. Tài khoản VIP có nhiều lượt hơn.',
     basicAi: 'Đề được đọc theo mẫu có sẵn. File PDF lộn xộn hoặc bản scan sẽ đọc tốt hơn bằng AI, khi máy chủ có khóa API của Claude.',
     basicVip:
       'Đề được đọc theo mẫu có sẵn. File PDF lộn xộn hoặc bản scan sẽ đọc tốt hơn bằng AI (chỉ dành cho tài khoản giáo viên VIP).',

@@ -6,6 +6,7 @@ import { useState, type ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { copyToClipboard } from '@/lib/utils';
 import { Markdown } from './markdown';
+import { TopicBadges } from './topics';
 import { Badge, DifficultyBadge } from './ui';
 
 export function CopyButton({ text, label }: { text: string; label?: string }) {
@@ -21,7 +22,7 @@ export function CopyButton({ text, label }: { text: string; label?: string }) {
           setTimeout(() => setDone(false), 1500);
         }
       }}
-      className="no-print inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs whitespace-nowrap text-slate-500 hover:bg-slate-200 hover:text-slate-800"
+      className="no-print inline-flex min-h-7 shrink-0 items-center gap-1 rounded px-2 py-1 text-xs whitespace-nowrap text-slate-500 hover:bg-slate-200 hover:text-slate-800"
     >
       {done ? <Check className="h-3.5 w-3.5 shrink-0 text-chalk-600" /> : <Copy className="h-3.5 w-3.5 shrink-0" />}
       {done ? t('copied') : (label ?? tc('copy'))}
@@ -58,7 +59,7 @@ export function SampleTests({ samples, copyable = true }: { samples: SampleIO[];
                   <span className="text-xs font-semibold text-slate-500">{k === 'input' ? 'Input' : 'Output'}</span>
                   {copyable && <CopyButton text={t[k]} />}
                 </div>
-                <pre className="io-block max-h-64 overflow-auto bg-white px-3 py-2">{t[k] || ' '}</pre>
+                <pre className="io-block max-h-64 overflow-auto bg-surface px-3 py-2">{t[k] || ' '}</pre>
               </div>
             ))}
           </div>
@@ -99,9 +100,7 @@ export function ProblemStatement({
         <span className="font-medium tabular-nums">{problem.code}</span>
         <DifficultyBadge difficulty={problem.difficulty} />
         {points !== undefined && <Badge className="bg-ink-100 text-ink-700">{t('points', { points })}</Badge>}
-        {(problem.tags ?? []).map((t) => (
-          <Badge key={t}>{t}</Badge>
-        ))}
+        <TopicBadges tags={problem.tags ?? []} />
       </div>
       <h1 className="mt-2 text-2xl font-bold text-slate-900">{problem.title}</h1>
       <div className="mt-2 flex flex-wrap gap-4 text-sm text-slate-600">

@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslations } from 'use-intl';
+import { PasswordInput } from '@/components/form-fields';
+import { usePageTitle } from '@/lib/page-title';
 import { Button, Card, Field, InlineAlert, inputClass } from '@/components/ui';
 import { CodeExpiry, OTP_LENGTH, OtpInput, ResendCodeButton, useNow } from '@/components/verification';
 import { api, errorMessage } from '@/lib/api';
@@ -13,6 +15,7 @@ import { useAuth } from '@/lib/auth';
 
 export default function RegisterPage() {
   const t = useTranslations('auth');
+  usePageTitle(t('register.title'));
   const { signIn, user, loading } = useAuth();
   const router = useRouter();
   const now = useNow();
@@ -161,21 +164,17 @@ export default function RegisterPage() {
         </Field>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label={t('fields.password')}>
-            <input
-              type="password"
+            <PasswordInput
               required
               autoComplete="new-password"
-              className={inputClass}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
           </Field>
           <Field label={t('fields.confirmPassword')}>
-            <input
-              type="password"
+            <PasswordInput
               required
               autoComplete="new-password"
-              className={inputClass}
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
             />

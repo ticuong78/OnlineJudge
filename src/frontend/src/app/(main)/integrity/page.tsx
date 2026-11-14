@@ -6,10 +6,11 @@ import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { RequireRole, STAFF } from '@/components/guards';
 import { FlagList } from '@/components/integrity';
-import { Card, EmptyState, ErrorState, LoadingState, PageHeader } from '@/components/ui';
+import { Card, EmptyState, ErrorState, ListSkeleton, PageHeader } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAsync } from '@/lib/use-async';
 import { cn } from '@/lib/utils';
+import { AiChecksPaused } from '@/components/ai-access';
 
 export default function IntegrityPage() {
   const t = useTranslations('admin.integrity');
@@ -23,13 +24,14 @@ export default function IntegrityPage() {
           title={t('title')}
           subtitle={t('subtitle')}
         />
+        <AiChecksPaused />
         <div className="mb-4 inline-flex rounded-control bg-slate-100 p-1 text-sm">
           {(['OPEN', 'ACKNOWLEDGED'] as const).map((s) => (
             <button
               key={s}
               type="button"
               onClick={() => setStatus(s)}
-              className={cn('rounded-[4px] px-3 py-1 whitespace-nowrap', status === s ? 'bg-white font-medium ring-1 ring-slate-300' : 'text-slate-600')}
+              className={cn('rounded-[4px] px-3 py-1 whitespace-nowrap', status === s ? 'bg-surface font-medium ring-1 ring-slate-300' : 'text-slate-600')}
             >
               {t(`status.${s}`)}
             </button>
@@ -37,7 +39,7 @@ export default function IntegrityPage() {
         </div>
         <Card>
           {loading && !data ? (
-            <LoadingState />
+            <ListSkeleton />
           ) : error ? (
             <div className="p-4">
               <ErrorState message={error} onRetry={reload} />

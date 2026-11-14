@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { JoinClassForm, LeaveClassButton, MyRequestList } from '@/components/membership';
-import { Badge, Card, EmptyState, ErrorState, LinkButton, LoadingState, PageHeader } from '@/components/ui';
+import { Badge, Card, EmptyState, ErrorState, LinkButton, PageHeader, PageSkeleton } from '@/components/ui';
 import { api } from '@/lib/api';
 import { splitStudentClasses } from '@/lib/classes';
 import { useAsync } from '@/lib/use-async';
@@ -51,7 +51,7 @@ export default function MyClassPage() {
   const requests = useAsync(() => api.myMembershipRequests(), []);
   const t = useTranslations('student');
 
-  if ((classes.loading && !classes.data) || (requests.loading && !requests.data)) return <LoadingState />;
+  if ((classes.loading && !classes.data) || (requests.loading && !requests.data)) return <PageSkeleton />;
   if (classes.error || requests.error)
     return (
       <Container>

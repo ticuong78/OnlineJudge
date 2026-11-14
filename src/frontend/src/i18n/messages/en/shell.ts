@@ -16,5 +16,11 @@ export const shell = {
     users: 'Users',
   },
   menu: 'Menu',
+  signOutUnsaved: {
+    title: 'Sign out without saving?',
+    body: 'Unsaved changes on this page, and their draft, will be lost.',
+    stay: 'Stay',
+  },
+  homeLink: 'Online Judge home',
   signOut: 'Sign out',
 } satisfies Dict<typeof vi>;

@@ -8,11 +8,11 @@ import {
   type SessionSettingsDto,
 } from '@oj/contracts';
 import { Bell, BellOff, BellRing, ChevronDown, ChevronRight, Hourglass, ShieldCheck, Timer } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { api, errorMessage } from '@/lib/api';
 import { isMuted, playChime, setMuted, unlockAudio, type ChimeKind } from '@/lib/chime';
-import { FEEDBACK_MODES, feedbackLabel, formatClock, integritySummary, isExamLike, settingsSummary, TEST_PRESET } from '@/lib/exam';
+import { FEEDBACK_MODES, feedbackLabel, formatClock, integritySummary, isExamLike, settingsSummary, TEST_PRESET, serverOffsetMs } from '@/lib/exam';
 import { cn, formatDateTime } from '@/lib/utils';
 import { useCanUseAi, VipOnly } from './ai-access';
 import { useToast } from './toast';
@@ -103,7 +103,7 @@ export function SessionSettingsFields({
                   onClick={() => set('durationMinutes', m)}
                   className={cn(
                     'rounded-full px-3 py-1 text-sm whitespace-nowrap ring-1',
-                    value.durationMinutes === m ? 'bg-ink-600 text-white ring-ink-600' : 'bg-white text-slate-700 ring-rule hover:bg-ink-50',
+                    value.durationMinutes === m ? 'bg-ink-solid text-white ring-ink-600' : 'bg-surface text-slate-700 ring-rule hover:bg-ink-50',
                   )}
                 >
                   {t('minutes', { count: m })}
@@ -184,6 +184,14 @@ export function SessionSettingsFields({
             <p className="mt-1 text-xs text-slate-500">{t('feedbackNote')}</p>
           </fieldset>
 
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-1" checked={!!value.hideTopics} onChange={(e) => set('hideTopics', e.target.checked)} />
+            <span>
+              <span className="font-medium">{t('hideTopics')}</span>
+              <span className="block text-xs text-slate-500">{t('hideTopicsHint')}</span>
+            </span>
+          </label>
+
           <fieldset>
             <legend className="mb-1 text-sm font-medium text-slate-700">{t('integrity')}</legend>
             <div className="space-y-2">
@@ -230,7 +238,7 @@ export function SettingsInfo({ settings, manager }: { settings: SessionSettingsD
   return (
     <ul className="flex flex-wrap gap-2">
       {chips.map((t) => (
-        <li key={t} className="rounded-full bg-white px-3 py-1 text-xs text-slate-700 ring-1 ring-rule">
+        <li key={t} className="rounded-full bg-surface px-3 py-1 text-xs text-slate-700 ring-1 ring-rule">
           {t}
         </li>
       ))}
@@ -239,15 +247,14 @@ export function SettingsInfo({ settings, manager }: { settings: SessionSettingsD
 }
 
 // ---------- clock ----------
-/** Offset (ms) to add to Date.now() to get the server's clock, from SessionDto.serverNow at fetch time. */
-export function useServerOffset(serverNow: string | undefined) {
-  const [offset, setOffset] = useState(0);
-  useEffect(() => {
-    if (!serverNow) return;
-    const t = new Date(serverNow).getTime();
-    if (!Number.isNaN(t)) setOffset(t - Date.now());
-  }, [serverNow]);
-  return offset;
+/**
+ * Offset (ms) to add to Date.now() to get the server's clock, from SessionDto.serverNow; `null` until a session has
+ * loaded. Worked out while rendering the data, not in an effect: the timer's own first check runs before its page's
+ * effects, and used to see an offset of 0, the computer's own clock. A fast clock then latched "time's up" for good,
+ * locking the editor and Submit (OJ-15 F3).
+ */
+export function useServerOffset(serverNow: string | undefined): number | null {
+  return useMemo(() => serverOffsetMs(serverNow, Date.now()), [serverNow]);
 }
 
 const THRESHOLDS: ChimeKind[] = [15, 5, 1, 0];
@@ -395,7 +402,7 @@ export function ExamTimer({
           setMuted(!muted);
           setMutedState(!muted);
         }}
-        className="rounded p-1 hover:bg-white/70"
+        className="rounded p-1 hover:bg-surface/70"
         aria-label={muted ? t('soundOn') : t('soundOff')}
         title={muted ? t('soundOn') : t('soundOff')}
       >
@@ -411,7 +418,7 @@ export function ExamTimer({
               /* ignore */
             }
           }}
-          className="rounded p-1 hover:bg-white/70"
+          className="rounded p-1 hover:bg-surface/70"
           aria-label={t('notify')}
           title={t('notify')}
         >

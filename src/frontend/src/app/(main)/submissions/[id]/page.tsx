@@ -8,7 +8,7 @@ import { Container } from '@/components/app-shell';
 import { CodeBlock } from '@/components/code-block';
 import { CopyButton } from '@/components/problem-statement';
 import { SubmissionSummary, useSubmissionPolling } from '@/components/submission-result';
-import { Card, ErrorState, LoadingState, PageHeader } from '@/components/ui';
+import { Card, ErrorState, PageHeader, PageSkeleton } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { sessionHref, solveHref } from '@/lib/sessions';
 import { formatDateTime } from '@/lib/utils';
@@ -26,7 +26,7 @@ export default function SubmissionDetailPage() {
       </Container>
     );
   }
-  if (!sub) return <LoadingState />;
+  if (!sub) return <PageSkeleton />;
 
   const problemHref = solveHref(sub.sessionId, sub.problemKey);
 

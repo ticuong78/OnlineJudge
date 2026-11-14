@@ -16,6 +16,7 @@ export const authoring = {
     saveFailed: 'Could not save',
   },
   suggestion: {
+    titleShort: 'Suggest title',
     use: 'Use suggestion',
     useFor: 'Use the suggestion for {label}',
     aiLabel: 'AI suggestions',
@@ -127,6 +128,8 @@ export const authoring = {
     },
     drop: 'Drag and drop the document here, or click to choose',
     dropHint: '.docx and .pdf, up to 10MB',
+    photoHint: 'Photos of a problem (.png, .jpg, .webp, up to 5MB) are read by AI.',
+    photoVip: 'Photos of a problem are read by AI: for VIP accounts.',
     paste: {
       intro:
         'Paste the problem text (one or more problems) from Word, a web page or a message. AI splits it into problems and arranges each into statement, input, output, constraints and examples, just like an uploaded file.',
@@ -135,6 +138,7 @@ export const authoring = {
       label: 'Problem text',
       counter: '{count} / {max} characters',
       tooLong: ' (too long, split it into several parts)',
+      submitBasic: 'Split with the template',
       submit: 'Restructure with AI',
     },
     draft: {
@@ -177,6 +181,7 @@ export const authoring = {
     found: '{count, plural, one {# problem found} other {# problems found}}, {picked} selected',
     selectAll: 'Select all',
     deselectAll: 'Deselect all',
+    basicQuota: 'Read with the built-in template because you have used this month\'s AI readings. VIP accounts get more.',
     basicAi:
       'The document was read using the built-in template. Messy PDFs or scans read better with AI, when the server has a Claude API key.',
     basicVip:

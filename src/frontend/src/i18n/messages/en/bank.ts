@@ -23,7 +23,6 @@ export const bank = {
   assign: 'Assign',
   filters: {
     searchProblems: 'Search by title or code',
-    tag: 'Topic (tag)',
     difficulty: 'Difficulty',
     anyDifficulty: 'Any difficulty',
     clear: 'Clear filters',
@@ -32,6 +31,8 @@ export const bank = {
     anySetType: 'Any type',
   },
   sharing: {
+    change: 'Change sharing',
+    hide: 'Hide sharing',
     title: 'Sharing',
     saved: 'Sharing saved',
     madePrivate: 'Problem is now private',
@@ -75,6 +76,7 @@ export const bank = {
     created: 'Created problem {code} with {count, plural, one {# test} other {# tests}}',
   },
   problem: {
+    assignNeedsTests: 'Add at least one test to assign this problem.',
     notFound: 'Problem not found',
     deleted: 'Problem deleted',
     saved: 'Problem saved',

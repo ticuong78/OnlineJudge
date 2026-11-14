@@ -36,7 +36,7 @@ export function LocaleSwitch({ className }: { className?: string }) {
             title={t(l)}
             className={cn(
               'h-7 min-w-9 rounded-md px-2 text-xs font-semibold transition-colors',
-              l === locale ? 'bg-white text-ink-700 shadow-sm' : 'text-slate-500 hover:text-slate-800',
+              l === locale ? 'bg-surface text-ink-700 shadow-sm' : 'text-slate-500 hover:text-slate-800',
             )}
           >
             {SHORT[l]}

@@ -16,6 +16,7 @@ export const enums = {
   problemSetType: { EXAM: 'Exam', TEST: 'Quiz', HOMEWORK: 'Homework', PRACTICE: 'Practice' },
   sessionState: { UPCOMING: 'Upcoming', OPEN: 'Open', CLOSED: 'Closed' },
   problemTextField: {
+    title: 'Title',
     statement: 'Statement',
     inputFormat: 'Input',
     outputFormat: 'Output',

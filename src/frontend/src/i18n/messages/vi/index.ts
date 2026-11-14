@@ -10,8 +10,10 @@ import { errors } from './errors';
 import { session } from './session';
 import { shell } from './shell';
 import { student } from './student';
+import { topics } from './topics';
+import { paths } from './paths';
 
-export const vi = { common, enums, shell, errors, auth, student, session, bank, authoring, classes, assign, admin };
+export const vi = { common, enums, shell, errors, auth, student, session, bank, authoring, classes, assign, admin, topics, paths };
 
 /** Every key the interface may use; English must match it (see ../types.ts). */
 export type Messages = typeof vi;

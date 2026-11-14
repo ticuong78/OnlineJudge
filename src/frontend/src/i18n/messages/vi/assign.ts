@@ -89,6 +89,8 @@ export const assign = {
     feedbackNote: 'Giáo viên luôn thấy đầy đủ. Khi phiên đóng, học sinh thấy hết.',
     integrity: 'Kiểm tra liêm chính',
     plagiarism: 'Kiểm tra đạo văn',
+    hideTopics: 'Ẩn chủ đề của bài',
+    hideTopicsHint: 'Học sinh không thấy chủ đề (như quy hoạch động, mảng) cho tới khi phiên đóng. Dùng cho bước ôn tập tổng hợp trong lộ trình: tự nhận ra cách giải là một phần của bài. Bài kiểm tra và bài thi luôn ẩn chủ đề.',
     plagiarismHint: 'So sánh code giữa các học sinh trong phiên này.',
     aiUsage: 'Kiểm tra dùng AI',
     aiUsageHint: 'Claude xem từng bài nộp. Cần khóa API trên máy chủ và tốn một khoản phí nhỏ.',

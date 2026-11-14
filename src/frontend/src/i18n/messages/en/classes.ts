@@ -201,6 +201,7 @@ export const classes = {
     aboutSession: 'About {session}',
     activity: 'Active {date}',
     replyCount: '{count, plural, one {# reply} other {# replies}}',
+    awaitingAnswer: "Awaiting a teacher's answer",
     form: {
       titleRequired: 'Give the post a short title.',
       questionRequired: 'Write your question.',

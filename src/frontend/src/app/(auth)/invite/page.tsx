@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { useTranslations } from 'use-intl';
+import { PasswordInput } from '@/components/form-fields';
+import { usePageTitle } from '@/lib/page-title';
 import { useToast } from '@/components/toast';
 import { Button, Card, Field, InlineAlert, inputClass, LoadingState } from '@/components/ui';
 import { OTP_LENGTH, OtpInput } from '@/components/verification';
@@ -120,21 +122,17 @@ function AcceptInvite() {
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label={t('fields.password')}>
-            <input
-              type="password"
+            <PasswordInput
               required
               autoComplete="new-password"
-              className={inputClass}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
           </Field>
           <Field label={t('fields.confirmPassword')}>
-            <input
-              type="password"
+            <PasswordInput
               required
               autoComplete="new-password"
-              className={inputClass}
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
             />
@@ -150,6 +148,7 @@ function AcceptInvite() {
 }
 
 export default function InvitePage() {
+  usePageTitle(useTranslations('auth')('invite.title'));
   return (
     <Suspense fallback={<LoadingState />}>
       <AcceptInvite />

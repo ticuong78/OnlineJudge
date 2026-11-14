@@ -12,19 +12,7 @@ import { RequireRole, STAFF } from '@/components/guards';
 import { Markdown } from '@/components/markdown';
 import { CreateSessionDialog } from '@/components/sessions';
 import { useToast } from '@/components/toast';
-import {
-  Button,
-  Card,
-  ConfirmDialog,
-  DifficultyBadge,
-  EmptyState,
-  ErrorState,
-  InlineAlert,
-  LinkButton,
-  LoadingState,
-  PageHeader,
-  ProblemSetTypeBadge,
-} from '@/components/ui';
+import { Button, Card, ConfirmDialog, DifficultyBadge, EmptyState, ErrorState, InlineAlert, LinkButton, PageHeader, PageSkeleton, ProblemSetTypeBadge } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAsync } from '@/lib/use-async';
 
@@ -77,7 +65,7 @@ export default function BankSetPage() {
   const [deleting, setDeleting] = useState(false);
   const [copying, setCopying] = useState(false);
 
-  if (loading && !set) return <LoadingState />;
+  if (loading && !set) return <PageSkeleton />;
   if (error || !set)
     return (
       <Container>

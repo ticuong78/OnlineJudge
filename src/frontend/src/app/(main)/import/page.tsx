@@ -21,6 +21,7 @@ import {
 import Link from 'next/link';
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { useTranslations } from 'use-intl';
+import { useAiFeature } from '@/lib/ai-usage';
 import { Container } from '@/components/app-shell';
 import {
   FileIoBlocker,
@@ -29,7 +30,7 @@ import {
   useSectionSuggestions,
 } from '@/components/admin/problem-text-field';
 import { TestListEditor } from '@/components/admin/test-list-editor';
-import { useCanUseAi } from '@/components/ai-access';
+import { AiUsesLeft, useAiNotConfigured } from '@/components/ai-access';
 import { RequireRole, STAFF } from '@/components/guards';
 import { useToast } from '@/components/toast';
 import { Badge, Button, Card, Field, InlineAlert, inputClass, LinkButton, PageHeader, Spinner } from '@/components/ui';
@@ -58,13 +59,15 @@ function ParsingProgress() {
     <div role="status" aria-live="polite">
       <p className="font-medium text-slate-700">{t('title')}</p>
       <p className="mt-1 text-sm text-slate-500">{hint}</p>
-      <p className="mt-1 text-xs text-slate-400 tabular-nums">{t('seconds', { secs })}</p>
+      <p className="mt-1 text-xs text-slate-500 tabular-nums">{t('seconds', { secs })}</p>
     </div>
   );
 }
 
 function Dropzone({ onFile, busy }: { onFile: (f: File) => void; busy: boolean }) {
   const t = useTranslations('authoring.import');
+  // Photos of a problem (OJ-23) are read by AI only: VIP and organizations, while a use is left this month.
+  const photos = useAiFeature('IMAGE_IMPORT');
   const [over, setOver] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   const onDrop = (e: DragEvent) => {
@@ -84,14 +87,14 @@ function Dropzone({ onFile, busy }: { onFile: (f: File) => void; busy: boolean }
       onClick={() => !busy && ref.current?.click()}
       className={cn(
         'flex cursor-pointer flex-col items-center justify-center gap-3 rounded-panel border-2 border-dashed px-6 py-16 text-center transition',
-        over ? 'border-ink-500 bg-ink-50' : 'border-slate-300 bg-white hover:border-ink-400 hover:bg-slate-50',
+        over ? 'border-ink-500 bg-ink-50' : 'border-slate-300 bg-surface hover:border-ink-400 hover:bg-slate-50',
         busy && 'pointer-events-none opacity-70',
       )}
     >
       <input
         ref={ref}
         type="file"
-        accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        accept=".docx,.pdf,.png,.jpg,.jpeg,.webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg,image/webp"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -112,6 +115,10 @@ function Dropzone({ onFile, busy }: { onFile: (f: File) => void; busy: boolean }
           <div>
             <p className="font-medium text-slate-800">{t('drop')}</p>
             <p className="text-sm text-slate-500">{t('dropHint')}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {photos.enabled ? t('photoHint') : t('photoVip')}
+              {photos.enabled && <AiUsesLeft feature="IMAGE_IMPORT" className="ml-2" />}
+            </p>
           </div>
         </>
       )}
@@ -120,13 +127,14 @@ function Dropzone({ onFile, busy }: { onFile: (f: File) => void; busy: boolean }
 }
 
 /** Exam text pasted instead of a file; read the same way as an uploaded document. */
-function PasteBox({ onSubmit, busy }: { onSubmit: (text: string) => void; busy: boolean }) {
+/** `ai`: whether this reading will use AI (a use left this month); otherwise the button says it splits by template. */
+function PasteBox({ onSubmit, busy, ai }: { onSubmit: (text: string) => void; busy: boolean; ai: boolean }) {
   const t = useTranslations('authoring.import.paste');
   const [text, setText] = useState('');
   const tooLong = text.length > MAX_TEXT;
   if (busy) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 rounded-panel border border-slate-200 bg-white px-6 py-16 text-center">
+      <div className="flex flex-col items-center justify-center gap-3 rounded-panel border border-slate-200 bg-surface px-6 py-16 text-center">
         <Spinner className="h-8 w-8" />
         <ParsingProgress />
       </div>
@@ -149,8 +157,8 @@ function PasteBox({ onSubmit, busy }: { onSubmit: (text: string) => void; busy: 
           {tooLong && t('tooLong')}
         </span>
         <Button onClick={() => onSubmit(text)} disabled={!text.trim() || tooLong}>
-          <Sparkles className="h-4 w-4" />
-          {t('submit')}
+          {ai && <Sparkles className="h-4 w-4" />}
+          {ai ? t('submit') : t('submitBasic')}
         </Button>
       </div>
     </Card>
@@ -175,6 +183,9 @@ function DraftCard({
     'outputFormat',
     'constraints',
   ]);
+  // The title's own switch (OJ-22), outside the whole-problem one.
+  const titleSuggestion = useSectionSuggestions({ ...d, samples }, (patch) => update(patch), ['title']);
+  const ta = useTranslations('authoring');
   return (
     <Card className={cn('overflow-hidden', !d.include && 'opacity-60')}>
       <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3">
@@ -193,6 +204,7 @@ function DraftCard({
           onChange={(e) => update({ title: e.target.value })}
           placeholder={t('titlePlaceholder')}
         />
+        <SuggestionSwitch label={ta('suggestion.useFor', { label: t('titlePlaceholder') })} suggestion={titleSuggestion.of('title')} text={ta('suggestion.titleShort')} />
         <select
           className={cn(inputClass, 'w-36')}
           value={d.difficulty}
@@ -219,6 +231,7 @@ function DraftCard({
           suggestion={suggestions.all}
           className="ml-auto"
           showLocked
+          showUses
         />
       </div>
 
@@ -246,7 +259,7 @@ function DraftCard({
 
       {!d.open ? (
         <div className="px-4 py-3 text-sm text-slate-600">
-          <p className="line-clamp-2">{d.statement || <i className="text-slate-400">{t('noStatement')}</i>}</p>
+          <p className="line-clamp-2">{d.statement || <i className="text-slate-500">{t('noStatement')}</i>}</p>
           <p className="mt-1 text-xs text-slate-500">
             {t('summary', { time: d.timeLimitMs, memory: d.memoryLimitMb, tests: d.tests.length, samples: samples.length })}
           </p>
@@ -304,7 +317,10 @@ function DraftCard({
 export default function ImportPage() {
   const t = useTranslations('authoring.import');
   const tCommon = useTranslations('common');
-  const canUseAi = useCanUseAi();
+  // AI reading has a monthly allowance for free teachers (OJ-21); without a use left the basic reader is used.
+  const importAi = useAiFeature('IMPORT');
+  const canUseAi = importAi.enabled && !importAi.exhausted;
+  const aiNotConfigured = useAiNotConfigured();
   const toast = useToast();
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -380,12 +396,15 @@ export default function ImportPage() {
           title={t('title')}
           subtitle={t('subtitle')}
           actions={
-            parsed && (
-              <Button variant="secondary" onClick={reset}>
-                <FileUp className="h-4 w-4" />
-                {t('another')}
-              </Button>
-            )
+            <>
+              <AiUsesLeft feature="IMPORT" className="self-center" />
+              {parsed && (
+                <Button variant="secondary" onClick={reset}>
+                  <FileUp className="h-4 w-4" />
+                  {t('another')}
+                </Button>
+              )}
+            </>
           }
         />
 
@@ -420,7 +439,7 @@ export default function ImportPage() {
           </Card>
         ) : !parsed ? (
           <div className="space-y-3">
-            <div role="tablist" aria-label={t('source.label')} className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+            <div role="tablist" aria-label={t('source.label')} className="inline-flex rounded-lg border border-slate-200 bg-surface p-1">
               {(
                 [
                   ['file', t('source.file'), FileUp],
@@ -436,7 +455,7 @@ export default function ImportPage() {
                   onClick={() => setSource(key)}
                   className={cn(
                     'flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition',
-                    source === key ? 'bg-ink-600 text-white' : 'text-slate-600 hover:bg-slate-100',
+                    source === key ? 'bg-ink-solid text-white' : 'text-slate-600 hover:bg-slate-100',
                   )}
                 >
                   <Icon className="h-4 w-4 shrink-0" />
@@ -444,12 +463,12 @@ export default function ImportPage() {
                 </button>
               ))}
             </div>
-            {source === 'file' ? <Dropzone onFile={onFile} busy={parsing} /> : <PasteBox onSubmit={onText} busy={parsing} />}
+            {source === 'file' ? <Dropzone onFile={onFile} busy={parsing} /> : <PasteBox onSubmit={onText} busy={parsing} ai={canUseAi && !aiNotConfigured} />}
             {error && <InlineAlert>{error}</InlineAlert>}
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3 rounded-panel border border-slate-200 bg-white px-4 py-3">
+            <div className="flex flex-wrap items-center gap-3 rounded-panel border border-slate-200 bg-surface px-4 py-3">
               <FileText className="h-5 w-5 shrink-0 text-ink-600" />
               <span className="min-w-0 truncate font-medium">{parsed.fileName}</span>
               {parsed.parser === 'AI' ? (
@@ -471,7 +490,9 @@ export default function ImportPage() {
               </div>
             </div>
             {parsed.parser === 'BASIC' && (
-              <p className="text-sm text-slate-600">{canUseAi ? t('basicAi') : t('basicVip')}</p>
+              <p className="text-sm text-slate-600">
+                {parsed.aiQuotaExhausted ? t('basicQuota') : canUseAi ? t('basicAi') : t('basicVip')}
+              </p>
             )}
             <InlineAlert kind="info">
               {t.rich('review', { b: (c) => <b>{c}</b> })}
@@ -502,7 +523,7 @@ export default function ImportPage() {
               )}
             </Card>
 
-            <div className="sticky bottom-0 z-10 -mx-4 space-y-3 border-t border-slate-200 bg-white/90 px-4 py-3 backdrop-blur">
+            <div className="sticky bottom-0 z-10 -mx-4 space-y-3 border-t border-slate-200 bg-surface/90 px-4 py-3 backdrop-blur">
               <FileIoBlocker
                 problems={drafts
                   .map((d, i) => ({

@@ -23,19 +23,7 @@ import { cn, formatDateTime, isoToLocalInput, localInputToIso } from '@/lib/util
 import { SessionSettingsFields } from './exam';
 import { MarkdownField } from './form-fields';
 import { useToast } from './toast';
-import {
-  Badge,
-  Button,
-  DifficultyBadge,
-  EmptyState,
-  Field,
-  InlineAlert,
-  inputClass,
-  LoadingState,
-  Modal,
-  ProblemSetTypeBadge,
-  Tabs,
-} from './ui';
+import { Badge, Button, DifficultyBadge, EmptyState, Field, InlineAlert, inputClass, ListSkeleton, LoadingState, Modal, ProblemSetTypeBadge, Tabs } from './ui';
 import { useNow } from './verification';
 
 // ---------- small pieces ----------
@@ -63,7 +51,7 @@ export function AudienceLabel({ s }: { s: Pick<SessionDto, 'audience' | 'classNa
     <span className="inline-flex min-w-0 items-center gap-1">
       <Users className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       {t('class', { name: s.className ?? '' })}
-      {s.classStatus === 'ARCHIVED' && <span className="text-slate-400">{t('archived')}</span>}
+      {s.classStatus === 'ARCHIVED' && <span className="text-slate-500">{t('archived')}</span>}
     </span>
   );
 }
@@ -113,7 +101,7 @@ export function ProgressCells({
           className={cn(
             'border',
             size === 'sm' ? 'h-3 w-3' : 'h-5 w-5',
-            i < solved ? 'border-chalk-600 bg-chalk-600' : 'border-rule bg-white',
+            i < solved ? 'border-chalk-solid bg-chalk-solid' : 'border-rule bg-surface',
           )}
         />
       ))}
@@ -181,6 +169,9 @@ export function SessionList({
                   <SessionWindow s={s} now={now} />
                 </div>
               </div>
+              {/* On phones the status takes its own line: kept beside the details it squeezed them into a narrow
+                  strip where every badge and date wrapped alone (UI/UX review P1-5). */}
+              <div className="basis-full sm:basis-auto sm:shrink-0">
               {managerProgress ? (
                 <ClassCompletion sessionId={s.id} highlightIfSoon={soon} />
               ) : (
@@ -205,6 +196,7 @@ export function SessionList({
                 </span>
                 )
               )}
+              </div>
             </Link>
           </li>
         );
@@ -248,7 +240,7 @@ function TimeFields({
             key={days ?? 'none'}
             type="button"
             onClick={() => applyPreset(days)}
-            className="rounded-full bg-white px-3 py-1 whitespace-nowrap text-slate-700 ring-1 ring-rule hover:bg-ink-50 hover:text-ink-700"
+            className="rounded-full bg-surface px-3 py-1 whitespace-nowrap text-slate-700 ring-1 ring-rule hover:bg-ink-50 hover:text-ink-700"
           >
             {days ? t('presetDays', { days }) : t('noLimit')}
           </button>
@@ -561,13 +553,14 @@ export function AssignFromBankDialog({
           <input
             className={cn(inputClass, 'pl-9')}
             placeholder={tab === 'sets' ? t('searchSets') : t('searchProblems')}
+            aria-label={tab === 'sets' ? t('searchSets') : t('searchProblems')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
         </div>
         {tab === 'sets' ? (
           sets.loading && !sets.data ? (
-            <LoadingState />
+            <ListSkeleton />
           ) : filteredSets.length === 0 ? (
             <EmptyState title={t('noSets')}>
               <Link href="/bank/sets/new" className="text-ink-600 hover:underline">
@@ -594,7 +587,7 @@ export function AssignFromBankDialog({
             </ul>
           )
         ) : problems.loading && !problems.data ? (
-          <LoadingState />
+          <ListSkeleton />
         ) : !problems.data || problems.data.items.length === 0 ? (
           <EmptyState title={t('noProblems')} />
         ) : (

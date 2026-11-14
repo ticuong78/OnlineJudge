@@ -11,7 +11,7 @@ import { useAsync } from '@/lib/use-async';
 import { cn, formatDateTime } from '@/lib/utils';
 import { MarkdownField } from './form-fields';
 import { useToast } from './toast';
-import { Badge, Button, Card, EmptyState, ErrorState, Field, InlineAlert, inputClass, LoadingState, Modal } from './ui';
+import { Badge, Button, Card, EmptyState, ErrorState, Field, InlineAlert, inputClass, ListSkeleton, Modal } from './ui';
 
 export function ThreadKindBadge({ kind }: { kind: ThreadKind }) {
   const t = useTranslations('classes.threads.kind');
@@ -34,7 +34,7 @@ export function AuthorName({ name, role }: { name: string; role: Role }) {
   return (
     <span className="inline-flex items-center gap-1.5">
       <span className={cn('font-medium', staff ? 'text-ink-700' : 'text-slate-800')}>{name}</span>
-      {staff && <Badge className="bg-ink-600 text-white">{t('teacherBadge')}</Badge>}
+      {staff && <Badge className="bg-ink-solid text-white">{t('teacherBadge')}</Badge>}
     </span>
   );
 }
@@ -56,6 +56,7 @@ export function ThreadList({ threads, compact }: { threads: ThreadSummaryDto[]; 
                 {t.pinned && <Pin className="h-3.5 w-3.5 shrink-0 text-ink-600" aria-label={tt('pinned')} />}
                 <ThreadKindBadge kind={t.kind} />
                 <span className="min-w-0 font-medium break-words text-slate-900">{t.title}</span>
+                {t.awaitingAnswer && <Badge className="bg-amber-50 text-amber-800 ring-1 ring-amber-200">{tt('awaitingAnswer')}</Badge>}
               </div>
               <div className="mt-0.5 flex flex-wrap items-center gap-x-4 text-xs text-slate-500">
                 <AuthorName name={t.authorName} role={t.authorRole} />
@@ -141,7 +142,9 @@ export function NewThreadDialog({
       toast.success(kind === 'QUESTION' ? t('questionSent') : t('announcementPosted'));
       onCreated?.(created);
       onClose();
-      router.push(`/threads/${created.id}`);
+      // From a problem (preset) the student stays on it: mid-exam, a page change costs time on the clock (UAT M7).
+      // The new question shows in that problem's list, which links to the thread.
+      if (!preset) router.push(`/threads/${created.id}`);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -176,7 +179,7 @@ export function NewThreadDialog({
                 role="radio"
                 aria-checked={kind === k}
                 onClick={() => setKind(k)}
-                className={cn('rounded-[4px] px-3 py-1 whitespace-nowrap', kind === k ? 'bg-white font-medium ring-1 ring-slate-300' : 'text-slate-600')}
+                className={cn('rounded-[4px] px-3 py-1 whitespace-nowrap', kind === k ? 'bg-surface font-medium ring-1 ring-slate-300' : 'text-slate-600')}
               >
                 {tk(k)}
               </button>
@@ -267,7 +270,7 @@ export function ClassBoard({
       </div>
       {archived && <p className="border-b border-slate-100 px-5 py-2 text-xs text-slate-500">{t('archivedNote')}</p>}
       {loading && !data ? (
-        <LoadingState />
+        <ListSkeleton />
       ) : error ? (
         <div className="p-4">
           <ErrorState message={error} onRetry={reload} />
@@ -308,7 +311,7 @@ export function ProblemQuestions({
 }) {
   const t = useTranslations('classes.threads.problem');
   const tc = useTranslations('common');
-  const { data, loading } = useAsync(() => api.listThreads(classId, { sessionId, problemKey }), [classId, sessionId, problemKey]);
+  const { data, loading, setData } = useAsync(() => api.listThreads(classId, { sessionId, problemKey }), [classId, sessionId, problemKey]);
   const [asking, setAsking] = useState(false);
   const [preset] = useState(() => ({ sessionId, problemKey }));
   return (
@@ -316,14 +319,18 @@ export function ProblemQuestions({
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold">{t('title')}</h2>
         {canAsk && (
-          <button type="button" onClick={() => setAsking(true)} className="inline-flex items-center gap-1 text-sm font-medium text-ink-600 hover:underline">
+          <button
+            type="button"
+            onClick={() => setAsking(true)}
+            className="-my-1 inline-flex min-h-8 items-center gap-1 rounded px-1 text-sm font-medium text-ink-600 hover:underline"
+          >
             <HelpCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
             {t('ask')}
           </button>
         )}
       </div>
       {loading && !data ? (
-        <p className="text-sm text-slate-400">{tc('loading')}</p>
+        <p className="text-sm text-slate-500">{tc('loading')}</p>
       ) : !data || data.length === 0 ? (
         <p className="text-sm text-slate-500">{t('empty')}</p>
       ) : (
@@ -332,7 +339,14 @@ export function ProblemQuestions({
         </div>
       )}
       {canAsk && (
-        <NewThreadDialog open={asking} onClose={() => setAsking(false)} classId={classId} isManager={isManager} preset={preset} />
+        <NewThreadDialog
+          open={asking}
+          onClose={() => setAsking(false)}
+          classId={classId}
+          isManager={isManager}
+          preset={preset}
+          onCreated={(created) => setData((prev) => [created, ...(prev ?? [])])}
+        />
       )}
     </section>
   );

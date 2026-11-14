@@ -21,6 +21,8 @@ export const admin = {
       expires: 'Expires',
     },
     orgManaged: '{name} (manager)',
+    aiPlanFree: 'Free AI',
+    aiPlanOrganization: 'Organization AI',
     vipOn: '{name} is now a VIP teacher (can use AI)',
     vipOff: '{name} is back to a regular account',
     removeVip: 'Remove VIP',

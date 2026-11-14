@@ -4,28 +4,30 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { useTranslations } from 'use-intl';
+import { PasswordInput } from '@/components/form-fields';
+import { usePageTitle } from '@/lib/page-title';
 import { Button, Card, Field, InlineAlert, inputClass, LoadingState } from '@/components/ui';
 import { errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-
-function safeNext(next: string | null) {
-  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
-}
+import { safeNext } from '@/lib/safe-next';
 
 function LoginForm() {
   const t = useTranslations('auth');
+  usePageTitle(t('login.title'));
   const { login, user, loading } = useAuth();
   const router = useRouter();
   const params = useSearchParams();
-  const next = safeNext(params.get('next'));
+  const rawNext = params.get('next');
+  // Resolved against this page's origin when used (in the browser only): see lib/safe-next.ts.
+  const target = () => safeNext(rawNext, window.location.origin);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!loading && user) router.replace(next);
-  }, [loading, user, router, next]);
+    if (!loading && user) router.replace(safeNext(rawNext, window.location.origin));
+  }, [loading, user, router, rawNext]);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -33,7 +35,7 @@ function LoginForm() {
     setSubmitting(true);
     try {
       await login({ email: email.trim(), password });
-      router.replace(next);
+      router.replace(target());
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -58,11 +60,9 @@ function LoginForm() {
           />
         </Field>
         <Field label={t('fields.password')}>
-          <input
-            type="password"
+          <PasswordInput
             required
             autoComplete="current-password"
-            className={inputClass}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />

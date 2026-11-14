@@ -3,24 +3,16 @@
 import { Difficulties, type BankScope, type Difficulty } from '@oj/contracts';
 import { BookOpenCheck, Clock, Cpu, FileUp, Plus, Search, X } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { BankTabs, CopiedFrom, OwnerNote, ScopeSwitch, SharingBadge } from '@/components/bank';
 import { RequireRole, STAFF } from '@/components/guards';
 import { useAuth } from '@/lib/auth';
-import {
-  Badge,
-  Card,
-  DifficultyBadge,
-  EmptyState,
-  ErrorState,
-  inputClass,
-  LinkButton,
-  LoadingState,
-  PageHeader,
-  Pagination,
-} from '@/components/ui';
+import { rowClick } from '@/lib/row-link';
+import { TopicPicker, useTagLabel } from '@/components/topics';
+import { Badge, Card, DifficultyBadge, EmptyState, ErrorState, inputClass, LinkButton, PageHeader, Pagination, TableSkeleton } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAsync } from '@/lib/use-async';
 import { cn, storageGet, storageSet } from '@/lib/utils';
@@ -36,8 +28,9 @@ export default function BankProblemsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty | ''>('');
-  const [tagInput, setTagInput] = useState('');
-  const [tag, setTag] = useState('');
+  // Topics (OJ-20): several may be chosen; the bank lists problems carrying all of them.
+  const [tags, setTags] = useState<string[]>([]);
+  const addTag = (tag: string) => setTags((cur) => (cur.includes(tag) ? cur : [...cur, tag]));
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -52,19 +45,23 @@ export default function BankProblemsPage() {
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setSearch(searchInput.trim());
-      setTag(tagInput.trim());
-    }, 350);
+    const timer = setTimeout(() => setSearch(searchInput.trim()), 350);
     return () => clearTimeout(timer);
-  }, [searchInput, tagInput]);
-  useEffect(() => setPage(1), [search, difficulty, tag, scope]);
+  }, [searchInput]);
+  const tagsKey = tags.join(',');
+  useEffect(() => setPage(1), [search, difficulty, tagsKey, scope]);
 
   const { data, error, loading, reload } = useAsync(
-    () => api.listProblems({ scope, search, difficulty, tag, page, pageSize: PAGE_SIZE }),
-    [scope, search, difficulty, tag, page],
+    () => api.listProblems({ scope, search, difficulty, tags, page, pageSize: PAGE_SIZE }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scope, search, difficulty, tagsKey, page],
   );
-  const hasFilter = !!(search || difficulty || tag);
+  // Reloaded with the list, so counts follow problems created, edited or deleted since (a small query).
+  const tagCounts = useAsync(() => api.problemTags(scope), [scope, data]);
+  const tagLabel = useTagLabel();
+  const router = useRouter();
+  const openRow = (href: string, newTab: boolean) => (newTab ? window.open(href, '_blank', 'noopener') : router.push(href));
+  const hasFilter = !!(search || difficulty || tags.length);
 
   return (
     <RequireRole roles={STAFF}>
@@ -95,16 +92,11 @@ export default function BankProblemsPage() {
               <input
                 className={cn(inputClass, 'pl-9')}
                 placeholder={t('filters.searchProblems')}
+                aria-label={t('filters.searchProblems')}
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
               />
             </div>
-            <input
-              className={cn(inputClass, 'lg:w-40')}
-              placeholder={t('filters.tag')}
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-            />
             <select
               className={cn(inputClass, 'lg:w-36')}
               value={difficulty}
@@ -124,7 +116,7 @@ export default function BankProblemsPage() {
                 className="flex shrink-0 items-center gap-1 text-sm whitespace-nowrap text-slate-500 hover:text-slate-800"
                 onClick={() => {
                   setSearchInput('');
-                  setTagInput('');
+                  setTags([]);
                   setDifficulty('');
                 }}
               >
@@ -133,11 +125,15 @@ export default function BankProblemsPage() {
               </button>
             )}
           </div>
+          {/* Topics in this scope, most used first (OJ-20). Kept while reloading, so the bar does not jump. */}
+          {tagCounts.data && tagCounts.data.length > 0 && (
+            <TopicPicker counts={tagCounts.data} value={tags} onChange={setTags} className="mt-3 border-t border-slate-100 pt-3" />
+          )}
         </Card>
 
         <Card>
           {loading && !data ? (
-            <LoadingState />
+            <TableSkeleton />
           ) : error ? (
             <div className="p-4">
               <ErrorState message={error} onRetry={reload} />
@@ -187,16 +183,22 @@ export default function BankProblemsPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {data.items.map((p) => (
-                      <tr key={p.id} className="hover:bg-slate-50">
+                      // The whole row opens the problem (U2); the title stays the real link, and the tag buttons still
+                      // filter (see lib/row-link.ts for why this is not a stretched link).
+                      <tr key={p.id} className="cursor-pointer hover:bg-slate-50" {...rowClick(openRow, `/bank/problems/${p.id}`)}>
                         <td className="px-4 py-2.5 text-xs text-slate-500 tabular-nums">{p.code}</td>
                         <td className="px-4 py-2.5">
-                          <Link href={`/bank/problems/${p.id}`} className="font-medium text-slate-900 hover:text-ink-700">
+                          <Link
+                            href={`/bank/problems/${p.id}`}
+                            className="font-medium text-slate-900 hover:text-ink-700"
+                          >
                             {p.title}
                           </Link>
                           {p.hasSolution && (
-                            <span title={t('problems.hasSolution')} className="ml-2 inline-flex align-middle text-chalk-500">
-                              <BookOpenCheck className="h-3.5 w-3.5" />
-                            </span>
+                            <Badge className="ml-2 bg-chalk-50 align-middle text-chalk-700 ring-1 ring-chalk-200">
+                              <BookOpenCheck className="mr-1 h-3 w-3" aria-hidden="true" />
+                              {t('problems.hasSolution')}
+                            </Badge>
                           )}
                           <div className="flex flex-wrap gap-x-3">
                             <OwnerNote p={p} />
@@ -208,9 +210,16 @@ export default function BankProblemsPage() {
                         </td>
                         <td className="hidden px-4 py-2.5 lg:table-cell">
                           <div className="flex flex-wrap gap-1">
-                            {p.tags.map((t) => (
-                              <button key={t} type="button" onClick={() => setTagInput(t)}>
-                                <Badge className="bg-slate-100 text-slate-600 hover:bg-ink-100 hover:text-ink-700">{t}</Badge>
+                            {p.tags.map((tag) => (
+                              <button key={tag} type="button" onClick={() => addTag(tag)} className="inline-flex min-h-6 items-center">
+                                <Badge
+                                  className={cn(
+                                    'hover:bg-ink-100 hover:text-ink-700',
+                                    tags.includes(tag) ? 'bg-ink-100 text-ink-700' : 'bg-slate-100 text-slate-600',
+                                  )}
+                                >
+                                  {tagLabel(tag)}
+                                </Badge>
                               </button>
                             ))}
                           </div>

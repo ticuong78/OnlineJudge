@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'use-intl';
+import { usePageTitle } from '@/lib/page-title';
 
 export default function NotFound() {
   const t = useTranslations('common');
+  usePageTitle(t('notFound.title'));
   return (
     <div className="grid-paper flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center">
       <p className="font-hand text-6xl text-mark">404</p>

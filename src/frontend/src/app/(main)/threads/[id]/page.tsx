@@ -11,7 +11,7 @@ import { MarkdownField } from '@/components/form-fields';
 import { Markdown } from '@/components/markdown';
 import { AuthorName, ThreadKindBadge } from '@/components/threads';
 import { useToast } from '@/components/toast';
-import { Button, Card, ConfirmDialog, ErrorState, InlineAlert, LoadingState, PageHeader } from '@/components/ui';
+import { Button, Card, ConfirmDialog, ErrorState, InlineAlert, PageHeader, PageSkeleton } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { sessionHref, solveHref } from '@/lib/sessions';
@@ -35,7 +35,7 @@ export default function ThreadPage() {
   const [deleting, setDeleting] = useState<Deleting>(null);
   const [busy, setBusy] = useState(false);
 
-  if (loading && !t) return <LoadingState />;
+  if (loading && !t) return <PageSkeleton />;
   if (error || !t)
     return (
       <Container>
@@ -150,7 +150,7 @@ export default function ThreadPage() {
           return (
             <li
               key={r.id}
-              className={cn('rounded-panel border px-5 py-4', staff ? 'border-ink-200 bg-ink-50/60' : 'border-rule bg-white')}
+              className={cn('rounded-panel border px-5 py-4', staff ? 'border-ink-200 bg-ink-50/60' : 'border-rule bg-surface')}
             >
               <div className="mb-2 flex flex-wrap items-center gap-x-3 text-sm">
                 <AuthorName name={r.authorName} role={r.authorRole} />

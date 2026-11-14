@@ -11,7 +11,7 @@ import { CodeBlock } from '@/components/code-block';
 import { RequireRole, STAFF } from '@/components/guards';
 import { FlagKindBadge, FlagLevel, FlagStatus } from '@/components/integrity';
 import { useToast } from '@/components/toast';
-import { Button, Card, ErrorState, InlineAlert, LoadingState, PageHeader } from '@/components/ui';
+import { Button, Card, ErrorState, InlineAlert, PageHeader, PageSkeleton } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { sessionHref } from '@/lib/sessions';
 import { useAsync } from '@/lib/use-async';
@@ -43,7 +43,7 @@ export default function IntegrityFlagPage() {
     <RequireRole roles={STAFF}>
       <Container wide>
         {loading && !f ? (
-          <LoadingState />
+          <PageSkeleton inset />
         ) : error || !f ? (
           <ErrorState message={error ?? td('notFound')} onRetry={reload} />
         ) : (

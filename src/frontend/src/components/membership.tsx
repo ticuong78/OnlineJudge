@@ -9,7 +9,7 @@ import { normalizeClassCode } from '@/lib/classes';
 import { useAsync } from '@/lib/use-async';
 import { cn, formatDateTime } from '@/lib/utils';
 import { useToast } from './toast';
-import { Badge, Button, Card, ConfirmDialog, ErrorState, Field, InlineAlert, inputClass, LoadingState, Modal } from './ui';
+import { Badge, Button, Card, ConfirmDialog, ErrorState, Field, InlineAlert, inputClass, ListSkeleton, Modal } from './ui';
 
 const kindClass: Record<MembershipRequestKind, string> = {
   JOIN: 'bg-chalk-50 text-chalk-700 ring-1 ring-chalk-200',
@@ -330,7 +330,7 @@ export function ClassRequestsPanel({ cls, onDecided }: { cls: ClassroomDto; onDe
         </p>
       )}
       {loading && !data ? (
-        <LoadingState />
+        <ListSkeleton />
       ) : error ? (
         <div className="p-4">
           <ErrorState message={error} onRetry={reload} />

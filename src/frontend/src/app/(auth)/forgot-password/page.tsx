@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { useTranslations } from 'use-intl';
+import { PasswordInput } from '@/components/form-fields';
+import { usePageTitle } from '@/lib/page-title';
 import { Button, Card, Field, InlineAlert, inputClass } from '@/components/ui';
 import { ResendCodeButton, useEmailLink, useNow, type EmailLink } from '@/components/verification';
 import { useToast } from '@/components/toast';
@@ -19,6 +21,7 @@ import { useAuth } from '@/lib/auth';
  */
 export default function ForgotPasswordPage() {
   const t = useTranslations('auth');
+  usePageTitle(t('forgot.title'));
   const now = useNow();
   const link = useEmailLink();
 
@@ -135,21 +138,17 @@ function ResetFromLink({ link }: { link: EmailLink }) {
       <form onSubmit={reset} className="mt-5 space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label={t('forgot.newPassword')}>
-            <input
-              type="password"
+            <PasswordInput
               required
               autoComplete="new-password"
-              className={inputClass}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
           </Field>
           <Field label={t('forgot.confirmNewPassword')}>
-            <input
-              type="password"
+            <PasswordInput
               required
               autoComplete="new-password"
-              className={inputClass}
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
             />

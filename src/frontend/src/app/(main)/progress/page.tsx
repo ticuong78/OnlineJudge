@@ -4,8 +4,10 @@ import type { LearningRecordDto } from '@oj/contracts';
 import { CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'use-intl';
+import { usePageTitle } from '@/lib/page-title';
 import { Container } from '@/components/app-shell';
-import { Badge, Card, EmptyState, ErrorState, LinkButton, LoadingState, ProblemSetTypeBadge } from '@/components/ui';
+import { useTagLabel } from '@/components/topics';
+import { Badge, Card, EmptyState, ErrorState, LinkButton, PageSkeleton, ProblemSetTypeBadge } from '@/components/ui';
 import { api } from '@/lib/api';
 import { sessionHref, solveHref } from '@/lib/sessions';
 import { useAsync } from '@/lib/use-async';
@@ -25,7 +27,7 @@ function ProblemCell({ rec, p }: { rec: Rec; p: Rec['problems'][number] }) {
     <span
       className={cn(
         'flex h-7 w-7 items-center justify-center border text-[10px] font-semibold tabular-nums',
-        p.solved ? 'border-chalk-600 bg-chalk-600 text-white' : tried ? 'border-mark-300 bg-white text-mark-600' : 'border-rule bg-white text-slate-300',
+        p.solved ? 'border-chalk-solid bg-chalk-solid text-white' : tried ? 'border-mark-300 bg-surface text-mark-600' : 'border-rule bg-surface text-slate-300',
       )}
     >
       {p.solved ? '' : tried ? `${Math.round(p.bestScore)}%` : ''}
@@ -135,7 +137,8 @@ function GroupCard({ g }: { g: Group }) {
 export default function ProgressPage() {
   const { data, error, loading, reload } = useAsync(() => api.myProgress(), []);
   const tp = useTranslations('student.progress');
-  if (loading && !data) return <LoadingState />;
+  usePageTitle(tp('title'));
+  if (loading && !data) return <PageSkeleton />;
   if (error || !data)
     return (
       <Container>
@@ -167,16 +170,18 @@ export default function ProgressPage() {
         </p>
         <p className="mt-2 flex flex-wrap items-center gap-4 text-xs text-slate-500">
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-3 w-3 shrink-0 border border-chalk-600 bg-chalk-600" /> {tp('legendSolved')}
+            <span className="h-3 w-3 shrink-0 border border-chalk-solid bg-chalk-solid" /> {tp('legendSolved')}
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-3 w-3 shrink-0 border border-mark-300 bg-white" /> {tp('legendTried')}
+            <span className="h-3 w-3 shrink-0 border border-mark-300 bg-surface" /> {tp('legendTried')}
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-3 w-3 shrink-0 border border-rule bg-white" /> {tp('legendNone')}
+            <span className="h-3 w-3 shrink-0 border border-rule bg-surface" /> {tp('legendNone')}
           </span>
         </p>
       </header>
+
+      {data.topics.length > 0 && <TopicProgress topics={data.topics} />}
 
       {groups.length === 0 ? (
         <Card>
@@ -194,5 +199,47 @@ export default function ProgressPage() {
         groups.map((g) => <GroupCard key={g.classId ?? 'public'} g={g} />)
       )}
     </Container>
+  );
+}
+
+/**
+ * Solved out of attempted per topic (OJ-20). A topic links to practice on it only when open practice problems have it:
+ * topics that come from class homework would otherwise lead to an empty list.
+ */
+function TopicProgress({ topics }: { topics: LearningRecordDto['topics'] }) {
+  const t = useTranslations('topics.progress');
+  const label = useTagLabel();
+  const practice = new Set((useAsync(() => api.practiceTopics(), []).data ?? []).map((c) => c.tag));
+  return (
+    <Card className="mb-6 p-5">
+      <h2 className="font-semibold text-slate-900">{t('title')}</h2>
+      <p className="mt-1 mb-4 text-sm text-slate-600">{t('hint')}</p>
+      <ul className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
+        {topics.map((x) => (
+          <li key={x.tag}>
+            <TopicRow linked={practice.has(x.tag)} tag={x.tag}>
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span className={cn('font-medium text-slate-800', practice.has(x.tag) && 'group-hover:text-ink-700 group-hover:underline')}>
+                  {label(x.tag)}
+                </span>
+                <span className="text-xs text-slate-500 tabular-nums">{t('row', { solved: x.solved, attempted: x.attempted })}</span>
+              </div>
+              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
+                <div className="h-full rounded-full bg-chalk-solid" style={{ width: `${Math.round((x.solved / x.attempted) * 100)}%` }} />
+              </div>
+            </TopicRow>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+function TopicRow({ linked, tag, children }: { linked: boolean; tag: string; children: React.ReactNode }) {
+  if (!linked) return <div>{children}</div>;
+  return (
+    <Link href={`/practice?topic=${encodeURIComponent(tag)}`} className="group block">
+      {children}
+    </Link>
   );
 }

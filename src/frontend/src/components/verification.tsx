@@ -141,7 +141,7 @@ export function OtpInput({
           onPaste={onPaste}
           onFocus={(e) => e.target.select()}
           className={cn(
-            'h-14 w-11 rounded-control border bg-white text-center font-mono text-2xl font-semibold text-slate-900 sm:w-12',
+            'h-14 w-11 rounded-control border bg-surface text-center font-mono text-2xl font-semibold text-slate-900 sm:w-12',
             'focus:border-ink-500 focus:ring-2 focus:ring-ink-500/20 focus-visible:outline-none',
             invalid ? 'border-mark-400' : 'border-slate-300',
             disabled && 'bg-slate-100',

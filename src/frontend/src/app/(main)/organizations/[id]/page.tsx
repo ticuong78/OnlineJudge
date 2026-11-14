@@ -15,20 +15,7 @@ import {
   SeatsMeter,
 } from '@/components/organizations';
 import { useToast } from '@/components/toast';
-import {
-  Badge,
-  Button,
-  Card,
-  ConfirmDialog,
-  EmptyState,
-  ErrorState,
-  Field,
-  InlineAlert,
-  inputClass,
-  LoadingState,
-  Modal,
-  PageHeader,
-} from '@/components/ui';
+import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, Field, InlineAlert, inputClass, ListSkeleton, Modal, PageHeader, PageSkeleton } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useAsync } from '@/lib/use-async';
@@ -57,7 +44,7 @@ function Organization() {
   const [removing, setRemoving] = useState<OrganizationMemberDto | null>(null);
   const [busy, setBusy] = useState(false);
 
-  if (org.loading) return <Container><LoadingState /></Container>;
+  if (org.loading) return <PageSkeleton />;
   if (org.error || !org.data) return <Container><ErrorState message={org.error ?? t('notFound')} onRetry={org.reload} /></Container>;
   const o = org.data;
   const manager = isAdmin || o.myRole === 'ADMIN';
@@ -298,7 +285,7 @@ function OrganizationClasses({ id }: { id: string }) {
     <Card>
       <h2 className="border-b border-slate-100 px-5 py-3 font-semibold">{t('title')}</h2>
       {classes.loading ? (
-        <LoadingState />
+        <ListSkeleton />
       ) : classes.error ? (
         <ErrorState message={classes.error} onRetry={classes.reload} />
       ) : !classes.data?.length ? (

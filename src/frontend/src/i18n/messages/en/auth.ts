@@ -85,7 +85,14 @@ export const auth = {
     resendIn: { code: 'Resend code in {seconds}s', email: 'Resend email in {seconds}s' },
     resent: { code: 'Sent a new code to {email}', email: 'Sent the email again to {email}' },
   },
+  intro: {
+    submit: 'Submit code and get a verdict in seconds, with points per test.',
+    teach: 'Teachers assign work to a class, follow progress and answer questions.',
+    print: 'Exam papers and answer keys print in the usual school format.',
+  },
   formFields: {
+    showPassword: 'Show password',
+    hidePassword: 'Hide password',
     write: 'Write',
     preview: 'Preview',
     markdownPlaceholder: 'Supports Markdown and formulas like $x^2$',

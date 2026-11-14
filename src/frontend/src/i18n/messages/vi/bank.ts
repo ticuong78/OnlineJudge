@@ -20,7 +20,6 @@ export const bank = {
   assign: 'Giao bài',
   filters: {
     searchProblems: 'Tìm theo tên hoặc mã bài',
-    tag: 'Chủ đề (tag)',
     difficulty: 'Độ khó',
     anyDifficulty: 'Mọi độ khó',
     clear: 'Xóa lọc',
@@ -29,6 +28,8 @@ export const bank = {
     anySetType: 'Mọi loại đề',
   },
   sharing: {
+    change: 'Thay đổi chia sẻ',
+    hide: 'Ẩn phần chia sẻ',
     title: 'Chia sẻ',
     saved: 'Đã lưu chia sẻ',
     madePrivate: 'Đã chuyển bài về riêng tư',
@@ -72,6 +73,7 @@ export const bank = {
     created: 'Đã tạo bài {code} với {count} test',
   },
   problem: {
+    assignNeedsTests: 'Thêm ít nhất một test để giao bài.',
     notFound: 'Không tìm thấy bài',
     deleted: 'Đã xóa bài',
     saved: 'Đã lưu bài',

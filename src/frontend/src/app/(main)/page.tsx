@@ -1,6 +1,6 @@
 'use client';
 
-import type { ClassroomDto } from '@oj/contracts';
+import { AWAITING_QUESTIONS_LIMIT, type ClassroomDto } from '@oj/contracts';
 import {
   ArrowRight,
   Dumbbell,
@@ -20,13 +20,14 @@ import {
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { usePageTitle } from '@/lib/page-title';
 import { Container } from '@/components/app-shell';
 import type { Messages } from '@/i18n/messages';
 import { ClassCode, PendingRequestsBadge } from '@/components/classes';
 import { OrganizationInvitationsInbox } from '@/components/organization-invitations';
 import { ProgressCells, SessionList } from '@/components/sessions';
 import { ThreadList } from '@/components/threads';
-import { Card, InlineAlert, LoadingState } from '@/components/ui';
+import { Card, InlineAlert, ListSkeleton, Skeleton } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { splitStudentClasses } from '@/lib/classes';
@@ -34,6 +35,7 @@ import { isClosingSoon, solveHref, sortSessions, studentOpenSessions } from '@/l
 import { useAsync } from '@/lib/use-async';
 import type { LastProblem } from '@/lib/utils';
 import { readLastProblem } from '@/lib/last-problem';
+import { AiUsageCard } from '@/components/ai-access';
 
 interface QuickAction {
   href: string;
@@ -44,14 +46,30 @@ interface QuickAction {
 
 function PrimaryAction({ a }: { a: QuickAction }) {
   return (
-    <Link href={a.href} className="flex items-center gap-4 rounded-panel bg-ink-600 px-5 py-5 text-white transition-colors hover:bg-ink-700">
+    <Link href={a.href} className="flex items-center gap-4 rounded-panel bg-ink-solid px-5 py-5 text-white transition-colors hover:bg-ink-solid-hover">
       <a.icon className="h-7 w-7 shrink-0 text-ink-200" aria-hidden="true" />
       <div className="min-w-0 flex-1">
         <div className="text-lg font-semibold">{a.title}</div>
-        <p className="truncate text-sm text-ink-100">{a.desc}</p>
+        <p className="truncate text-sm text-white/90">{a.desc}</p>
       </div>
       <ArrowRight className="h-5 w-5 shrink-0 text-ink-200" aria-hidden="true" />
     </Link>
+  );
+}
+
+/**
+ * Holds the main card's place until the data that decides it has loaded (OJ-16). Drawing a fallback first ("Luyện
+ * tập") and then switching to "Vào thi" moved the button under the student's finger.
+ */
+function PrimaryActionSkeleton() {
+  return (
+    <div className="flex items-center gap-4 rounded-panel bg-ink-solid px-5 py-5" role="status" aria-busy="true">
+      <span className="h-7 w-7 shrink-0 rounded-full bg-white/20" aria-hidden="true" />
+      <div className="min-w-0 flex-1 space-y-2" aria-hidden="true">
+        <span className="block h-5 w-32 animate-pulse rounded-control bg-white/20" />
+        <span className="block h-3.5 w-56 max-w-full animate-pulse rounded-control bg-white/15" />
+      </div>
+    </div>
   );
 }
 
@@ -61,10 +79,13 @@ function SecondaryActions({ items }: { items: QuickAction[] }) {
     <ul className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
       {items.map((a) => (
         <li key={a.href + a.title} className="border-b border-rule">
-          <Link href={a.href} className="flex items-center gap-3 py-3 hover:text-ink-700">
-            <a.icon className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
-            <span className="shrink-0 font-medium whitespace-nowrap">{a.title}</span>
-            <span className="min-w-0 truncate text-sm text-slate-500">{a.desc}</span>
+          {/* The hint goes under the title and may wrap: cut to one line at laptop widths it lost its meaning (U1). */}
+          <Link href={a.href} className="flex items-start gap-3 py-3 hover:text-ink-700">
+            <a.icon className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+            <span className="min-w-0">
+              <span className="block font-medium">{a.title}</span>
+              <span className="block text-sm text-slate-500">{a.desc}</span>
+            </span>
           </Link>
         </li>
       ))}
@@ -81,18 +102,18 @@ function MyClasses({ classes, isAdmin }: { classes: ClassroomDto[] | undefined; 
     <Card className="self-start">
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
         <h2 className="min-w-0 font-semibold">{isAdmin ? t('classesAdmin') : t('classes')}</h2>
-        <Link href="/classes" className="shrink-0 text-sm whitespace-nowrap text-ink-600 hover:underline">
+        <Link href="/classes" className="-my-1 inline-flex min-h-7 shrink-0 items-center text-sm whitespace-nowrap text-ink-600 hover:underline">
           {list.length ? t('viewAll') : t('openClasses')}
         </Link>
       </div>
       {!classes ? (
-        <LoadingState />
+        <ListSkeleton />
       ) : list.length === 0 ? (
         <div className="px-5 py-5 text-sm text-slate-600">
           <p>{t('noClass')}</p>
           <Link
-            href="/classes"
-            className="mt-3 inline-flex h-9 items-center gap-2 rounded-control bg-ink-600 px-4 font-medium text-white hover:bg-ink-700"
+            href="/classes?create=1"
+            className="mt-3 inline-flex h-9 items-center gap-2 rounded-control bg-ink-solid px-4 font-medium text-white hover:bg-ink-solid-hover"
           >
             <School className="h-4 w-4 shrink-0" aria-hidden="true" />
             {t('createClass')}
@@ -122,6 +143,30 @@ function MyClasses({ classes, isAdmin }: { classes: ClassroomDto[] | undefined; 
   );
 }
 
+/**
+ * Students' questions no teacher has answered yet, across the classes this teacher runs (UAT M8): without this a
+ * question was only found by opening each class. One request; the backend scopes it to the caller's classes.
+ */
+function QuestionsToAnswer() {
+  const t = useTranslations('student.staffHome');
+  const questions = useAsync(() => api.awaitingThreads(), []);
+  const list = questions.data ?? [];
+  if (list.length === 0) return null;
+  return (
+    <Card>
+      <div className="border-b border-slate-100 px-5 py-3">
+        <h2 className="font-semibold">
+          {list.length >= AWAITING_QUESTIONS_LIMIT
+            ? t('questionsTitleMany', { count: AWAITING_QUESTIONS_LIMIT })
+            : t('questionsTitle', { count: list.length })}
+        </h2>
+        <p className="text-sm text-slate-500">{t('questionsHint')}</p>
+      </div>
+      <ThreadList threads={list.slice(0, 5)} compact />
+    </Card>
+  );
+}
+
 function StaffHome() {
   const { user } = useAuth();
   const classes = useAsync(() => api.listClasses(), []);
@@ -138,7 +183,7 @@ function StaffHome() {
 
   const actions: QuickAction[] = [];
   if (hasNoClass && !isAdmin) {
-    actions.push(action('firstClass', '/classes', School));
+    actions.push(action('firstClass', '/classes?create=1', School));
   } else {
     actions.push(action('assign', '/bank/sets', Send));
   }
@@ -161,11 +206,33 @@ function StaffHome() {
       <OrganizationInvitationsInbox />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
         <div className="space-y-4">
-          <PrimaryAction a={actions[0]} />
+          {classes.data || classes.error ? <PrimaryAction a={actions[0]} /> : <PrimaryActionSkeleton />}
           <SecondaryActions items={actions.slice(1)} />
+          {/* In the left column (U1): below the full-width grid it left an empty band under the short action list. */}
+          <Card className="mt-2">
+            <div className="border-b border-slate-100 px-5 py-3">
+              <h2 className="font-semibold">{soon.length > 0 ? t('closingSoon') : t('openSessions')}</h2>
+              {soon.length > 0 && (
+                <p className="text-sm text-slate-500">{t('closingSoonHint')}</p>
+              )}
+            </div>
+            {sessions.loading && !sessions.data ? (
+              <ListSkeleton />
+            ) : (
+              <SessionList
+                sessions={(soon.length > 0 ? soon : open).slice(0, 8)}
+                showAudience
+                managerProgress
+                emptyTitle={t('emptyTitle')}
+                emptyHint={t('emptyHint')}
+              />
+            )}
+          </Card>
         </div>
         <div className="space-y-4">
           <MyClasses classes={classes.data ?? (classes.error ? [] : undefined)} isAdmin={isAdmin} />
+          <QuestionsToAnswer />
+          <AiUsageCard />
           {openFlags > 0 && (
             <Link
               href="/integrity"
@@ -180,25 +247,6 @@ function StaffHome() {
           )}
         </div>
       </div>
-      <Card className="mt-8">
-        <div className="border-b border-slate-100 px-5 py-3">
-          <h2 className="font-semibold">{soon.length > 0 ? t('closingSoon') : t('openSessions')}</h2>
-          {soon.length > 0 && (
-            <p className="text-sm text-slate-500">{t('closingSoonHint')}</p>
-          )}
-        </div>
-        {sessions.loading && !sessions.data ? (
-          <LoadingState />
-        ) : (
-          <SessionList
-            sessions={(soon.length > 0 ? soon : open).slice(0, 8)}
-            showAudience
-            managerProgress
-            emptyTitle={t('emptyTitle')}
-            emptyHint={t('emptyHint')}
-          />
-        )}
-      </Card>
     </>
   );
 }
@@ -256,7 +304,10 @@ function StudentHome() {
   return (
     <>
       <div className="mb-6">
-        {classes.loading && !classes.data ? null : current.length > 0 ? (
+        {classes.loading && !classes.data ? (
+          // Holds the class line's place so the main card below does not jump down when it arrives (OJ-16).
+          <Skeleton className="h-4 w-72 max-w-full" />
+        ) : current.length > 0 ? (
           <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
             {current.map((c) => (
               <span key={c.id}>
@@ -303,16 +354,16 @@ function StudentHome() {
       </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
         <div className="space-y-4">
-          <PrimaryAction a={primary} />
+          {sessions.data || sessions.error ? <PrimaryAction a={primary} /> : <PrimaryActionSkeleton />}
           <Card>
             <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
               <h2 className="min-w-0 font-semibold">{t('openWork')}</h2>
-              <Link href="/my-class" className="shrink-0 text-sm whitespace-nowrap text-ink-600 hover:underline">
+              <Link href="/my-class" className="-my-1 inline-flex min-h-7 shrink-0 items-center text-sm whitespace-nowrap text-ink-600 hover:underline">
                 {t('myClass')}
               </Link>
             </div>
             {sessions.loading && !sessions.data ? (
-              <LoadingState />
+              <ListSkeleton />
             ) : (
               <SessionList
                 sessions={open.slice(0, 6)}
@@ -332,7 +383,7 @@ function StudentHome() {
           <Card>
             <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
               <h2 className="min-w-0 font-semibold">{t('announcements')}</h2>
-              <Link href={boardHref} className="shrink-0 text-sm whitespace-nowrap text-ink-600 hover:underline">
+              <Link href={boardHref} className="-my-1 inline-flex min-h-7 shrink-0 items-center text-sm whitespace-nowrap text-ink-600 hover:underline">
                 {t('board')}
               </Link>
             </div>
@@ -342,12 +393,12 @@ function StudentHome() {
         <Card className="p-5">
           <div className="flex items-center justify-between gap-3">
             <h2 className="min-w-0 font-semibold">{t('progress')}</h2>
-            <Link href="/progress" className="shrink-0 text-sm whitespace-nowrap text-ink-600 hover:underline">
+            <Link href="/progress" className="-my-1 inline-flex min-h-7 shrink-0 items-center text-sm whitespace-nowrap text-ink-600 hover:underline">
               {t('openProgress')}
             </Link>
           </div>
           {!totals ? (
-            <LoadingState />
+            <ListSkeleton rows={2} className="-mx-5 mt-2" />
           ) : (
             <>
               <p className="mt-3 text-slate-700">
@@ -369,7 +420,7 @@ function StudentHome() {
                   solved={Math.min(40, totals.solvedProblems)}
                 />
               </div>
-              <Link href="/progress" className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-ink-600 hover:underline">
+              <Link href="/progress" className="mt-4 inline-flex min-h-7 items-center gap-1 text-sm font-medium text-ink-600 hover:underline">
                 <NotebookPen className="h-4 w-4 shrink-0" aria-hidden="true" />
                 {t('viewSolved')}
               </Link>
@@ -384,6 +435,7 @@ function StudentHome() {
 
 export default function HomePage() {
   const { user, isStaff } = useAuth();
+  usePageTitle(useTranslations('shell.nav')('home'));
   const t = useTranslations('student.home');
   const tr = useTranslations('enums.role');
   if (!user) return null;

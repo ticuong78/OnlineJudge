@@ -13,18 +13,8 @@ import { SessionIntegrity } from '@/components/integrity';
 import { SessionSyncButton } from '@/components/session-sync';
 import { AudienceLabel, EditSessionDialog, ProgressCells, SessionStateBadge, SessionWindow } from '@/components/sessions';
 import { useToast } from '@/components/toast';
-import {
-  Button,
-  Card,
-  ConfirmDialog,
-  DifficultyBadge,
-  ErrorState,
-  InlineAlert,
-  LinkButton,
-  LoadingState,
-  PageHeader,
-  ProblemSetTypeBadge,
-} from '@/components/ui';
+import { TopicBadges } from '@/components/topics';
+import { Button, Card, ConfirmDialog, DifficultyBadge, ErrorState, InlineAlert, LinkButton, PageHeader, PageSkeleton, ProblemSetTypeBadge } from '@/components/ui';
 import { useNow } from '@/components/verification';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -47,7 +37,7 @@ export default function SessionPage() {
   const t = useTranslations('session');
   const tc = useTranslations('common');
 
-  if (loading && !s) return <LoadingState />;
+  if (loading && !s) return <PageSkeleton />;
   if (error || !s)
     return (
       <Container>
@@ -56,7 +46,8 @@ export default function SessionPage() {
     );
 
   const problems = [...s.problems].sort((a, b) => a.order - b.order);
-  const target = timerTarget(s, Date.now() + offset);
+  // No timer until the server clock is known: its first check must use server time (OJ-15 F3).
+  const target = offset === null ? null : timerTarget(s, Date.now() + offset);
   const hidden = !!s.myProgress?.resultsHidden;
   const counts = s.myProgress?.submissionCounts ?? {};
   const limit = s.settings?.maxSubmissionsPerProblem ?? null;
@@ -123,12 +114,13 @@ export default function SessionPage() {
             <ExamTimer
               id={s.id}
               endsAt={target.endsAt}
-              offset={offset}
+              offset={offset ?? 0 /* target is null until the offset is known */}
               kind={target.kind}
               onTimeUp={() => setData((prev) => (prev ? { ...prev, canSubmit: false } : prev!))}
             />
           )}
-          {s.settings && <SettingsInfo settings={s.settings} manager={s.canManage} />}
+          {/* The start screen lists the same rules as bullets; one list is enough (UAT L7). */}
+          {s.settings && !(s.needsStart && !s.canManage) && <SettingsInfo settings={s.settings} manager={s.canManage} />}
         </div>
       )}
 
@@ -153,7 +145,8 @@ export default function SessionPage() {
           <h2 className="font-semibold">{t('page.problems')}</h2>
           <div className="flex flex-wrap items-center gap-3">
             {s.canManage && s.sourceSetId && <SessionSyncButton session={s} onSession={(n) => setData(n)} />}
-            {hidden ? (
+            {/* "Solved 0/1": the caller's own progress, which means nothing to the teacher (UAT L8). */}
+            {s.canManage ? null : hidden ? (
               <span className="text-sm text-slate-600">{t('page.hiddenUntilClose')}</span>
             ) : (
             <>
@@ -188,16 +181,20 @@ export default function SessionPage() {
                   <span className="min-w-12 shrink-0 text-sm font-semibold whitespace-nowrap text-slate-500 tabular-nums">
                     {t('problemNo', { n: idx + 1 })}
                   </span>
-                  <div className="min-w-0 flex-1">
+                  {/* Phones: the title takes the line, status and points go under it (as session rows, P1-5); the topic
+                      badges (OJ-20) made the squeezed column even taller. */}
+                  <div className="min-w-0 flex-1 basis-[calc(100%-4rem)] sm:basis-0">
                     <div className="font-medium text-slate-900">{p.title}</div>
-                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                       <span className="tabular-nums">{p.code}</span>
                       <DifficultyBadge difficulty={p.difficulty} />
+                      {/* Empty for students while a test or exam runs: the server leaves them out (OJ-20). */}
+                      <TopicBadges tags={p.tags ?? []} />
                     </div>
                   </div>
                   <span
                     className={cn(
-                      'text-sm tabular-nums',
+                      'ml-16 text-sm tabular-nums sm:ml-0',
                       isSolved ? 'font-semibold text-chalk-700' : b !== undefined ? 'font-medium text-mark-700' : 'text-slate-400',
                     )}
                   >
@@ -217,7 +214,7 @@ export default function SessionPage() {
                       {t('attemptsLeft', { left: Math.max(0, limit - n), limit })}
                     </span>
                   )}
-                  <span className="min-w-16 text-right text-sm whitespace-nowrap text-slate-600 tabular-nums">
+                  <span className="ml-auto min-w-16 text-right text-sm whitespace-nowrap text-slate-600 tabular-nums sm:ml-0">
                     {t('points', { points: p.points })}
                   </span>
                   <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />

@@ -6,7 +6,7 @@ import { Container } from '@/components/app-shell';
 import { LeaveClassButton } from '@/components/membership';
 import { SessionList } from '@/components/sessions';
 import { ClassBoard } from '@/components/threads';
-import { Badge, Card, ErrorState, LoadingState, PageHeader } from '@/components/ui';
+import { Badge, Card, ErrorState, PageHeader, PageSkeleton } from '@/components/ui';
 import { api } from '@/lib/api';
 import { sortSessions } from '@/lib/sessions';
 import { useAsync } from '@/lib/use-async';
@@ -19,7 +19,7 @@ export default function MyClassDetailPage() {
   const requests = useAsync(() => api.myMembershipRequests(), []);
   const t = useTranslations('student');
 
-  if ((classes.loading && !classes.data) || (sessions.loading && !sessions.data)) return <LoadingState />;
+  if ((classes.loading && !classes.data) || (sessions.loading && !sessions.data)) return <PageSkeleton />;
   const back = { href: '/my-class', label: t('myClass.title') };
   if (classes.error || sessions.error)
     return (

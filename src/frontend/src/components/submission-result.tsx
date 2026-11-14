@@ -136,7 +136,7 @@ export function TestStrip({ sub }: { sub: SubmissionDetailDto }) {
             title={t('testTitle', { n: i + 1, verdict: tv(r.verdict), time: formatTime(r.timeMs) })}
             className={cn(
               'flex h-6 w-6 items-center justify-center border text-[10px] font-semibold tabular-nums',
-              ok ? 'border-chalk-600 bg-chalk-600 text-white' : 'border-mark-300 bg-white text-mark-600',
+              ok ? 'border-chalk-solid bg-chalk-solid text-white' : 'border-mark-300 bg-surface text-mark-600',
             )}
           >
             {ok ? (
@@ -234,7 +234,7 @@ export function SubmissionSummary({ sub, compact, points }: { sub: SubmissionDet
       {sub.compileOutput && (sub.verdict === 'CE' || !compact) && (
         <div>
           <div className="mb-1 text-xs font-semibold text-slate-500">{t('compileOutput')}</div>
-          <pre className="max-h-60 overflow-auto rounded-control border border-rule bg-white p-3 font-mono text-xs whitespace-pre-wrap text-mark-800">
+          <pre className="max-h-60 overflow-auto rounded-control border border-rule bg-surface p-3 font-mono text-xs whitespace-pre-wrap text-mark-800">
             {sub.compileOutput}
           </pre>
         </div>

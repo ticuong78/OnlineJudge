@@ -8,6 +8,7 @@ export const DEFAULT_SETTINGS: SessionSettingsDto = {
   feedback: 'FULL',
   checkPlagiarism: false,
   checkAiUsage: false,
+  hideTopics: false,
 };
 
 /** "Bài kiểm tra" preset: 45 minutes, 3 submissions per problem, verdict and score only. */
@@ -114,4 +115,15 @@ export function formatClock(ms: number) {
   const sec = total % 60;
   const pad = (n: number) => String(n).padStart(2, '0');
   return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
+}
+
+/**
+ * Milliseconds to add to this computer's clock to get the server's, from `serverNow` in a session response.
+ * `null` until it is known: nothing that decides "time is up" may run before then, or a computer whose clock is fast
+ * would end a student's exam early (OJ-15 F3). Computed when the data arrives, so the very first check is right.
+ */
+export function serverOffsetMs(serverNow: string | undefined, localNowMs: number): number | null {
+  if (!serverNow) return null;
+  const server = new Date(serverNow).getTime();
+  return Number.isNaN(server) ? null : server - localNowMs;
 }

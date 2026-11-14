@@ -196,6 +196,7 @@ export const classes = {
     aboutSession: 'Về {session}',
     activity: 'Hoạt động {date}',
     replyCount: '{count} trả lời',
+    awaitingAnswer: 'Chờ giáo viên trả lời',
     form: {
       titleRequired: 'Đặt tiêu đề ngắn cho bài đăng.',
       questionRequired: 'Viết câu hỏi của bạn.',

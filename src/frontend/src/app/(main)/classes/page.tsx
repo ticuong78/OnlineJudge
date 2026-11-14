@@ -4,12 +4,12 @@ import type { ClassroomDto } from '@oj/contracts';
 import { Plus, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { ClassCode, ClassFormModal, MoveStudentControl, PendingRequestsBadge } from '@/components/classes';
 import { RequireRole, STAFF } from '@/components/guards';
-import { Badge, Button, Card, EmptyState, ErrorState, LoadingState, PageHeader } from '@/components/ui';
+import { Badge, Button, Card, EmptyState, ErrorState, ListSkeleton, PageHeader } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useAsync } from '@/lib/use-async';
@@ -27,7 +27,7 @@ function UnassignedStudents({ classes, onAssigned }: { classes: ClassroomDto[]; 
         )}
       </div>
       {loading && !data ? (
-        <LoadingState />
+        <ListSkeleton />
       ) : error ? (
         <div className="p-4">
           <ErrorState message={error} onRetry={reload} />
@@ -81,6 +81,13 @@ export default function ClassesPage() {
   const router = useRouter();
   const { data, error, loading, reload, setData } = useAsync(() => api.listClasses(), []);
   const [creating, setCreating] = useState(false);
+  // "Create your first class" on the home page links here with ?create=1 so one click opens the form (UAT L10).
+  // The flag is dropped from the address so Back or a reload does not open it again.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('create') !== '1') return;
+    setCreating(true);
+    router.replace('/classes');
+  }, [router]);
   const classes = [...(data ?? [])].sort(
     (a, b) => (a.status === b.status ? 0 : a.status === 'ACTIVE' ? -1 : 1) || a.name.localeCompare(b.name, 'vi'),
   );
@@ -103,7 +110,7 @@ export default function ClassesPage() {
 
         <Card>
           {loading && !data ? (
-            <LoadingState />
+            <ListSkeleton />
           ) : error ? (
             <div className="p-4">
               <ErrorState message={error} onRetry={reload} />
@@ -140,7 +147,7 @@ export default function ClassesPage() {
                     </div>
                   </div>
                   {c.code && <ClassCode code={c.code} />}
-                  <Link href={`/classes/${c.id}`} className="text-sm font-medium whitespace-nowrap text-ink-600 hover:underline">
+                  <Link href={`/classes/${c.id}`} className="inline-flex min-h-8 items-center px-1 text-sm font-medium whitespace-nowrap text-ink-600 hover:underline">
                     {t('list.open')}
                   </Link>
                 </li>

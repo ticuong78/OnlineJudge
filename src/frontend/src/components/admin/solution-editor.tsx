@@ -2,23 +2,28 @@
 
 import { LanguageLabels, Languages, type Language, type SolutionDto } from '@oj/contracts';
 import { Save, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { api, errorMessage } from '@/lib/api';
+import { isDirty } from '@/lib/unsaved';
 import { cn, MonacoLanguage } from '@/lib/utils';
 import { CodeEditor } from '../code-editor';
 import { LoadFileButton, MarkdownField } from '../form-fields';
 import { useToast } from '../toast';
+import { LeaveGuard } from '../leave-guard';
 import { Button, Card, ConfirmDialog, inputClass } from '../ui';
 
 export function SolutionEditor({
   problemId,
   solution,
   onChange,
+  onDirtyChange,
 }: {
   problemId: string;
   solution: SolutionDto | null | undefined;
   onChange: (s: SolutionDto | null) => void;
+  /** Told whenever unsaved changes appear or go, e.g. so the page can ask before switching tabs. */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const toast = useToast();
   const t = useTranslations('authoring.solution');
@@ -28,6 +33,18 @@ export function SolutionEditor({
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const tc = useTranslations('common');
+  const dirty = isDirty(
+    { explanation, code, language: code.trim() ? language : null },
+    { explanation: solution?.explanation ?? '', code: solution?.code ?? '', language: solution?.code?.trim() ? solution.language : null },
+  );
+
+  const report = useRef(onDirtyChange);
+  report.current = onDirtyChange;
+  useEffect(() => {
+    report.current?.(dirty);
+  }, [dirty]);
+  useEffect(() => () => report.current?.(false), []);
 
   const save = async () => {
     setSaving(true);
@@ -60,6 +77,7 @@ export function SolutionEditor({
 
   return (
     <div className="space-y-5">
+      <LeaveGuard dirty={dirty && !saving} />
       <Card className="p-5">
         <MarkdownField
           label={t('explanation')}
@@ -76,6 +94,7 @@ export function SolutionEditor({
             className={cn(inputClass, 'w-auto py-1.5')}
             value={language ?? 'cpp'}
             onChange={(e) => setLanguage(e.target.value as Language)}
+            aria-label={tc('language.code')}
           >
             {Languages.map((l) => (
               <option key={l} value={l}>

@@ -16,7 +16,7 @@ import { Button, ErrorState, LoadingState } from './ui';
 function Toolbar({ setId, title, hint }: { setId: string; title: string; hint: string }) {
   const t = useTranslations('bank.print');
   return (
-    <div className="no-print sticky top-0 z-10 border-b border-rule bg-white">
+    <div className="no-print sticky top-0 z-10 border-b border-rule bg-surface">
       <div className="mx-auto flex max-w-[210mm] flex-wrap items-center gap-3 px-4 py-3">
         <Link href={`/bank/sets/${setId}`} className="inline-flex shrink-0 items-center gap-1 text-sm whitespace-nowrap text-slate-600 hover:text-ink-700">
           <ChevronLeft className="h-4 w-4 shrink-0" />
@@ -183,7 +183,7 @@ function SheetContent({ answerKey }: { answerKey: boolean }) {
   problems.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
 
   return (
-    <div className="min-h-screen bg-slate-100 print:bg-white">
+    <div className="min-h-screen bg-slate-100 print:bg-surface">
       <Toolbar
         setId={id}
         title={answerKey ? t('toolbarAnswerKey') : t('toolbarExam')}
@@ -191,7 +191,7 @@ function SheetContent({ answerKey }: { answerKey: boolean }) {
           answerKey ? t('hintAnswerKey') : t('hintExam')
         }
       />
-      <main className="print-page print-sheet mx-auto my-6 max-w-[210mm] bg-white px-5 py-8 sm:px-[16mm] sm:py-[18mm] ring-1 ring-rule print:my-0 print:ring-0">
+      <main className="print-page print-sheet mx-auto my-6 max-w-[210mm] bg-surface px-5 py-8 sm:px-[16mm] sm:py-[18mm] ring-1 ring-rule print:my-0 print:ring-0">
         <SheetHeader data={data} answerKey={answerKey} />
         {problems.map((p, i) => (
           <ProblemBlock key={p.id} p={p} index={i} answerKey={answerKey} />

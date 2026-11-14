@@ -1,9 +1,12 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
+import { PathsSection } from '@/components/paths';
+import { PracticeByTopic } from '@/components/practice-topics';
 import { SessionList } from '@/components/sessions';
-import { Card, ErrorState, LoadingState, PageHeader } from '@/components/ui';
+import { Card, ErrorState, ListSkeleton, PageHeader } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { sortSessions } from '@/lib/sessions';
@@ -19,9 +22,14 @@ export default function PracticePage() {
         title={t('title')}
         subtitle={isStaff ? t('subtitleStaff') : t('subtitle')}
       />
+      <PathsSection />
+      {/* It reads ?topic=, which Next.js only allows inside a Suspense boundary. */}
+      <Suspense fallback={<ListSkeleton rows={2} />}>
+        <PracticeByTopic />
+      </Suspense>
       <Card>
         {loading && !data ? (
-          <LoadingState />
+          <ListSkeleton />
         ) : error ? (
           <div className="p-4">
             <ErrorState message={error} onRetry={reload} />

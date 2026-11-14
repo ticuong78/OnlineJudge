@@ -17,6 +17,7 @@ export const enums = {
   problemSetType: { EXAM: 'Đề thi', TEST: 'Đề kiểm tra', HOMEWORK: 'Bài tập về nhà', PRACTICE: 'Luyện tập' },
   sessionState: { UPCOMING: 'Sắp mở', OPEN: 'Đang mở', CLOSED: 'Đã đóng' },
   problemTextField: {
+    title: 'Tên bài',
     statement: 'Đề bài',
     inputFormat: 'Dữ liệu vào',
     outputFormat: 'Kết quả',

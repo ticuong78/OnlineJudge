@@ -92,6 +92,8 @@ export const assign = {
     feedbackNote: 'Teachers always see everything. Once the session closes, students see everything too.',
     integrity: 'Integrity checks',
     plagiarism: 'Plagiarism check',
+    hideTopics: 'Hide the problems\' topics',
+    hideTopicsHint: 'Students do not see the topics (such as dynamic programming or arrays) until the session closes. Use it for a mixed review step in a learning path: recognising the technique is part of the exercise. Tests and exams always hide topics.',
     plagiarismHint: 'Compares code between students in this session.',
     aiUsage: 'AI-use check',
     aiUsageHint: 'Claude reviews each submission. Needs an API key on the server and costs a small fee.',

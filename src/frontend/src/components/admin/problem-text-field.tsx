@@ -13,13 +13,14 @@ import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { api, errorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { useCanUseAi, VipOnly } from '../ai-access';
+import { useAiFeature } from '@/lib/ai-usage';
+import { AiUsesLeft, useAiBlockedReason, VipOnly } from '../ai-access';
 import { MarkdownField } from '../form-fields';
 import { useToast } from '../toast';
 import { Spinner } from '../ui';
 
-/** A section the AI can rewrite. */
-type Section = ProblemTextField;
+/** A section the AI can rewrite: the four text sections and the title (OJ-22). */
+type Section = ProblemTextField | 'title';
 
 /** What one "Dùng gợi ý" switch needs. */
 export interface SectionSuggestion {
@@ -129,6 +130,7 @@ export function SuggestionSwitch({
   text,
   className,
   showLocked = false,
+  showUses = false,
 }: {
   label: string;
   suggestion: SectionSuggestion;
@@ -136,30 +138,45 @@ export function SuggestionSwitch({
   className?: string;
   /** For regular (non-VIP) accounts: show a "VIP only" hint instead of nothing. */
   showLocked?: boolean;
+  /** Show the "uses left" count (the whole-problem switch). Section switches show it only when the uses are gone. */
+  showUses?: boolean;
 }) {
   const t = useTranslations('authoring.suggestion');
-  const canUseAi = useCanUseAi();
+  // A free teacher has a monthly allowance of rewrites (OJ-21); the switch shows what is left and stops at the limit.
+  const canUseAi = useAiFeature('SECTION').enabled;
+  const blocked = useAiBlockedReason('SECTION');
+  // Blocked only for turning AI on: a switch that is on can always be turned off, also after the last use.
+  const notConfigured = !!blocked && !suggestion.on;
   const { on, loading, toggle, regenerate } = suggestion;
   if (!canUseAi) return showLocked ? <VipOnly label={t('aiLabel')} className={className} /> : null;
   return (
     <span className={cn('flex flex-wrap items-center gap-x-3 gap-y-1', className)}>
-      <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-xs font-medium text-slate-700">
+      {/* The whole label is the tap target (at least 28px high); the switch itself stays small (UAT L2). */}
+      <label
+        className={cn(
+          'flex min-h-8 items-center gap-2 whitespace-nowrap text-xs font-medium text-slate-700',
+          notConfigured ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+        )}
+        title={blocked}
+      >
         <button
           type="button"
           role="switch"
           aria-label={label}
           aria-checked={on}
           aria-busy={loading}
-          disabled={loading}
+          aria-description={blocked}
+          disabled={loading || notConfigured}
           onClick={() => toggle(!on)}
           className={cn(
             'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:cursor-wait',
-            on ? 'bg-chalk-600' : 'bg-slate-300',
+            notConfigured && 'disabled:cursor-not-allowed',
+            on ? 'bg-chalk-solid' : 'bg-slate-300',
           )}
         >
           <span
             className={cn(
-              'inline-block h-4 w-4 rounded-full bg-white transition-transform',
+              'inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
               on ? 'translate-x-[18px]' : 'translate-x-0.5',
             )}
           />
@@ -168,7 +185,7 @@ export function SuggestionSwitch({
         {/* In an element, not a bare text node next to the icon: survives browser translation (see Button in ui.tsx). */}
         <span>{loading ? t('writing') : (text ?? t('use'))}</span>
       </label>
-      {on && !loading && regenerate && (
+      {on && !loading && regenerate && !blocked && (
         <button
           type="button"
           onClick={regenerate}
@@ -179,6 +196,7 @@ export function SuggestionSwitch({
           <span>{t('rewrite')}</span>
         </button>
       )}
+      {(showUses || blocked) && <AiUsesLeft feature="SECTION" />}
     </span>
   );
 }
@@ -219,7 +237,9 @@ export function ProblemTextField({
   const label = tf(field);
   const side = ioSideOf(field);
   const fileIo = hasFileIo(value, side);
-  const canUseAi = useCanUseAi();
+  // Without an AI use left, the manual "convert to standard I/O" button is offered, as for accounts without AI.
+  const section = useAiFeature('SECTION');
+  const canUseAi = section.enabled && !section.exhausted;
   return (
     <MarkdownField
       label={label}

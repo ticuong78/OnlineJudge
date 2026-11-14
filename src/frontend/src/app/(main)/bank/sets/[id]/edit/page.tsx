@@ -6,7 +6,7 @@ import { Container } from '@/components/app-shell';
 import { RequireRole, STAFF } from '@/components/guards';
 import { ProblemSetBuilder } from '@/components/problem-set-builder';
 import { useToast } from '@/components/toast';
-import { ErrorState, LoadingState, PageHeader } from '@/components/ui';
+import { ErrorState, PageHeader, PageSkeleton } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAsync } from '@/lib/use-async';
 
@@ -26,7 +26,7 @@ export default function EditSetPage() {
           subtitle={t('setEdit.subtitle')}
         />
         {loading && !data ? (
-          <LoadingState />
+          <PageSkeleton inset />
         ) : error || !data ? (
           <ErrorState message={error ?? t('set.notFound')} onRetry={reload} />
         ) : !data.canEdit ? (

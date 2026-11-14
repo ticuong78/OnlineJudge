@@ -83,7 +83,14 @@ export const auth = {
     resendIn: { code: 'Gửi lại mã sau {seconds} giây', email: 'Gửi lại email sau {seconds} giây' },
     resent: { code: 'Đã gửi lại mã tới {email}', email: 'Đã gửi lại email tới {email}' },
   },
+  intro: {
+    submit: 'Nộp bài và nhận kết quả chấm sau vài giây, có điểm từng test.',
+    teach: 'Giáo viên giao bài cho lớp, theo dõi tiến độ và trả lời câu hỏi.',
+    print: 'Đề thi và đáp án in được, đúng mẫu giấy thi.',
+  },
   formFields: {
+    showPassword: 'Hiện mật khẩu',
+    hidePassword: 'Ẩn mật khẩu',
     write: 'Soạn',
     preview: 'Xem trước',
     markdownPlaceholder: 'Hỗ trợ Markdown và công thức $x^2$',

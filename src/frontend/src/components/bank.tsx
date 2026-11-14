@@ -63,7 +63,7 @@ export function ScopeSwitch({
           onClick={() => onChange(o.v)}
           className={cn(
             'rounded-[4px] px-3 py-1 whitespace-nowrap',
-            value === o.v ? 'bg-white font-medium ring-1 ring-slate-300' : 'text-slate-600 hover:text-slate-900',
+            value === o.v ? 'bg-surface font-medium ring-1 ring-slate-300' : 'text-slate-600 hover:text-slate-900',
           )}
         >
           {o.label}

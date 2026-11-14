@@ -4,8 +4,9 @@ import type { SuggestTestCasesRequest, TestCaseSuggestionsDto, UpsertTestCaseReq
 import { ChevronDown, ChevronRight, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { useAiFeature } from '@/lib/ai-usage';
 import { cn } from '@/lib/utils';
-import { useCanUseAi, VipOnly } from '../ai-access';
+import { AiUsesLeft, useAiBlockedReason, VipOnly } from '../ai-access';
 import { IoTextarea } from '../form-fields';
 import { Button, Card, EmptyState, inputClass } from '../ui';
 import { FEW_TESTS, SuggestTestsDialog } from './test-suggestions';
@@ -33,7 +34,10 @@ export function TestListEditor({
   const t = useTranslations('authoring.tests');
   const tCommon = useTranslations('common');
   const [open, setOpen] = useState<Set<number>>(new Set());
-  const canUseAi = useCanUseAi();
+  // A free teacher has a monthly allowance (OJ-21): the button shows what is left and stops at the limit.
+  const canUseAi = useAiFeature('TESTS').enabled;
+  const blocked = useAiBlockedReason('TESTS');
+  const aiOff = !!blocked;
   const [suggesting, setSuggesting] = useState(false);
   // The list as it grows while the AI dialog adds tests one by one.
   const latest = useRef(tests);
@@ -72,10 +76,19 @@ export function TestListEditor({
         </div>
         <div className="flex flex-wrap gap-2">
           {canUseAi ? (
-            <Button size="sm" variant="secondary" onClick={() => setSuggesting(true)}>
+            <>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setSuggesting(true)}
+              disabled={aiOff}
+              title={blocked}
+            >
               <Sparkles className="h-4 w-4" />
               {t('suggestAi')}
             </Button>
+            <AiUsesLeft feature="TESTS" className="self-center" />
+            </>
           ) : (
             <VipOnly label={t('suggestAiVip')} className="self-center" />
           )}
@@ -89,7 +102,7 @@ export function TestListEditor({
       {tests.length > 0 && tests.length < FEW_TESTS && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-ink-50/60 px-5 py-2 text-sm text-slate-700">
           <span className="min-w-0">{t('few', { count: tests.length })}</span>
-          {canUseAi && (
+          {canUseAi && !aiOff && (
             <Button size="sm" variant="ghost" onClick={() => setSuggesting(true)}>
               <Sparkles className="h-4 w-4" />
               {t('suggestMore')}
@@ -112,7 +125,7 @@ export function TestListEditor({
                   <button
                     type="button"
                     onClick={() => toggle(i)}
-                    className="flex items-center gap-1 text-sm font-medium tabular-nums text-slate-700"
+                    className="-my-1 flex min-h-8 items-center gap-1 rounded pr-1 text-sm font-medium tabular-nums text-slate-700 hover:bg-slate-50"
                     aria-expanded={expanded}
                   >
                     {expanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}#{i + 1}
@@ -121,7 +134,7 @@ export function TestListEditor({
                     {preview(test.input, tCommon('empty'))} ⟹ {preview(test.expectedOutput, tCommon('empty'), 30)}
                   </span>
                   <div className="ml-auto flex items-center gap-3">
-                    <label className="flex cursor-pointer items-center gap-1 whitespace-nowrap text-xs text-slate-600">
+                    <label className="flex min-h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap text-xs text-slate-600">
                       <input type="checkbox" checked={test.isSample} onChange={(e) => update(i, { isSample: e.target.checked })} />
                       {t('isSample')}
                     </label>

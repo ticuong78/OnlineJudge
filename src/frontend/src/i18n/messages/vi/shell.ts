@@ -14,5 +14,11 @@ export const shell = {
     users: 'Người dùng',
   },
   menu: 'Menu',
+  signOutUnsaved: {
+    title: 'Đăng xuất khi chưa lưu?',
+    body: 'Những thay đổi chưa lưu trên trang này và bản nháp của chúng sẽ mất.',
+    stay: 'Ở lại',
+  },
+  homeLink: 'Trang chủ Online Judge',
   signOut: 'Đăng xuất',
 };

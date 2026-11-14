@@ -8,16 +8,7 @@ import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { BankTabs, CopiedFrom, ScopeSwitch, SharingBadge } from '@/components/bank';
 import { RequireRole, STAFF } from '@/components/guards';
-import {
-  Card,
-  EmptyState,
-  ErrorState,
-  inputClass,
-  LinkButton,
-  LoadingState,
-  PageHeader,
-  ProblemSetTypeBadge,
-} from '@/components/ui';
+import { Card, EmptyState, ErrorState, inputClass, LinkButton, PageHeader, ProblemSetTypeBadge, TableSkeleton } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useAsync } from '@/lib/use-async';
@@ -70,7 +61,7 @@ export default function BankSetsPage() {
           <ScopeSwitch value={scope} onChange={setScope} />
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input className={cn(inputClass, 'pl-9')} placeholder={t('filters.searchSets')} value={q} onChange={(e) => setQ(e.target.value)} />
+            <input className={cn(inputClass, 'pl-9')} placeholder={t('filters.searchSets')} aria-label={t('filters.searchSets')} value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
           <select
             className={cn(inputClass, 'lg:w-44')}
@@ -89,7 +80,7 @@ export default function BankSetsPage() {
 
         <Card>
           {loading && !data ? (
-            <LoadingState />
+            <TableSkeleton />
           ) : error ? (
             <div className="p-4">
               <ErrorState message={error} onRetry={reload} />

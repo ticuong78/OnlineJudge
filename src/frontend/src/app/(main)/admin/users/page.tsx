@@ -7,20 +7,7 @@ import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { ADMIN_ONLY, RequireRole } from '@/components/guards';
 import { useToast } from '@/components/toast';
-import {
-  Badge,
-  Button,
-  Card,
-  ConfirmDialog,
-  EmptyState,
-  ErrorState,
-  Field,
-  InlineAlert,
-  inputClass,
-  LoadingState,
-  Modal,
-  PageHeader,
-} from '@/components/ui';
+import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, Field, InlineAlert, inputClass, ListSkeleton, Modal, PageHeader } from '@/components/ui';
 import { useNow } from '@/components/verification';
 import { api, errorMessage } from '@/lib/api';
 import { useAsync } from '@/lib/use-async';
@@ -149,7 +136,7 @@ function PendingInvitations({ refreshKey }: { refreshKey: number }) {
         {data && data.length > 0 && <span className="text-sm text-slate-500">{t('pending.count', { count: data.length })}</span>}
       </div>
       {loading && !data ? (
-        <LoadingState />
+        <ListSkeleton />
       ) : error ? (
         <div className="p-4">
           <ErrorState message={error} onRetry={reload} />
@@ -301,6 +288,7 @@ export default function UsersPage() {
           <input
             className={cn(inputClass, 'w-full sm:max-w-xs')}
             placeholder={t('searchPlaceholder')}
+            aria-label={t('searchPlaceholder')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -312,7 +300,7 @@ export default function UsersPage() {
                 onClick={() => setFilter(r)}
                 className={cn(
                   'rounded-full px-3 py-1 text-sm whitespace-nowrap',
-                  filter === r ? 'bg-ink-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+                  filter === r ? 'bg-ink-solid text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
                 )}
               >
                 {r ? t('filterRole', { role: tRole(r), count: counts[r] ?? 0 }) : t('filterAll', { count: data?.length ?? 0 })}
@@ -323,7 +311,7 @@ export default function UsersPage() {
 
         <Card>
           {loading && !data ? (
-            <LoadingState />
+            <ListSkeleton />
           ) : error ? (
             <div className="p-4">
               <ErrorState message={error} onRetry={reload} />
@@ -367,6 +355,12 @@ export default function UsersPage() {
                             <Badge className="bg-amber-50 text-amber-800 ring-1 ring-amber-200">
                               <Crown className="mr-1 h-3 w-3" />
                               VIP
+                            </Badge>
+                          )}
+                          {/* The AI plan (OJ-21) when VIP does not already say it: from an organization, or the free allowance. */}
+                          {u.role === 'TEACHER' && !u.vip && (
+                            <Badge className={u.aiPlan === 'PLUS' ? 'bg-ink-50 text-ink-700 ring-1 ring-ink-200' : 'bg-slate-100 text-slate-600'}>
+                              {t(u.aiPlan === 'PLUS' ? 'aiPlanOrganization' : 'aiPlanFree')}
                             </Badge>
                           )}
                         </span>

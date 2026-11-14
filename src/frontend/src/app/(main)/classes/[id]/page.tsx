@@ -12,20 +12,7 @@ import { RequireRole, STAFF } from '@/components/guards';
 import { AssignFromBankDialog, SessionList } from '@/components/sessions';
 import { ClassBoard } from '@/components/threads';
 import { useToast } from '@/components/toast';
-import {
-  Badge,
-  Button,
-  Card,
-  ConfirmDialog,
-  EmptyState,
-  ErrorState,
-  Field,
-  InlineAlert,
-  inputClass,
-  LoadingState,
-  Modal,
-  PageHeader,
-} from '@/components/ui';
+import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, Field, InlineAlert, inputClass, ListSkeleton, Modal, PageHeader, PageSkeleton } from '@/components/ui';
 import { useNow } from '@/components/verification';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -242,7 +229,7 @@ function Roster({
         />
       )}
       {loading && !data ? (
-        <LoadingState />
+        <ListSkeleton />
       ) : error ? (
         <div className="p-4">
           <ErrorState message={error} onRetry={reload} />
@@ -338,7 +325,7 @@ function ClassSessions({ cls }: { cls: ClassroomDto }) {
         )}
       </div>
       {loading && !data ? (
-        <LoadingState />
+        <ListSkeleton />
       ) : error ? (
         <div className="p-4">
           <ErrorState message={error} onRetry={reload} />
@@ -402,7 +389,7 @@ function LifecycleBar({ cls, onChange }: { cls: ClassroomDto; onChange: (c: Clas
 
   if (cls.status === 'ACTIVE') {
     return (
-      <div className="mb-6 flex flex-wrap items-center gap-3 rounded-panel border border-rule bg-white px-5 py-3">
+      <div className="mb-6 flex flex-wrap items-center gap-3 rounded-panel border border-rule bg-surface px-5 py-3">
         <Badge className="bg-chalk-50 text-chalk-700 ring-1 ring-chalk-200">{t('active')}</Badge>
         <span className="min-w-0 flex-1 basis-56 text-sm text-slate-600">
           {t('activeNote')}
@@ -556,7 +543,7 @@ export default function ClassDetailPage() {
     <RequireRole roles={STAFF}>
       <Container>
         {loading && !cls ? (
-          <LoadingState />
+          <PageSkeleton inset />
         ) : error || !cls ? (
           <ErrorState message={error ?? t('notFound')} onRetry={reload} />
         ) : (

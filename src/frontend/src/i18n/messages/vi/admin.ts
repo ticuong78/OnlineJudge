@@ -19,6 +19,8 @@ export const admin = {
       expires: 'Hết hạn',
     },
     orgManaged: '{name} (quản lý)',
+    aiPlanFree: 'AI miễn phí',
+    aiPlanOrganization: 'AI của tổ chức',
     vipOn: '{name} đã là giáo viên VIP (dùng được AI)',
     vipOff: '{name} đã về tài khoản thường',
     removeVip: 'Bỏ VIP',

@@ -1,6 +1,7 @@
 import { vi } from '@/i18n/messages/vi';
 import { activeLocale, tr } from '@/i18n/runtime';
 import type {
+  FeaturesDto,
   AddOrganizationMemberRequest,
   CreateOrganizationRequest,
   InviteToOrganizationRequest,
@@ -58,6 +59,8 @@ import type {
   SubmissionDetailDto,
   SubmissionDto,
   SubmitRequest,
+  CreateTrialRunRequest,
+  TrialRunDto,
   ProblemSectionSuggestionDto,
   SuggestDraftTestsRequest,
   SuggestProblemSectionRequest,
@@ -74,9 +77,21 @@ import type {
   UpsertSolutionRequest,
   UpsertTestCaseRequest,
   UserDto,
+  AiUsageDto,
+  LearningPathDto,
+  LearningPathPageDto,
+  ListPathsQuery,
+  UpsertLearningPathRequest,
+  PracticeProblemDto,
+  ProblemTagDto,
   VerificationTicketDto,
   VerifyCodeRequest,
 } from '@oj/contracts';
+
+/** Tells the "AI uses left" labels to refresh (lib/ai-usage.ts listens; kept here so the client has no import cycle). */
+function aiUsed() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('oj:ai-used'));
+}
 
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api').replace(/\/+$/, '');
 
@@ -115,7 +130,7 @@ export class ApiError extends Error {
   }
 }
 
-type Query = Record<string, string | number | boolean | null | undefined>;
+type Query = Record<string, string | number | boolean | null | undefined | readonly string[]>;
 
 function buildUrl(path: string, query?: Query) {
   const url = `${API_URL}${path}`;
@@ -123,7 +138,9 @@ function buildUrl(path: string, query?: Query) {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(query)) {
     if (v === undefined || v === null || v === '') continue;
-    params.set(k, String(v));
+    // A list repeats the key (?tag=a&tag=b).
+    if (Array.isArray(v)) v.forEach((item: string) => params.append(k, item));
+    else params.set(k, String(v));
   }
   const qs = params.toString();
   return qs ? `${url}?${qs}` : url;
@@ -182,7 +199,8 @@ export interface ProblemQuery {
   scope?: BankScope;
   search?: string;
   difficulty?: Difficulty | '';
-  tag?: string;
+  /** Topics (OJ-20): problems carrying all of them. */
+  tags?: string[];
   /** `organization` scope: one of the viewer's organizations (all of them when absent). */
   organizationId?: string;
   page?: number;
@@ -206,6 +224,7 @@ export const api = {
   // Auth
   login: (body: LoginRequest) => request<AuthResponse>('POST', '/auth/login', { body }),
   me: () => request<UserDto>('GET', '/auth/me'),
+  features: () => request<FeaturesDto>('GET', '/features'),
   register: (body: RegisterRequest) => request<VerificationTicketDto>('POST', '/auth/register', { body }),
   verifyRegistration: (body: VerifyCodeRequest) => request<AuthResponse>('POST', '/auth/register/verify', { body }),
   resendCode: (body: ResendCodeRequest) =>
@@ -289,8 +308,11 @@ export const api = {
     request<{ approved: number }>('POST', `/classes/${classId}/requests/approve-all`),
 
   // Problem bank
-  listProblems: (q: ProblemQuery = {}) =>
-    request<Paginated<ProblemSummaryDto>>('GET', '/problems', { query: { ...q } }),
+  listProblems: ({ tags, ...q }: ProblemQuery = {}) =>
+    request<Paginated<ProblemSummaryDto>>('GET', '/problems', { query: { ...q, tag: tags } }),
+  /** Topics and tags in a bank scope with their problem counts (OJ-20). */
+  problemTags: (scope: BankScope = 'mine', organizationId?: string) =>
+    request<ProblemTagDto[]>('GET', '/problems/tags', { query: { scope, organizationId } }),
   getProblem: (id: string) => request<ProblemDetailDto>('GET', `/problems/${id}`),
   createProblem: (body: CreateProblemRequest) => request<ProblemDetailDto>('POST', '/problems', { body }),
   updateProblem: (id: string, body: UpsertProblemRequest) =>
@@ -303,12 +325,15 @@ export const api = {
     request<TestCaseDto>('POST', `/problems/${problemId}/test-cases`, { body }),
   updateTestCase: (problemId: string, testCaseId: string, body: UpsertTestCaseRequest) =>
     request<TestCaseDto>('PUT', `/problems/${problemId}/test-cases/${testCaseId}`, { body }),
+  // AI requests (OJ-21): each one may use a monthly allowance, so the "uses left" labels refresh afterwards.
   suggestDraftTests: (body: SuggestDraftTestsRequest) =>
-    request<TestCaseSuggestionsDto>('POST', '/problems/suggest-tests', { body }),
+    request<TestCaseSuggestionsDto>('POST', '/problems/suggest-tests', { body }).finally(aiUsed),
   suggestProblemSection: (body: SuggestProblemSectionRequest) =>
-    request<ProblemSectionSuggestionDto>('POST', '/problems/suggest-section', { body }),
+    request<ProblemSectionSuggestionDto>('POST', '/problems/suggest-section', { body }).finally(aiUsed),
   suggestTestCases: (problemId: string, body: SuggestTestCasesRequest) =>
-    request<TestCaseSuggestionsDto>('POST', `/problems/${problemId}/test-cases/suggest`, { body }),
+    request<TestCaseSuggestionsDto>('POST', `/problems/${problemId}/test-cases/suggest`, { body }).finally(aiUsed),
+  /** The signed-in teacher's monthly AI allowances (OJ-21). */
+  aiUsage: () => request<AiUsageDto>('GET', '/ai/usage'),
   deleteTestCase: (problemId: string, testCaseId: string) =>
     request<void>('DELETE', `/problems/${problemId}/test-cases/${testCaseId}`),
   saveSolution: (problemId: string, body: UpsertSolutionRequest) =>
@@ -319,9 +344,9 @@ export const api = {
   parseExam: (file: File) => {
     const fd = new FormData();
     fd.append('file', file);
-    return request<ParsedExamDto>('POST', '/imports/parse', { body: fd });
+    return request<ParsedExamDto>('POST', '/imports/parse', { body: fd }).finally(aiUsed);
   },
-  parseExamText: (text: string) => request<ParsedExamDto>('POST', '/imports/parse-text', { body: { text } }),
+  parseExamText: (text: string) => request<ParsedExamDto>('POST', '/imports/parse-text', { body: { text } }).finally(aiUsed),
   confirmImport: (body: ImportProblemsRequest) =>
     request<ImportProblemsResponse>('POST', '/imports/confirm', { body }),
 
@@ -361,6 +386,11 @@ export const api = {
     }),
   getSubmission: (id: string) => request<SubmissionDetailDto>('GET', `/submissions/${id}`),
 
+  // Trial runs on the sample tests (OJ-18): nothing is recorded
+  startTrialRun: (sessionId: string, problemKey: string, body: CreateTrialRunRequest) =>
+    request<TrialRunDto>('POST', `/sessions/${sessionId}/problems/${encodeURIComponent(problemKey)}/trial-runs`, { body }),
+  getTrialRun: (id: string) => request<TrialRunDto>('GET', `/trial-runs/${id}`),
+
   // Integrity checks (staff only)
   listIntegrityFlags: (q: { status?: IntegrityFlagStatus; sessionId?: string } = {}) =>
     request<IntegrityFlagDto[]>('GET', '/integrity-flags', { query: { ...q } }),
@@ -368,6 +398,7 @@ export const api = {
   acknowledgeIntegrityFlag: (id: string) => request<IntegrityFlagDto>('POST', `/integrity-flags/${id}/acknowledge`),
 
   // Class community
+  awaitingThreads: () => request<ThreadSummaryDto[]>('GET', '/threads/awaiting'),
   listThreads: (classId: string, q: { sessionId?: string; problemKey?: string } = {}) =>
     request<ThreadSummaryDto[]>('GET', `/classes/${classId}/threads`, { query: { ...q } }),
   createThread: (classId: string, body: CreateThreadRequest) =>
@@ -380,6 +411,16 @@ export const api = {
 
   // Learning record
   myProgress: () => request<LearningRecordDto>('GET', '/progress/me'),
+  /** Problems of open public sessions, optionally of one topic: practice by topic (OJ-20). */
+  practiceProblems: (topic?: string) => request<PracticeProblemDto[]>('GET', '/practice/problems', { query: { topic } }),
+  // Learning paths (OJ-24)
+  listPaths: (query: ListPathsQuery = {}) => request<LearningPathPageDto>('GET', '/paths', { query: { ...query } }),
+  getPath: (id: string) => request<LearningPathDto>('GET', `/paths/${id}`),
+  createPath: (body: UpsertLearningPathRequest) => request<LearningPathDto>('POST', '/paths', { body }),
+  updatePath: (id: string, body: UpsertLearningPathRequest) => request<LearningPathDto>('PUT', `/paths/${id}`, { body }),
+  deletePath: (id: string) => request<void>('DELETE', `/paths/${id}`),
+  /** Topics of the open practice problems with their counts (OJ-20). */
+  practiceTopics: () => request<ProblemTagDto[]>('GET', '/practice/topics'),
 };
 
 /**

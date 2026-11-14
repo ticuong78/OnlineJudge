@@ -16,7 +16,7 @@ import {
   SeatsMeter,
 } from '@/components/organizations';
 import { useToast } from '@/components/toast';
-import { Badge, Button, Card, EmptyState, ErrorState, LoadingState, PageHeader } from '@/components/ui';
+import { Badge, Button, Card, EmptyState, ErrorState, ListSkeleton, PageHeader } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useAsync } from '@/lib/use-async';
@@ -55,7 +55,7 @@ function Organizations() {
         }
       />
       {orgs.loading ? (
-        <LoadingState />
+        <ListSkeleton />
       ) : orgs.error ? (
         <ErrorState message={orgs.error} onRetry={orgs.reload} />
       ) : !orgs.data?.length ? (

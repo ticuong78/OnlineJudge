@@ -17,7 +17,7 @@ import { ProblemStatement } from '@/components/problem-statement';
 import { CreateSessionDialog } from '@/components/sessions';
 import { SharingPanel } from '@/components/sharing-panel';
 import { useToast } from '@/components/toast';
-import { Button, Card, ConfirmDialog, ErrorState, InlineAlert, LoadingState, PageHeader, Tabs } from '@/components/ui';
+import { Button, Card, ConfirmDialog, ErrorState, InlineAlert, LoadingState, PageHeader, PageSkeleton, Tabs } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useAsync } from '@/lib/use-async';
@@ -109,9 +109,15 @@ function ProblemPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  const [sharingOpen, setSharingOpen] = useState(false);
+  // Tabs are buttons, not links, so the editors' own leave guard does not see a tab switch: ask here (review #3).
+  const [editDirty, setEditDirty] = useState(false);
+  const [pendingTab, setPendingTab] = useState<Tab | null>(null);
+  const tl = useTranslations('common.leave');
+  const changeTab = (next: Tab) => (editDirty && next !== tab ? setPendingTab(next) : setTab(next));
   const { data, error, loading, reload, setData } = useAsync<ProblemDetailDto>(() => api.getProblem(id), [id]);
 
-  if (loading && !data) return <LoadingState />;
+  if (loading && !data) return <PageSkeleton />;
   if (error || !data)
     return (
       <Container>
@@ -133,7 +139,7 @@ function ProblemPage() {
 
   const title = (
     <>
-      <span className="mr-2 text-base font-medium text-slate-400 tabular-nums">{data.code}</span>
+      <span className="mr-2 text-base font-medium text-slate-500 tabular-nums">{data.code}</span>
       {data.title}
     </>
   );
@@ -148,7 +154,7 @@ function ProblemPage() {
   if (!data.canEdit) {
     return (
       <Container wide>
-        <PageHeader back={{ href: '/bank', label: t('title') }} title={title} subtitle={subtitle} />
+        <PageHeader back={{ href: '/bank', label: t('title') }} title={title} docTitle={`${data.code} ${data.title}`} subtitle={subtitle} />
         <PublicProblemView p={data} />
       </Container>
     );
@@ -161,14 +167,27 @@ function ProblemPage() {
       <PageHeader
         back={{ href: '/bank', label: t('title') }}
         title={title}
+        docTitle={`${data.code} ${data.title}`}
         subtitle={subtitle}
         actions={
           <>
             {(isAdmin || data.canEdit) && (
-              <Button onClick={() => setAssigning(true)}>
-                <Send className="h-4 w-4 shrink-0" />
-                {t('assign')}
-              </Button>
+              // A problem with no tests cannot be assigned (the backend refuses): say so before the form, not after (L3).
+              <span className="flex flex-wrap items-center gap-2">
+                {data.testCases.length === 0 && (
+                  <span id="assign-needs-tests" className="text-xs text-slate-500">
+                    {t('problem.assignNeedsTests')}
+                  </span>
+                )}
+                <Button
+                  onClick={() => setAssigning(true)}
+                  disabled={data.testCases.length === 0}
+                  aria-describedby={data.testCases.length === 0 ? 'assign-needs-tests' : undefined}
+                >
+                  <Send className="h-4 w-4 shrink-0" />
+                  {t('assign')}
+                </Button>
+              </span>
             )}
             <Button variant="secondary" className="text-mark-600" onClick={() => setConfirmDelete(true)}>
               <Trash2 className="h-4 w-4 shrink-0" />
@@ -179,13 +198,31 @@ function ProblemPage() {
       />
 
       <div className="mb-5">
-        <SharingPanel problem={data} onChange={(p) => setData((prev) => ({ ...p, testCases: p.testCases ?? prev?.testCases ?? [] }))} />
+        {/* One line; the switches open on demand (U3). Open, the full panel pushed the editor below the fold
+            although sharing changes rarely. */}
+        <div className="text-sm">
+          {/* The current state is the badge in the header above. */}
+          <button
+            type="button"
+            onClick={() => setSharingOpen((o) => !o)}
+            aria-expanded={sharingOpen}
+            aria-controls="problem-sharing"
+            className="-my-1 inline-flex min-h-8 items-center gap-1 rounded px-1 font-medium text-ink-600 hover:underline"
+          >
+            {sharingOpen ? t('sharing.hide') : t('sharing.change')}
+          </button>
+        </div>
+        {sharingOpen && (
+          <div id="problem-sharing" className="motion-rise mt-3">
+            <SharingPanel problem={data} onChange={(p) => setData((prev) => ({ ...p, testCases: p.testCases ?? prev?.testCases ?? [] }))} />
+          </div>
+        )}
       </div>
 
       <Tabs
         className="mb-5"
         value={tab}
-        onChange={setTab}
+        onChange={changeTab}
         tabs={[
           { value: 'info', label: t('problem.tabInfo', { count: data.testCases.length }) },
           { value: 'statement', label: t('problem.tabStudentView') },
@@ -213,6 +250,7 @@ function ProblemPage() {
             memoryLimitMb: data.memoryLimitMb,
           }}
           submitLabel={t('problem.save')}
+          onDirtyChange={setEditDirty}
           onSubmit={async (v) => {
             const p = await api.updateProblem(id, v);
             setData((prev) => ({ ...p, testCases: p.testCases ?? prev?.testCases ?? [], solution: p.solution ?? prev?.solution }));
@@ -233,10 +271,23 @@ function ProblemPage() {
         <SolutionEditor
           problemId={id}
           solution={data.solution}
+          onDirtyChange={setEditDirty}
           onChange={(solution) => setData((prev) => ({ ...(prev as ProblemDetailDto), solution, hasSolution: !!solution }))}
         />
       )}
 
+      <ConfirmDialog
+        open={pendingTab !== null}
+        title={tl('title')}
+        message={tl('body')}
+        confirmLabel={tl('leave')}
+        cancelLabel={tl('stay')}
+        onConfirm={() => {
+          if (pendingTab) setTab(pendingTab);
+          setPendingTab(null);
+        }}
+        onClose={() => setPendingTab(null)}
+      />
       <CreateSessionDialog
         open={assigning}
         onClose={() => setAssigning(false)}

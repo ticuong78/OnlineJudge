@@ -1,15 +1,17 @@
 'use client';
 
-import { CheckCircle2, Download } from 'lucide-react';
+import { ArrowDown, ArrowUp, CheckCircle2, Download } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { RequireRole, STAFF } from '@/components/guards';
-import { Button, Card, EmptyState, ErrorState, LoadingState, PageHeader } from '@/components/ui';
+import { Button, Card, EmptyState, ErrorState, PageHeader, TableSkeleton } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAsync } from '@/lib/use-async';
+import { solvedByProblem, sortResults, type ResultSort, type SortDirection } from '@/lib/results';
+import { intlTag } from '@/i18n/runtime';
 import { cn, formatDateTime, formatPoints } from '@/lib/utils';
 
 export default function SessionResultsPage() {
@@ -18,10 +20,34 @@ export default function SessionResultsPage() {
   const session = useAsync(() => api.getSession(id), [id]);
   const { data, error, loading, reload } = useAsync(() => api.getSessionResults(id), [id]);
 
-  const rows = useMemo(
-    () => [...(data?.rows ?? [])].sort((a, b) => b.total - a.total || a.displayName.localeCompare(b.displayName, 'vi')),
-    [data],
-  );
+  // Sortable by any column (U4); highest total first by default.
+  const [sort, setSort] = useState<ResultSort>({ by: 'total' });
+  const [direction, setDirection] = useState<SortDirection>('desc');
+  const rows = useMemo(() => sortResults(data?.rows ?? [], sort, direction), [data, sort, direction]);
+  const solvedBy = useMemo(() => solvedByProblem(data?.rows ?? [], data?.problems ?? []), [data]);
+  const sameSort = (a: ResultSort, b: ResultSort) => a.by === b.by && (a.by !== 'problem' || (b.by === 'problem' && a.key === b.key));
+  const sortBy = (next: ResultSort) => {
+    if (sameSort(next, sort)) setDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSort(next);
+      setDirection(next.by === 'name' ? 'asc' : 'desc');
+    }
+  };
+  const ariaSort = (col: ResultSort) => (sameSort(col, sort) ? (direction === 'asc' ? 'ascending' : 'descending') : 'none');
+
+  // Live while the session is open (U4): the board refreshes every 30 s while the tab is visible.
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  useEffect(() => {
+    if (data) setUpdatedAt(new Date());
+  }, [data]);
+  const live = session.data?.state === 'OPEN';
+  useEffect(() => {
+    if (!live) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') reload();
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [live, reload]);
   const maxTotal = data?.problems.reduce((s, p) => s + p.points, 0) ?? 0;
   const completed = rows.filter((r) => r.completed).length;
 
@@ -71,6 +97,9 @@ export default function SessionResultsPage() {
                 </span>
                 <span>{t('results.completedCount', { done: completed, total: rows.length })}</span>
                 <span>{t('results.scoringNote')}</span>
+                {live && updatedAt && (
+                  <span className="text-slate-500">{t('results.liveUpdated', { time: updatedAt.toLocaleTimeString(intlTag()) })}</span>
+                )}
               </span>
             )
           }
@@ -86,7 +115,7 @@ export default function SessionResultsPage() {
         />
         <Card>
           {loading && !data ? (
-            <LoadingState />
+            <TableSkeleton />
           ) : error || !data ? (
             <div className="p-4">
               <ErrorState message={error ?? t('results.loadFailed')} onRetry={reload} />
@@ -98,25 +127,46 @@ export default function SessionResultsPage() {
               <table className="w-full text-sm">
                 <thead className="border-b border-rule bg-slate-50 text-left text-xs font-medium whitespace-nowrap text-slate-500">
                   <tr>
-                    <th className="sticky left-0 bg-slate-50 px-4 py-2.5">{t('results.student')}</th>
-                    <th className="px-3 py-2.5 text-center">{t('results.solved')}</th>
+                    <th className="sticky left-0 bg-slate-50 px-4 py-2.5" aria-sort={ariaSort({ by: 'name' })}>
+                      <SortButton onClick={() => sortBy({ by: 'name' })} active={sort.by === 'name'} direction={direction}>
+                        {t('results.student')}
+                      </SortButton>
+                    </th>
+                    <th className="px-3 py-2.5 text-center" aria-sort={ariaSort({ by: 'solved' })}>
+                      <SortButton onClick={() => sortBy({ by: 'solved' })} active={sort.by === 'solved'} direction={direction}>
+                        {t('results.solved')}
+                      </SortButton>
+                    </th>
                     {data.problems.map((p, i) => (
-                      <th key={p.key} className="px-3 py-2.5 text-right" title={p.title}>
-                        {t('problemNo', { n: i + 1 })}
-                        <div className="font-normal text-slate-400">{t('points', { points: p.points })}</div>
+                      <th key={p.key} className="px-3 py-2.5 text-right" title={p.title} aria-sort={ariaSort({ by: 'problem', key: p.key })}>
+                        <SortButton
+                          onClick={() => sortBy({ by: 'problem', key: p.key })}
+                          active={sort.by === 'problem' && sort.key === p.key}
+                          direction={direction}
+                          align="right"
+                        >
+                          {t('problemNo', { n: i + 1 })}
+                        </SortButton>
+                        <div className="font-normal text-slate-500">{t('points', { points: p.points })}</div>
                       </th>
                     ))}
-                    <th className="px-4 py-2.5 text-right">
-                      {t('results.total')}
-                      <div className="font-normal text-slate-400">{t('points', { points: maxTotal })}</div>
+                    <th className="px-4 py-2.5 text-right" aria-sort={ariaSort({ by: 'total' })}>
+                      <SortButton onClick={() => sortBy({ by: 'total' })} active={sort.by === 'total'} direction={direction} align="right">
+                        {t('results.total')}
+                      </SortButton>
+                      <div className="font-normal text-slate-500">{t('points', { points: maxTotal })}</div>
                     </th>
-                    <th className="hidden px-4 py-2.5 lg:table-cell">{t('results.lastSubmission')}</th>
+                    <th className="hidden px-4 py-2.5 lg:table-cell" aria-sort={ariaSort({ by: 'last' })}>
+                      <SortButton onClick={() => sortBy({ by: 'last' })} active={sort.by === 'last'} direction={direction}>
+                        {t('results.lastSubmission')}
+                      </SortButton>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {rows.map((r) => (
                     <tr key={r.userId} className="hover:bg-slate-50">
-                      <td className="sticky left-0 bg-white px-4 py-2 font-medium">
+                      <td className="sticky left-0 bg-surface px-4 py-2 font-medium">
                         <span className="inline-flex items-center gap-1.5">
                           {r.displayName}
                           {r.completed && (
@@ -137,7 +187,14 @@ export default function SessionResultsPage() {
                               v >= p.points ? 'font-semibold text-chalk-700' : v > 0 ? 'text-slate-800' : 'text-slate-300',
                             )}
                           >
-                            {formatPoints(v)}
+                            {/* Opens this problem's submissions in the session (U4). */}
+                            <Link
+                              href={`/submissions?sessionId=${id}&problemKey=${encodeURIComponent(p.key)}`}
+                              className="-mx-1 rounded px-1 hover:bg-ink-50 hover:text-ink-700"
+                              title={t('results.cellLink', { n: data.problems.indexOf(p) + 1 })}
+                            >
+                              {formatPoints(v)}
+                            </Link>
                           </td>
                         );
                       })}
@@ -154,11 +211,54 @@ export default function SessionResultsPage() {
                     </tr>
                   ))}
                 </tbody>
+                {/* How many students have full points on each problem: where the class is stuck (U4). */}
+                <tfoot className="border-t border-rule bg-slate-50 text-xs text-slate-600">
+                  <tr>
+                    <th scope="row" className="sticky left-0 bg-slate-50 px-4 py-2 text-left font-medium">
+                      {t('results.solvedBy')}
+                    </th>
+                    <td />
+                    {data.problems.map((p) => (
+                      <td key={p.key} className="px-3 py-2 text-right tabular-nums">
+                        {solvedBy[p.key]}/{rows.length}
+                      </td>
+                    ))}
+                    <td />
+                    <td className="hidden lg:table-cell" />
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
         </Card>
       </Container>
     </RequireRole>
+  );
+}
+
+/** A column header that sorts the board; the arrow shows the current order. */
+function SortButton({
+  children,
+  onClick,
+  active,
+  direction,
+  align = 'left',
+}: {
+  children: ReactNode;
+  onClick: () => void;
+  active: boolean;
+  direction: SortDirection;
+  align?: 'left' | 'right';
+}) {
+  const Arrow = direction === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn('inline-flex items-center gap-1 font-medium hover:text-ink-700', align === 'right' && 'flex-row-reverse', active && 'text-slate-800')}
+    >
+      {children}
+      <Arrow className={cn('h-3 w-3 shrink-0', active ? 'opacity-100' : 'opacity-0')} aria-hidden="true" />
+    </button>
   );
 }
