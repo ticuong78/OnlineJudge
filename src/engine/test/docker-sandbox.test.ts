@@ -14,7 +14,7 @@ import { JudgeSubmission, judgeWithinDeadline } from '../src/application/judge-s
 import { BOX_TMPFS_MB, MIB, TMP_TMPFS_MB } from '../src/domain/resource-plan';
 import type { RunLimits, RunResult, SandboxSession } from '../src/domain/sandbox';
 import { classifyRun } from '../src/domain/verdict';
-import { ProcessDockerCli } from '../src/infrastructure/docker-cli';
+import { ProcessDockerCli, type DockerCli } from '../src/infrastructure/docker-cli';
 import { DockerSandbox } from '../src/infrastructure/docker-sandbox';
 import { SandboxSweeper } from '../src/infrastructure/sandbox-sweeper';
 import { RUNNER_IMAGE_VERSION } from '../src/infrastructure/supervisor-protocol';
@@ -47,7 +47,22 @@ if (skip) console.warn(`[docker-sandbox tests] SKIPPED: ${skip}`);
 
 const dtest = (name: string, fn: () => Promise<void>) => test(name, { skip }, fn);
 
-const sandbox = new DockerSandbox({ image, compileMemoryMb: 768 });
+/**
+ * Names of the containers this file's sandbox started, in order. The leftover checks look only at these: node --test
+ * runs the test files in parallel, and other files start sandbox containers of their own, which a machine-wide
+ * `docker ps` would count as leftovers of this file.
+ */
+const startedContainers: string[] = [];
+const processDocker = new ProcessDockerCli();
+const recordingDocker: DockerCli = {
+  run(args, options) {
+    const at = args.indexOf('--name');
+    if (args[0] === 'run' && at > 0) startedContainers.push(args[at + 1]);
+    return processDocker.run(args, options);
+  },
+};
+
+const sandbox = new DockerSandbox({ image, compileMemoryMb: 768 }, recordingDocker);
 const judge = new JudgeSubmission(sandbox);
 
 const SAMPLE_TESTS = [
@@ -92,14 +107,23 @@ const pyFile = (source: string) => [{ name: 'p.py', content: source }];
 const runPy = (session: SandboxSession, input = '', over: Partial<RunLimits> = {}): Promise<RunResult> =>
   session.run(['python3', '-S', 'p.py'], input, limits(over));
 
-const sandboxContainers = (): string[] =>
-  execFileSync('docker', ['ps', '-a', '--filter', 'label=oj.sandbox=1', '--format', '{{.ID}}'], { stdio: 'pipe' })
-    .toString().split('\n').filter(Boolean);
+/** A mark for `leftSince`: containers started from here on belong to the test that took it. */
+const containerMark = (): number => startedContainers.length;
 
 /**
- * What a test left behind. Compare against the snapshot by membership, not equality: a container from an earlier
- * test that removes itself while this one runs (--rm, the sweeper) would otherwise fail the check, or end the wait.
+ * Containers this file started since `mark` that still exist. Earlier tests' containers that remove themselves late
+ * (--rm, the sweeper) and other files' containers are never counted.
  */
+function leftSince(mark: number): string[] {
+  const names = startedContainers.slice(mark);
+  if (names.length === 0) return [];
+  // Several name filters match any of them; anchored, so oj-abc does not also match oj-abcd.
+  const filters = names.flatMap((name) => ['--filter', `name=^${name}$`]);
+  return execFileSync('docker', ['ps', '-a', '--format', '{{.Names}}', ...filters], { stdio: 'pipe' })
+    .toString().split('\n').filter(Boolean);
+}
+
+/** Host directories that appeared since the snapshot, by membership so ones removed meanwhile do not count. */
 const newSince = (before: string[], now: string[]): string[] => now.filter((id) => !before.includes(id));
 
 const hostSandboxDirs = (): string[] => readdirSync(tmpdir()).filter((n) => n.startsWith('oj-'));
@@ -296,7 +320,7 @@ fill('/tmp/t', 36)
 sys.stdout.write('written=%d big=%s\n' % (written, big))
 `;
   const hostBefore = hostSandboxDirs();
-  const containersBefore = sandboxContainers();
+  const mark = containerMark();
 
   await withSession(pyFile(filler), async (session) => {
     // generous cap: the program survives, so we can read how much it managed to write
@@ -319,7 +343,8 @@ sys.stdout.write('written=%d big=%s\n' % (written, big))
   }, { programMb: 16 + 32 });
 
   assert.deepEqual(newSince(hostBefore, hostSandboxDirs()), [], 'no oj-* directories appeared in the host temp dir');
-  assert.deepEqual(newSince(containersBefore, sandboxContainers()), [], 'sessions clean up their containers');
+  assert.equal(startedContainers.length - mark, 2, 'both sessions were recorded');
+  assert.deepEqual(leftSince(mark), [], 'sessions clean up their containers');
 });
 
 dtest('a fork bomb is bounded, stopped, fully cleaned up, and the container stays usable', async () => {
@@ -585,7 +610,7 @@ dtest('JANITOR: an expired container is removed, a live one is left alone', asyn
 });
 
 dtest('HANG: a job that outlives its deadline gets an IE result on time and its container is removed', async () => {
-  const before = sandboxContainers();
+  const mark = containerMark();
   const sleeper = job('python', 'import time\ntime.sleep(120)\n', { timeLimitMs: 40_000, testCases: [SAMPLE_TESTS[0]] });
   const started = Date.now();
   const result = await judgeWithinDeadline(judge, sleeper, 5000, () => undefined);
@@ -595,6 +620,7 @@ dtest('HANG: a job that outlives its deadline gets an IE result on time and its 
   assert.ok(took >= 4500 && took < 9000, `result came at the deadline, not after the 120 s sleep (${took}ms)`);
 
   const waitUntil = Date.now() + 20_000;
-  while (newSince(before, sandboxContainers()).length > 0 && Date.now() < waitUntil) await new Promise((r) => setTimeout(r, 500));
-  assert.deepEqual(newSince(before, sandboxContainers()), [], 'the aborted job removed its container');
+  assert.equal(startedContainers.length - mark, 1, 'the job\'s container was recorded');
+  while (leftSince(mark).length > 0 && Date.now() < waitUntil) await new Promise((r) => setTimeout(r, 500));
+  assert.deepEqual(leftSince(mark), [], 'the aborted job removed its container');
 });
