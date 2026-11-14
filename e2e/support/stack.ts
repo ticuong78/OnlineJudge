@@ -95,7 +95,7 @@ export async function startBackend(options: StackOptions = {}): Promise<BackendS
     NO_COLOR: '1',
     PORT: String(o.port),
     DATABASE_URL: dbUrl.toString(),
-    DB_SYNC: 'true',
+    DB_SYNC: 'false', // the schema comes from the migrations at startup, as in production (OJ-5)
     REDIS_URL: o.redisUrl,
     JWT_SECRET: randomBytes(32).toString('hex'),
     ADMIN_EMAIL: E2E_ADMIN.email,
