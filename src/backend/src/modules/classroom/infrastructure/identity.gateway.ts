@@ -21,6 +21,14 @@ export class IdentityPeopleDirectory extends PeopleDirectory {
     return this.identity.findByEmail(email);
   }
 
+  organizationNames(ids: string[]) {
+    return this.identity.organizationNames(ids);
+  }
+
+  isOrganizationMember(userId: string, organizationId: string) {
+    return this.identity.isOrganizationMember(userId, organizationId);
+  }
+
   startStudentRegistration(input: Omit<RegisterRequest, 'classCode'>, classId: string | null) {
     return this.identity.requestStudentRegistration(input, classId);
   }

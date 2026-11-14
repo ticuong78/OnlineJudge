@@ -5,12 +5,17 @@ import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
+import { useTranslations } from 'use-intl';
+import { PasswordInput } from '@/components/form-fields';
+import { usePageTitle } from '@/lib/page-title';
 import { Button, Card, Field, InlineAlert, inputClass } from '@/components/ui';
 import { CodeExpiry, OTP_LENGTH, OtpInput, ResendCodeButton, useNow } from '@/components/verification';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 export default function RegisterPage() {
+  const t = useTranslations('auth');
+  usePageTitle(t('register.title'));
   const { signIn, user, loading } = useAuth();
   const router = useRouter();
   const now = useNow();
@@ -34,18 +39,18 @@ export default function RegisterPage() {
     e.preventDefault();
     setError(null);
     const phoneClean = phone.trim();
-    if (password.length < 6) return setError('Mật khẩu cần ít nhất 6 ký tự.');
-    if (password !== confirm) return setError('Hai mật khẩu chưa khớp. Nhập lại mật khẩu ở ô thứ hai.');
+    if (password.length < 6) return setError(t('validation.passwordTooShort'));
+    if (password !== confirm) return setError(t('validation.passwordMismatch'));
     setSubmitting(true);
     try {
-      const t = await api.register({
+      const sent = await api.register({
         displayName: displayName.trim(),
         email: email.trim(),
         phone: phoneClean || null,
         password,
         classCode: classCode.trim() || null,
       });
-      setTicket(t);
+      setTicket(sent);
       setCode('');
     } catch (err) {
       setError(errorMessage(err));
@@ -57,7 +62,7 @@ export default function RegisterPage() {
   const verify = async (value = code) => {
     if (!ticket) return;
     setError(null);
-    if (value.length !== OTP_LENGTH) return setError('Nhập đủ 6 chữ số trong email.');
+    if (value.length !== OTP_LENGTH) return setError(t('register.codeIncomplete'));
     setSubmitting(true);
     try {
       const res = await api.verifyRegistration({ verificationId: ticket.verificationId, code: value });
@@ -81,12 +86,15 @@ export default function RegisterPage() {
           }}
           className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600 hover:text-ink-700"
         >
-          <ChevronLeft className="h-4 w-4" />
-          Đổi email
+          <ChevronLeft className="h-4 w-4 shrink-0" />
+          {t('changeEmail')}
         </button>
-        <h2 className="text-lg font-semibold">Nhập mã xác minh</h2>
+        <h2 className="text-lg font-semibold">{t('register.verifyTitle')}</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Đã gửi mã tới <b className="text-slate-900">{ticket.email}</b>. Mở email và nhập 6 chữ số.
+          {t.rich('register.codeSent', {
+            email: ticket.email,
+            b: (c) => <b className="text-slate-900">{c}</b>,
+          })}
         </p>
         <form
           className="mt-5 space-y-4"
@@ -99,16 +107,16 @@ export default function RegisterPage() {
           <CodeExpiry ticket={ticket} now={now} />
           {error && <InlineAlert>{error}</InlineAlert>}
           <Button type="submit" className="w-full" loading={submitting} disabled={expired || code.length !== OTP_LENGTH}>
-            Xác minh và tạo tài khoản
+            {t('register.verifySubmit')}
           </Button>
         </form>
-        <div className="mt-3 flex items-center justify-between text-sm text-slate-500">
-          <span>Không thấy email? Xem cả thư mục Spam.</span>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm text-slate-500">
+          <span>{t('noEmail')}</span>
           <ResendCodeButton
             ticket={ticket}
             now={now}
-            onResent={(t) => {
-              setTicket(t);
+            onResent={(next) => {
+              setTicket(next);
               setCode('');
               setError(null);
             }}
@@ -120,20 +128,20 @@ export default function RegisterPage() {
 
   return (
     <Card className="p-6">
-      <h2 className="text-lg font-semibold">Tạo tài khoản học sinh</h2>
-      <p className="mb-4 text-sm text-slate-500">Tài khoản giáo viên được tạo qua lời mời của quản trị viên.</p>
+      <h2 className="text-lg font-semibold">{t('register.title')}</h2>
+      <p className="mb-4 text-sm text-slate-500">{t('register.teacherNote')}</p>
       <form onSubmit={sendCode} className="space-y-4">
-        <Field label="Họ và tên">
+        <Field label={t('fields.displayName')}>
           <input
             required
             autoComplete="name"
             className={inputClass}
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Nguyễn Văn A"
+            placeholder={t('register.namePlaceholder')}
           />
         </Field>
-        <Field label="Email" hint="Mã xác minh sẽ được gửi tới email này.">
+        <Field label={t('fields.email')} hint={t('register.emailHint')}>
           <input
             type="email"
             required
@@ -143,7 +151,7 @@ export default function RegisterPage() {
             onChange={(e) => setEmail(e.target.value)}
           />
         </Field>
-        <Field label="Số điện thoại (không bắt buộc)" hint="Chỉ để giáo viên liên hệ khi cần.">
+        <Field label={t('register.phone')} hint={t('register.phoneHint')}>
           <input
             type="tel"
             inputMode="tel"
@@ -155,30 +163,26 @@ export default function RegisterPage() {
           />
         </Field>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Mật khẩu">
-            <input
-              type="password"
+          <Field label={t('fields.password')}>
+            <PasswordInput
               required
               autoComplete="new-password"
-              className={inputClass}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
           </Field>
-          <Field label="Nhập lại mật khẩu">
-            <input
-              type="password"
+          <Field label={t('fields.confirmPassword')}>
+            <PasswordInput
               required
               autoComplete="new-password"
-              className={inputClass}
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
             />
           </Field>
         </div>
         <Field
-          label="Mã lớp (không bắt buộc)"
-          hint="Có mã lớp thì nhập vào: tài khoản sẽ gửi yêu cầu vào lớp, giáo viên duyệt xong bạn mới vào lớp. Không có mã vẫn đăng ký được và luyện tập bài công khai."
+          label={t('register.classCode')}
+          hint={t('register.classCodeHint')}
         >
           <input
             autoComplete="off"
@@ -192,13 +196,13 @@ export default function RegisterPage() {
         </Field>
         {error && <InlineAlert>{error}</InlineAlert>}
         <Button type="submit" className="w-full" loading={submitting}>
-          Gửi mã xác minh
+          {t('register.sendCode')}
         </Button>
       </form>
       <p className="mt-4 text-center text-sm text-slate-500">
-        Đã có tài khoản?{' '}
+        {t('register.hasAccount')}{' '}
         <Link href="/login" className="font-medium text-ink-600 hover:underline">
-          Đăng nhập
+          {t('register.signIn')}
         </Link>
       </p>
     </Card>

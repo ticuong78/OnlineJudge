@@ -87,3 +87,21 @@ test('thread: replies, deletion rights and pinning', () => {
   t.pin(true);
   assert.ok(t.snapshot.pinned);
 });
+
+test('thread: a question awaits an answer until a teacher or administrator replies', () => {
+  const student = { id: 'u1', name: 'An', role: 'STUDENT' as const };
+  const q = Thread.start({ classId: 'c', kind: 'QUESTION', title: 'Bài A?', body: 'Em bị WA', author: student, topic: null });
+  assert.equal(q.awaitsAnswer, true);
+  q.reply({ id: 'u2', name: 'Bình', role: 'STUDENT' }, 'Mình cũng bị');
+  assert.equal(q.awaitsAnswer, true, 'a classmate is not an answer');
+  const r = q.reply({ id: 't', name: 'Cô Lan', role: 'TEACHER' }, 'Kiểm tra tràn số nhé');
+  assert.equal(q.awaitsAnswer, false);
+  q.removeReply(r.id, 't', true);
+  assert.equal(q.awaitsAnswer, true, 'deleting the answer reopens the question');
+  q.reply({ id: 'a', name: 'Quản trị', role: 'ADMIN' }, 'Đã sửa test');
+  assert.equal(q.awaitsAnswer, false);
+  const news = Thread.start({ classId: 'c', kind: 'ANNOUNCEMENT', title: 'Lịch thi', body: 'Thứ 2', author: { id: 't', name: 'Cô Lan', role: 'TEACHER' }, topic: null });
+  assert.equal(news.awaitsAnswer, false);
+  const own = Thread.start({ classId: 'c', kind: 'QUESTION', title: 'Ai đã xong bài A?', body: 'Giơ tay nhé', author: { id: 't', name: 'Cô Lan', role: 'TEACHER' }, topic: null });
+  assert.equal(own.awaitsAnswer, false, "a teacher's own question is not waiting for the teacher");
+});

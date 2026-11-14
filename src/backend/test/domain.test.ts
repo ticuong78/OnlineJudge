@@ -97,7 +97,7 @@ test('set blueprint: staff only, no duplicates, public only when all problems ar
 
 test('session: frozen problems get keys A, B, ...; time window decides the state', () => {
   const frozen = (title: string) => ({
-    sourceProblemId: title, code: 'P0001', title, difficulty: 'EASY' as const, points: 5,
+    sourceProblemId: title, code: 'P0001', title, difficulty: 'EASY' as const, tags: [], points: 5,
     statement: '', inputFormat: '', outputFormat: '', constraints: '', timeLimitMs: 1000, memoryLimitMb: 256,
     testCases: [{ input: '1', expectedOutput: '1', isSample: true, points: 1 }],
   });
@@ -120,7 +120,7 @@ test('session: frozen problems get keys A, B, ...; time window decides the state
 });
 
 const frozenProblem = (id: string, title: string) => ({
-  sourceProblemId: id, code: 'P0001', title, difficulty: 'EASY' as const, points: 10,
+  sourceProblemId: id, code: 'P0001', title, difficulty: 'EASY' as const, tags: [] as string[], points: 10,
   statement: 'cũ', inputFormat: '', outputFormat: '', constraints: '', timeLimitMs: 1000, memoryLimitMb: 256,
   testCases: [{ input: '1', expectedOutput: '1', isSample: true, points: 1 }],
 });

@@ -4,6 +4,7 @@ import { BarChart3, CheckCircle2, ChevronRight, Pencil, Trash2 } from 'lucide-re
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { ExamTimer, SettingsInfo, StartScreen, useServerOffset } from '@/components/exam';
 import { Markdown } from '@/components/markdown';
@@ -12,25 +13,15 @@ import { SessionIntegrity } from '@/components/integrity';
 import { SessionSyncButton } from '@/components/session-sync';
 import { AudienceLabel, EditSessionDialog, ProgressCells, SessionStateBadge, SessionWindow } from '@/components/sessions';
 import { useToast } from '@/components/toast';
-import {
-  Button,
-  Card,
-  ConfirmDialog,
-  DifficultyBadge,
-  ErrorState,
-  InlineAlert,
-  LinkButton,
-  LoadingState,
-  PageHeader,
-  ProblemSetTypeBadge,
-} from '@/components/ui';
+import { TopicBadges } from '@/components/topics';
+import { Button, Card, ConfirmDialog, DifficultyBadge, ErrorState, InlineAlert, LinkButton, PageHeader, PageSkeleton, ProblemSetTypeBadge } from '@/components/ui';
 import { useNow } from '@/components/verification';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { integritySummary, isExamLike, timerTarget } from '@/lib/exam';
 import { cannotSubmitReason, solveHref } from '@/lib/sessions';
 import { useAsync } from '@/lib/use-async';
-import { cn, formatPoints } from '@/lib/utils';
+import { cn, earnedPoints, formatPoints } from '@/lib/utils';
 
 export default function SessionPage() {
   const { id } = useParams<{ id: string }>();
@@ -43,17 +34,20 @@ export default function SessionPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const offset = useServerOffset(s?.serverNow);
+  const t = useTranslations('session');
+  const tc = useTranslations('common');
 
-  if (loading && !s) return <LoadingState />;
+  if (loading && !s) return <PageSkeleton />;
   if (error || !s)
     return (
       <Container>
-        <ErrorState message={error ?? 'Không tìm thấy phiên'} onRetry={reload} />
+        <ErrorState message={error ?? t('page.notFound')} onRetry={reload} />
       </Container>
     );
 
   const problems = [...s.problems].sort((a, b) => a.order - b.order);
-  const target = timerTarget(s, Date.now() + offset);
+  // No timer until the server clock is known: its first check must use server time (OJ-15 F3).
+  const target = offset === null ? null : timerTarget(s, Date.now() + offset);
   const hidden = !!s.myProgress?.resultsHidden;
   const counts = s.myProgress?.submissionCounts ?? {};
   const limit = s.settings?.maxSubmissionsPerProblem ?? null;
@@ -61,18 +55,18 @@ export default function SessionPage() {
   const best = s.myProgress?.bestScores ?? {};
   const back =
     s.audience === 'PUBLIC'
-      ? { href: '/practice', label: 'Luyện tập' }
+      ? { href: '/practice', label: t('page.backPractice') }
       : isStaff && s.classId
-        ? { href: `/classes/${s.classId}`, label: `Lớp ${s.className ?? ''}` }
+        ? { href: `/classes/${s.classId}`, label: t('className', { name: s.className ?? '' }) }
         : s.classId
-          ? { href: `/my-class/${s.classId}`, label: `Lớp ${s.className ?? ''}` }
-          : { href: '/my-class', label: 'Lớp của tôi' };
+          ? { href: `/my-class/${s.classId}`, label: t('className', { name: s.className ?? '' }) }
+          : { href: '/my-class', label: t('page.backMyClass') };
 
   const remove = async () => {
     setDeleting(true);
     try {
       await api.deleteSession(s.id);
-      toast.success('Đã xóa phiên');
+      toast.success(t('page.deleted'));
       router.replace(back.href);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -91,23 +85,23 @@ export default function SessionPage() {
             <SessionStateBadge state={s.state} />
             <AudienceLabel s={s} />
             <SessionWindow s={s} now={now} />
-            <span>Giao bởi {s.createdByName}</span>
+            <span>{t('page.assignedBy', { name: s.createdByName })}</span>
           </span>
         }
         actions={
           s.canManage && (
             <>
               <LinkButton href={`/sessions/${s.id}/results`}>
-                <BarChart3 className="h-4 w-4" />
-                Kết quả
+                <BarChart3 className="h-4 w-4 shrink-0" />
+                {t('page.results')}
               </LinkButton>
               <Button variant="secondary" onClick={() => setEditing(true)}>
-                <Pencil className="h-4 w-4" />
-                Sửa
+                <Pencil className="h-4 w-4 shrink-0" />
+                {tc('edit')}
               </Button>
               <Button variant="ghost" className="text-mark-600 hover:bg-mark-50" onClick={() => setConfirmDelete(true)}>
-                <Trash2 className="h-4 w-4" />
-                Xóa
+                <Trash2 className="h-4 w-4 shrink-0" />
+                {tc('delete')}
               </Button>
             </>
           )
@@ -120,12 +114,13 @@ export default function SessionPage() {
             <ExamTimer
               id={s.id}
               endsAt={target.endsAt}
-              offset={offset}
+              offset={offset ?? 0 /* target is null until the offset is known */}
               kind={target.kind}
               onTimeUp={() => setData((prev) => (prev ? { ...prev, canSubmit: false } : prev!))}
             />
           )}
-          {s.settings && <SettingsInfo settings={s.settings} manager={s.canManage} />}
+          {/* The start screen lists the same rules as bullets; one list is enough (UAT L7). */}
+          {s.settings && !(s.needsStart && !s.canManage) && <SettingsInfo settings={s.settings} manager={s.canManage} />}
         </div>
       )}
 
@@ -147,22 +142,28 @@ export default function SessionPage() {
 
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
-          <h2 className="font-semibold">Các bài</h2>
+          <h2 className="font-semibold">{t('page.problems')}</h2>
           <div className="flex flex-wrap items-center gap-3">
             {s.canManage && s.sourceSetId && <SessionSyncButton session={s} onSession={(n) => setData(n)} />}
-            {hidden ? (
-              <span className="text-sm text-slate-600">Kết quả hiện sau khi phiên đóng</span>
+            {/* "Solved 0/1": the caller's own progress, which means nothing to the teacher (UAT L8). */}
+            {s.canManage ? null : hidden ? (
+              <span className="text-sm text-slate-600">{t('page.hiddenUntilClose')}</span>
             ) : (
             <>
             <ProgressCells total={problems.length} solved={solved.size} size="md" />
             {s.myProgress?.completed ? (
-              <span className="inline-flex items-center gap-1 font-semibold text-chalk-700">
-                <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
-                Hoàn thành
+              <span className="inline-flex items-center gap-1 font-semibold whitespace-nowrap text-chalk-700">
+                <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" />
+                {t('page.completed')}
               </span>
             ) : (
               <span className="text-sm text-slate-600 tabular-nums">
-                Đã giải {solved.size}/{problems.length}, {formatPoints(s.myProgress?.earnedPoints ?? 0)}/{s.totalPoints} điểm
+                {t('page.progress', {
+                  solved: solved.size,
+                  total: problems.length,
+                  earned: formatPoints(s.myProgress?.earnedPoints ?? 0),
+                  max: formatPoints(s.totalPoints),
+                })}
               </span>
             )}
             </>
@@ -177,37 +178,46 @@ export default function SessionPage() {
             return (
               <li key={p.key}>
                 <Link href={solveHref(s.id, p.key)} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3.5 hover:bg-slate-50">
-                  <span className="w-12 text-sm font-semibold text-slate-500 tabular-nums">Bài {idx + 1}</span>
-                  <div className="min-w-0 flex-1">
+                  <span className="min-w-12 shrink-0 text-sm font-semibold whitespace-nowrap text-slate-500 tabular-nums">
+                    {t('problemNo', { n: idx + 1 })}
+                  </span>
+                  {/* Phones: the title takes the line, status and points go under it (as session rows, P1-5); the topic
+                      badges (OJ-20) made the squeezed column even taller. */}
+                  <div className="min-w-0 flex-1 basis-[calc(100%-4rem)] sm:basis-0">
                     <div className="font-medium text-slate-900">{p.title}</div>
-                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                       <span className="tabular-nums">{p.code}</span>
                       <DifficultyBadge difficulty={p.difficulty} />
+                      {/* Empty for students while a test or exam runs: the server leaves them out (OJ-20). */}
+                      <TopicBadges tags={p.tags ?? []} />
                     </div>
                   </div>
                   <span
                     className={cn(
-                      'text-sm tabular-nums',
+                      'ml-16 text-sm tabular-nums sm:ml-0',
                       isSolved ? 'font-semibold text-chalk-700' : b !== undefined ? 'font-medium text-mark-700' : 'text-slate-400',
                     )}
                   >
                     {hidden
                       ? n > 0
-                        ? `Đã nộp ${n} lần`
-                        : 'Chưa làm'
+                        ? t('page.submittedTimes', { count: n })
+                        : t('page.notStarted')
                       : isSolved
-                        ? 'Đã giải ✓'
+                        ? t('solvedMark')
                         : b !== undefined
-                          ? `Cao nhất ${b}/100`
-                          : 'Chưa làm'}
+                          ? // In this problem's points, as on the teacher's results board (b is a percentage).
+                            t('page.best', { earned: formatPoints(earnedPoints(b, p.points)), max: formatPoints(p.points) })
+                          : t('page.notStarted')}
                   </span>
-                  {limit && !s.canManage && (
-                    <span className="text-xs text-slate-500 tabular-nums">
-                      Còn {Math.max(0, limit - n)}/{limit} lần nộp
+                  {limit && !s.canManage && s.state === 'OPEN' && (
+                    <span className="text-xs whitespace-nowrap text-slate-500 tabular-nums">
+                      {t('attemptsLeft', { left: Math.max(0, limit - n), limit })}
                     </span>
                   )}
-                  <span className="w-16 text-right text-sm text-slate-600 tabular-nums">{p.points} điểm</span>
-                  <ChevronRight className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                  <span className="ml-auto min-w-16 text-right text-sm whitespace-nowrap text-slate-600 tabular-nums sm:ml-0">
+                    {t('points', { points: p.points })}
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
                 </Link>
               </li>
             );
@@ -231,13 +241,8 @@ export default function SessionPage() {
           <EditSessionDialog open={editing} onClose={() => setEditing(false)} session={s} onSaved={(n) => setData(n)} />
           <ConfirmDialog
             open={confirmDelete}
-            title="Xóa phiên này?"
-            message={
-              <>
-                Phiên <b>{s.title}</b> cùng mọi bài nộp và kết quả của phiên sẽ bị xóa. Đề gốc trong ngân hàng không bị ảnh
-                hưởng.
-              </>
-            }
+            title={t('page.deleteTitle')}
+            message={t.rich('page.deleteMessage', { title: s.title, b: (c) => <b>{c}</b> })}
             loading={deleting}
             onConfirm={remove}
             onClose={() => setConfirmDelete(false)}

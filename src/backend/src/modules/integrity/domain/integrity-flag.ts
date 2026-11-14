@@ -96,6 +96,15 @@ export class IntegrityFlag extends AggregateRoot {
     return new IntegrityFlag(id, state);
   }
 
+  /**
+   * Plagiarism: the pair of submissions in a fixed order, so A-vs-B and B-vs-A are the same pair and only one flag is
+   * kept per pair, whichever submission was checked first (K-11). Null for AI-usage flags.
+   */
+  get pairKey(): string | null {
+    const { kind, subject, matched } = this.state;
+    return kind === 'PLAGIARISM' && matched ? [subject.submissionId, matched.submissionId].sort().join('|') : null;
+  }
+
   get snapshot(): Readonly<FlagState> {
     return this.state;
   }

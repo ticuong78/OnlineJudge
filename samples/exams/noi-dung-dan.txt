@@ -1,0 +1,29 @@
+Bài 1. Đảo số
+Cho số nguyên dương n, in ra các chữ số của n theo thứ tự ngược lại.
+Dữ liệu vào: Một số nguyên dương n (n ≤ 10^9).
+Kết quả: Số sau khi đảo (bỏ các số 0 ở đầu).
+Ví dụ
+Input
+1230
+Output
+321
+
+Bài 2. Bảng cửu chương
+Độ khó: Dễ
+Cho số nguyên k (1 ≤ k ≤ 9). In bảng cửu chương k, mỗi dòng có dạng "k x i = tích" với i từ 1 đến 10.
+Dữ liệu vào: Một số nguyên k.
+Kết quả: 10 dòng như mô tả.
+Ví dụ
+Input
+2
+Output
+2 x 1 = 2
+2 x 2 = 4
+2 x 3 = 6
+2 x 4 = 8
+2 x 5 = 10
+2 x 6 = 12
+2 x 7 = 14
+2 x 8 = 16
+2 x 9 = 18
+2 x 10 = 20

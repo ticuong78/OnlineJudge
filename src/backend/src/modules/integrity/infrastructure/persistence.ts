@@ -22,6 +22,9 @@ export class IntegrityFlagOrmEntity {
   @Column({ type: 'varchar', length: 210 }) problemTitle: string;
   @Column('jsonb') subject: FlagState['subject'];
   @Column('jsonb', { nullable: true }) matched: FlagState['matched'];
+  /** Plagiarism: the two submission ids in order; unique, so a pair is flagged once (K-11). Null for AI-usage flags. */
+  @Index({ unique: true })
+  @Column({ type: 'varchar', length: 80, nullable: true }) pairKey: string | null;
   @Column('timestamptz') createdAt: Date;
   @Column('timestamptz', { nullable: true }) acknowledgedAt: Date | null;
   @Column({ type: 'varchar', length: 80, nullable: true }) acknowledgedByName: string | null;
@@ -33,6 +36,18 @@ export class IntegrityCheckOrmEntity {
   @PrimaryColumn('uuid') submissionId: string;
   @PrimaryColumn({ type: 'varchar', length: 16 }) kind: string;
   @Column('timestamptz') checkedAt: Date;
+}
+
+/**
+ * One row per student and problem of a session whose first accepted solution had the AI-usage review (OJ-21), so
+ * resubmitting cannot spend the teacher's allowance again (OJ-26: before, a hashed id in `integrity_checks`).
+ */
+@Entity('integrity_first_reviews')
+export class IntegrityFirstReviewOrmEntity {
+  @PrimaryColumn('uuid') sessionId: string;
+  @PrimaryColumn({ type: 'varchar', length: 4 }) problemKey: string;
+  @PrimaryColumn('uuid') userId: string;
+  @Column('timestamptz') reviewedAt: Date;
 }
 
 @Injectable()
@@ -63,17 +78,50 @@ export class TypeOrmIntegrityFlagRepository extends IntegrityFlagRepository {
   }
 
   async save(flag: IntegrityFlag) {
-    await this.repo.save({ id: flag.id, ...flag.snapshot });
+    await this.repo.save({ id: flag.id, ...flag.snapshot, pairKey: flag.pairKey });
+  }
+
+  async addIfNewPair(flag: IntegrityFlag) {
+    // ON CONFLICT DO NOTHING ... RETURNING: a row comes back only when this call inserted it.
+    const result = await this.repo.createQueryBuilder().insert()
+      .values({ id: flag.id, ...flag.snapshot, pairKey: flag.pairKey })
+      .orIgnore()
+      .returning(['id'])
+      .execute();
+    return Array.isArray(result.raw) && result.raw.length > 0;
+  }
+
+  /** A table with its schema when one is configured (raw SQL does not get TypeORM's prefixing). */
+  private table(entity: typeof IntegrityCheckOrmEntity | typeof IntegrityFirstReviewOrmEntity): string {
+    const { schema, tableName } = this.db.getMetadata(entity);
+    return schema ? `"${schema}"."${tableName}"` : `"${tableName}"`;
   }
 
   /** True only for the first caller: the row is inserted atomically, a repeat hits the primary key and returns nothing. */
   async markChecked(submissionId: string, kind: IntegrityFlagKind) {
     const rows: unknown[] = await this.db.query(
-      `INSERT INTO integrity_checks ("submissionId", "kind", "checkedAt") VALUES ($1, $2, now())
+      `INSERT INTO ${this.table(IntegrityCheckOrmEntity)} ("submissionId", "kind", "checkedAt") VALUES ($1, $2, now())
        ON CONFLICT DO NOTHING RETURNING "submissionId"`,
       [submissionId, kind],
     );
     return rows.length > 0;
+  }
+
+  /** Atomic like `markChecked`: the primary key (session, problem, student) lets only the first claim insert. */
+  async claimFirstAiReview(sessionId: string, problemKey: string, userId: string) {
+    const rows: unknown[] = await this.db.query(
+      `INSERT INTO ${this.table(IntegrityFirstReviewOrmEntity)} ("sessionId", "problemKey", "userId", "reviewedAt") VALUES ($1, $2, $3, now())
+       ON CONFLICT DO NOTHING RETURNING "userId"`,
+      [sessionId, problemKey, userId],
+    );
+    return rows.length > 0;
+  }
+
+  async releaseFirstAiReview(sessionId: string, problemKey: string, userId: string) {
+    await this.db.query(
+      `DELETE FROM ${this.table(IntegrityFirstReviewOrmEntity)} WHERE "sessionId" = $1 AND "problemKey" = $2 AND "userId" = $3`,
+      [sessionId, problemKey, userId],
+    );
   }
 
   async sessionIdsWithFlags() {
@@ -102,3 +150,4 @@ function toDomain(row: IntegrityFlagOrmEntity): IntegrityFlag {
     acknowledgedByName: row.acknowledgedByName,
   });
 }
+

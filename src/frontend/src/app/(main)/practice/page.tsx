@@ -1,8 +1,12 @@
 'use client';
 
+import { Suspense } from 'react';
+import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
+import { PathsSection } from '@/components/paths';
+import { PracticeByTopic } from '@/components/practice-topics';
 import { SessionList } from '@/components/sessions';
-import { Card, ErrorState, LoadingState, PageHeader } from '@/components/ui';
+import { Card, ErrorState, ListSkeleton, PageHeader } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { sortSessions } from '@/lib/sessions';
@@ -10,20 +14,22 @@ import { useAsync } from '@/lib/use-async';
 
 export default function PracticePage() {
   const { isStaff } = useAuth();
+  const t = useTranslations('student.practice');
   const { data, error, loading, reload } = useAsync(() => api.listSessions({ audience: 'PUBLIC' }), []);
   return (
     <Container>
       <PageHeader
-        title="Luyện tập"
-        subtitle={
-          isStaff
-            ? 'Các phiên công khai. Giáo viên có thể vào làm thử như học sinh.'
-            : 'Bài công khai cho mọi người. Kết quả được ghi vào học bạ của bạn.'
-        }
+        title={t('title')}
+        subtitle={isStaff ? t('subtitleStaff') : t('subtitle')}
       />
+      <PathsSection />
+      {/* It reads ?topic=, which Next.js only allows inside a Suspense boundary. */}
+      <Suspense fallback={<ListSkeleton rows={2} />}>
+        <PracticeByTopic />
+      </Suspense>
       <Card>
         {loading && !data ? (
-          <LoadingState />
+          <ListSkeleton />
         ) : error ? (
           <div className="p-4">
             <ErrorState message={error} onRetry={reload} />
@@ -31,10 +37,8 @@ export default function PracticePage() {
         ) : (
           <SessionList
             sessions={sortSessions(data ?? [])}
-            emptyTitle="Chưa có phiên công khai nào"
-            emptyHint={
-              isStaff ? 'Giao một đề hoặc một bài với lựa chọn “Công khai cho mọi người”.' : 'Quay lại sau nhé.'
-            }
+            emptyTitle={t('emptyTitle')}
+            emptyHint={isStaff ? t('emptyHintStaff') : t('emptyHint')}
           />
         )}
       </Card>

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
+import { AWAITING_QUESTIONS_LIMIT } from '@oj/contracts';
 import type {
   ClassStatus,
   CreateThreadRequest,
@@ -12,6 +13,9 @@ import { DomainError } from '../../../shared/domain/domain-error.js';
 import { CLASS_PURGED, type ClassPurgedEvent } from '../../classroom/classroom.events.js';
 import { Thread, type Reply } from '../domain/thread.js';
 import { ClassMembership, SessionDirectory, ThreadRepository } from './ports.js';
+
+/** The teacher home lists at most this many waiting questions, newest first (OJ-26). */
+export const AWAITING_LIMIT = AWAITING_QUESTIONS_LIMIT;
 
 /** The actor's standing in a class, which decides what they may do on its board. */
 interface Standing {
@@ -39,6 +43,16 @@ export class CommunityService {
         Number(b.snapshot.pinned) - Number(a.snapshot.pinned)
         || b.snapshot.lastActivityAt.getTime() - a.snapshot.lastActivityAt.getTime())
       .map(toSummary);
+  }
+
+  /**
+   * The newest students' questions no teacher has answered yet, in the active classes the actor runs (UAT M8): the
+   * teacher home shows them in one request instead of one per class. At most AWAITING_LIMIT, in one query (OJ-28).
+   */
+  async awaiting(actor: Actor): Promise<ThreadSummaryDto[]> {
+    const classIds = await this.classes.activeManagedClassIds(actor);
+    const threads = await this.threads.listAwaitingQuestions(classIds, AWAITING_LIMIT);
+    return threads.filter((t) => t.awaitsAnswer).map(toSummary);
   }
 
   async get(actor: Actor, id: string): Promise<ThreadDto> {
@@ -162,6 +176,7 @@ function toSummary(thread: Thread): ThreadSummaryDto {
     sessionTitle: s.topic?.sessionTitle ?? null,
     problemKey: s.topic?.problemKey ?? null,
     replyCount: s.replies.length,
+    awaitingAnswer: thread.awaitsAnswer,
     lastActivityAt: s.lastActivityAt.toISOString(),
     createdAt: s.createdAt.toISOString(),
   };

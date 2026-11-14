@@ -1,11 +1,12 @@
 'use client';
 
 import { useParams } from 'next/navigation';
+import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { LeaveClassButton } from '@/components/membership';
 import { SessionList } from '@/components/sessions';
 import { ClassBoard } from '@/components/threads';
-import { Badge, Card, ErrorState, LoadingState, PageHeader } from '@/components/ui';
+import { Badge, Card, ErrorState, PageHeader, PageSkeleton } from '@/components/ui';
 import { api } from '@/lib/api';
 import { sortSessions } from '@/lib/sessions';
 import { useAsync } from '@/lib/use-async';
@@ -16,9 +17,10 @@ export default function MyClassDetailPage() {
   const classes = useAsync(() => api.listClasses(), []);
   const sessions = useAsync(() => api.listSessions({ audience: 'CLASS' }), []);
   const requests = useAsync(() => api.myMembershipRequests(), []);
+  const t = useTranslations('student');
 
-  if ((classes.loading && !classes.data) || (sessions.loading && !sessions.data)) return <LoadingState />;
-  const back = { href: '/my-class', label: 'Lớp của tôi' };
+  if ((classes.loading && !classes.data) || (sessions.loading && !sessions.data)) return <PageSkeleton />;
+  const back = { href: '/my-class', label: t('myClass.title') };
   if (classes.error || sessions.error)
     return (
       <Container>
@@ -36,8 +38,8 @@ export default function MyClassDetailPage() {
   if (!cls)
     return (
       <Container>
-        <PageHeader back={back} title="Không tìm thấy lớp" />
-        <ErrorState message="Bạn không ở trong lớp này. Mở Lớp của tôi để xem các lớp của bạn hoặc xin vào lớp bằng mã." />
+        <PageHeader back={back} title={t('classDetail.notFound')} />
+        <ErrorState message={t('classDetail.notMember')} />
       </Container>
     );
 
@@ -52,12 +54,12 @@ export default function MyClassDetailPage() {
     <Container>
       <PageHeader
         back={back}
-        title={`Lớp ${cls.name}`}
+        title={t('classTitle', { name: cls.name })}
         subtitle={
           <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <span>Giáo viên {cls.teacherName}</span>
-            {archived && <Badge className="bg-amber-100 text-amber-800 ring-1 ring-amber-200">Đã lưu trữ, chỉ xem</Badge>}
-            {!current && !archived && <Badge className="bg-slate-100 text-slate-600">Đã rời lớp, chỉ xem</Badge>}
+            <span>{t('teacher', { name: cls.teacherName })}</span>
+            {archived && <Badge className="bg-amber-100 text-amber-800 ring-1 ring-amber-200">{t('classDetail.archivedReadOnly')}</Badge>}
+            {!current && !archived && <Badge className="bg-slate-100 text-slate-600">{t('classDetail.leftReadOnly')}</Badge>}
           </span>
         }
         actions={
@@ -74,13 +76,13 @@ export default function MyClassDetailPage() {
       />
       <Card className="mb-6">
         <div className="border-b border-slate-100 px-5 py-3">
-          <h2 className="font-semibold">Phiên giáo viên đã giao</h2>
-          <p className="text-sm text-slate-500">Phiên đang mở và sắp hết hạn được xếp lên đầu.</p>
+          <h2 className="font-semibold">{t('classDetail.sessions')}</h2>
+          <p className="text-sm text-slate-500">{t('classDetail.sessionsHint')}</p>
         </div>
         <SessionList
           sessions={list}
-          emptyTitle={current && !archived ? 'Giáo viên chưa giao bài nào' : 'Lớp này không có phiên nào'}
-          emptyHint={current && !archived ? 'Khi giáo viên giao bài, phiên mới sẽ hiện ở đây.' : undefined}
+          emptyTitle={current && !archived ? t('classDetail.emptyTitle') : t('classDetail.emptyTitleClosed')}
+          emptyHint={current && !archived ? t('classDetail.emptyHint') : undefined}
         />
       </Card>
       <ClassBoard classId={cls.id} archived={archived} isManager={false} canPost={current} />

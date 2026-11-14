@@ -85,6 +85,18 @@ export class Thread extends AggregateRoot {
     this.state.replies = this.state.replies.filter((r) => r.id !== replyId);
   }
 
+  /**
+   * A student's question no teacher or administrator has replied to yet. Replies from classmates do not count as an
+   * answer, and a question a teacher asked is not waiting for the teacher.
+   */
+  get awaitsAnswer(): boolean {
+    return (
+      this.state.kind === 'QUESTION'
+      && this.state.author.role === 'STUDENT'
+      && !this.state.replies.some((r) => r.author.role !== 'STUDENT')
+    );
+  }
+
   canBeDeletedBy(userId: string, isManager: boolean): boolean {
     return isManager || this.state.author.id === userId;
   }

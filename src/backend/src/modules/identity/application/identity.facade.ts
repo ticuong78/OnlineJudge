@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { RegisterRequest, Role, VerificationTicketDto } from '@oj/contracts';
 import { Email } from '../domain/user.js';
 import { UserRepository } from '../domain/user.repository.js';
+import { OrganizationRepository } from '../domain/organization.repository.js';
 import { AccountService } from './account.service.js';
 
 export interface UserSummary {
@@ -18,7 +19,17 @@ export class IdentityFacade {
   constructor(
     private readonly users: UserRepository,
     private readonly accounts: AccountService,
+    private readonly organizations: OrganizationRepository,
   ) {}
+
+  /** organizationId -> name (OJ-8). */
+  async organizationNames(ids: string[]): Promise<Map<string, string>> {
+    return new Map((await this.organizations.findByIds(ids)).map((o) => [o.id, o.name]));
+  }
+
+  async isOrganizationMember(userId: string, organizationId: string): Promise<boolean> {
+    return !!(await this.organizations.findMember(organizationId, userId));
+  }
 
   async getUsers(ids: string[]): Promise<Map<string, UserSummary>> {
     return new Map((await this.users.findByIds([...new Set(ids)])).map((u) => [u.id, summary(u)]));

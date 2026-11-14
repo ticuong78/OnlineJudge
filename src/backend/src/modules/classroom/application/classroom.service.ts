@@ -8,12 +8,14 @@ import type {
   UpsertClassroomRequest,
   VerificationTicketDto,
 } from '@oj/contracts';
-import { isStaff, type Actor } from '../../../shared/application/actor.js';
+import { isOrgAdmin, isOrgMember, isStaff, type Actor } from '../../../shared/application/actor.js';
 import { EventPublisher } from '../../../shared/application/event-publisher.js';
 import { DomainError } from '../../../shared/domain/domain-error.js';
 import {
+  MEMBER_LEFT_ORGANIZATION,
   STUDENT_REGISTERED,
   USER_DELETED,
+  type MemberLeftOrganizationEvent,
   type StudentRegisteredEvent,
   type UserDeletedEvent,
 } from '../../identity/identity.events.js';
@@ -40,10 +42,13 @@ export class ClassroomService implements OnModuleInit, OnModuleDestroy {
 
   // ---------- Queries ----------
 
-  /** Admin: all classes. Teacher: classes they teach. Student: current classes and history. */
+  /**
+   * Admin: all classes. Teacher: classes they teach, plus every class of the organizations where they are org admin.
+   * Student: current classes and history.
+   */
   async list(actor: Actor): Promise<ClassroomDto[]> {
     if (actor.role === 'ADMIN') return this.toDtos(await this.classes.findAll(), actor);
-    if (actor.role === 'TEACHER') return this.toDtos(await this.classes.findByTeacher(actor.id), actor);
+    if (actor.role === 'TEACHER') return this.toDtos(await this.teacherClasses(actor), actor);
     const memberships = await this.enrollments.findByStudent(actor.id);
     const classes = await this.classes.findByIds(memberships.map((m) => m.classId));
     return this.toDtos(classes, actor, memberships);
@@ -65,6 +70,14 @@ export class ClassroomService implements OnModuleInit, OnModuleDestroy {
     return open.filter((e) => people.has(e.studentId)).map((e) => toStudentDto(people.get(e.studentId)!, e)).sort(byName);
   }
 
+  /** All classes of an organization: for its org admins and the administrator (OJ-8). */
+  async organizationClasses(actor: Actor, organizationId: string): Promise<ClassroomDto[]> {
+    if (actor.role !== 'ADMIN' && !isOrgAdmin(actor, organizationId)) {
+      throw DomainError.forbidden('classroom.not_org_admin', 'Chỉ quản lý của tổ chức được xem các lớp của tổ chức.');
+    }
+    return this.toDtos(await this.classes.findByOrganizations([organizationId]), actor);
+  }
+
   /** Students without any current class (free candidates, or their classes were archived). Admin only. */
   async unassigned(): Promise<ClassStudentDto[]> {
     const [students, open, active] = await Promise.all([
@@ -83,9 +96,11 @@ export class ClassroomService implements OnModuleInit, OnModuleDestroy {
     if (!isStaff(actor)) throw DomainError.forbidden('classroom.not_staff', 'Chỉ giáo viên mới được tạo lớp.');
     const teacherId = actor.role === 'ADMIN' && input.teacherId ? input.teacherId : actor.id;
     await this.ensureStaff(teacherId);
+    const organizationId = input.organizationId || null;
+    if (organizationId) await this.ensureTeacherInOrganization(actor, teacherId, organizationId);
     const code = ClassCode.of(input.code);
     await this.ensureCodeFree(code);
-    const classroom = Classroom.open(input.name, code, teacherId);
+    const classroom = Classroom.open(input.name, code, teacherId, organizationId);
     await this.classes.save(classroom);
     return (await this.toDtos([classroom], actor))[0];
   }
@@ -99,12 +114,28 @@ export class ClassroomService implements OnModuleInit, OnModuleDestroy {
       classroom.changeCode(code);
     }
     if (input.teacherId && input.teacherId !== classroom.teacherId) {
-      if (actor.role !== 'ADMIN') {
-        throw DomainError.forbidden('classroom.only_admin_reassigns', 'Chỉ quản trị viên được đổi giáo viên phụ trách lớp.');
+      // The administrator hands any class to any teacher; an org admin hands the organization's classes to its members.
+      if (actor.role === 'ADMIN') {
+        await this.ensureStaff(input.teacherId);
+      } else if (isOrgAdmin(actor, classroom.organizationId)) {
+        await this.ensureTeacherInOrganization(actor, input.teacherId, classroom.organizationId!);
+      } else {
+        throw DomainError.forbidden('classroom.only_admin_reassigns', 'Chỉ quản trị viên hoặc quản lý tổ chức được đổi giáo viên phụ trách lớp.');
       }
-      await this.ensureStaff(input.teacherId);
       classroom.assignTeacher(input.teacherId);
     }
+    await this.classes.save(classroom);
+    return (await this.toDtos([classroom], actor))[0];
+  }
+
+  /** The class teacher moves a personal class into one of their organizations (one way in the pilot). */
+  async moveToOrganization(actor: Actor, id: string, organizationId: string): Promise<ClassroomDto> {
+    const classroom = await this.load(id);
+    if (actor.id !== classroom.teacherId && actor.role !== 'ADMIN') {
+      throw DomainError.forbidden('classroom.not_teacher', 'Chỉ giáo viên phụ trách lớp được chuyển lớp vào tổ chức.');
+    }
+    await this.ensureTeacherInOrganization(actor, classroom.teacherId, organizationId);
+    classroom.moveToOrganization(organizationId);
     await this.classes.save(classroom);
     return (await this.toDtos([classroom], actor))[0];
   }
@@ -125,6 +156,7 @@ export class ClassroomService implements OnModuleInit, OnModuleDestroy {
 
   async scheduleDeletion(actor: Actor, id: string, days: number): Promise<ClassroomDto> {
     const classroom = await this.loadManaged(actor, id);
+    classroom.ensureDeletableBy(actor);
     classroom.scheduleDeletion(days);
     await this.classes.save(classroom);
     return (await this.toDtos([classroom], actor))[0];
@@ -139,6 +171,7 @@ export class ClassroomService implements OnModuleInit, OnModuleDestroy {
 
   async deleteNow(actor: Actor, id: string, confirmName: string): Promise<void> {
     const classroom = await this.loadManaged(actor, id);
+    classroom.ensureDeletableBy(actor);
     await this.purge(classroom, confirmName);
   }
 
@@ -277,6 +310,17 @@ export class ClassroomService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** The organization keeps its classes: the leaver's classes in it go to the successor org admin (OJ-8). */
+  @OnEvent(MEMBER_LEFT_ORGANIZATION, { async: true, promisify: true })
+  async onMemberLeftOrganization(event: MemberLeftOrganizationEvent): Promise<void> {
+    const classes = (await this.classes.findByOrganizations([event.organizationId])).filter((c) => c.teacherId === event.userId);
+    for (const classroom of classes) {
+      classroom.assignTeacher(event.successorId);
+      await this.classes.save(classroom);
+    }
+    if (classes.length) this.logger.log(`${classes.length} class(es) of organization ${event.organizationId} handed to ${event.successorId}`);
+  }
+
   // ---------- Scheduled deletion ----------
 
   onModuleInit() {
@@ -384,6 +428,30 @@ export class ClassroomService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** Taught classes plus the classes of organizations where the teacher is org admin. */
+  private async teacherClasses(actor: Actor): Promise<Classroom[]> {
+    const adminOf = (actor.organizations ?? []).filter((o) => o.role === 'ADMIN').map((o) => o.id);
+    const [taught, ofOrgs] = await Promise.all([this.classes.findByTeacher(actor.id), this.classes.findByOrganizations(adminOf)]);
+    const seen = new Set(taught.map((c) => c.id));
+    return [...taught, ...ofOrgs.filter((c) => !seen.has(c.id))];
+  }
+
+  /**
+   * The class's organization must be one the acting user belongs to (never trust an id from the request), and the
+   * teacher in charge must be a member of it too.
+   */
+  private async ensureTeacherInOrganization(actor: Actor, teacherId: string, organizationId: string) {
+    if (actor.role !== 'ADMIN' && !isOrgMember(actor, organizationId)) {
+      throw DomainError.forbidden('classroom.not_in_organization', 'Bạn không thuộc tổ chức này.');
+    }
+    const member = teacherId === actor.id && actor.role !== 'ADMIN'
+      ? isOrgMember(actor, organizationId)
+      : await this.people.isOrganizationMember(teacherId, organizationId);
+    if (!member) {
+      throw DomainError.validation('classroom.teacher_not_in_organization', 'Giáo viên phụ trách phải là thành viên của tổ chức.');
+    }
+  }
+
   private async ensureStaff(userId: string) {
     const person = (await this.people.getPeople([userId])).get(userId);
     if (!person || person.role === 'STUDENT') {
@@ -394,10 +462,11 @@ export class ClassroomService implements OnModuleInit, OnModuleDestroy {
   private async toDtos(classes: Classroom[], actor: Actor, memberships?: Enrollment[]): Promise<ClassroomDto[]> {
     const ids = classes.map((c) => c.id);
     const managed = classes.filter((c) => c.isManagedBy(actor)).map((c) => c.id);
-    const [counts, pending, teachers] = await Promise.all([
+    const [counts, pending, teachers, orgNames] = await Promise.all([
       this.enrollments.countOpenByClass(ids),
       this.requests.countPendingByClass(managed),
       this.people.getPeople(classes.map((c) => c.teacherId)),
+      this.people.organizationNames([...new Set(classes.map((c) => c.organizationId).filter((o): o is string => !!o))]),
     ]);
     return classes.map((c) => {
       const membership = memberships?.find((m) => m.classId === c.id);
@@ -412,6 +481,7 @@ export class ClassroomService implements OnModuleInit, OnModuleDestroy {
         archivedAt: c.archivedAt?.toISOString() ?? null,
         purgeAt: c.purgeAt?.toISOString() ?? null,
         createdAt: c.createdAt.toISOString(),
+        organization: c.organizationId ? { id: c.organizationId, name: orgNames.get(c.organizationId) ?? '(tổ chức)' } : null,
         ...(membership ? { isCurrent: membership.isOpen && c.isActive } : {}),
         ...(c.isManagedBy(actor) ? { pendingRequestCount: pending.get(c.id) ?? 0 } : {}),
       };

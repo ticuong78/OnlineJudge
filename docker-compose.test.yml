@@ -1,0 +1,33 @@
+# Throwaway databases for integration and end-to-end tests. Separate project, separate ports, data in memory only:
+# tests can never touch the development containers (5432/6379) or their data.
+#   pnpm infra:test:up     then   pnpm test:integration / pnpm test:e2e
+#   pnpm infra:test:down
+name: onlinejudge-test
+
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: oj
+      POSTGRES_PASSWORD: oj
+      POSTGRES_DB: online_judge_test
+    ports:
+      - '127.0.0.1:55432:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U oj -d online_judge_test']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis-test:
+    image: redis:7-alpine
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    ports:
+      - '127.0.0.1:56379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 30

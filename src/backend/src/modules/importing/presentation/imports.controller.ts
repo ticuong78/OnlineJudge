@@ -20,6 +20,8 @@ import type { Actor } from '../../../shared/application/actor.js';
 import { CurrentActor, Roles } from '../../../shared/presentation/decorators.js';
 import { ImportService } from '../application/import.service.js';
 
+// Test data is not limited here: tests added by hand have no request limit either (catalog/presentation/problem.dto.ts,
+// UpsertTestCaseBody); the catalog domain caps each test (8 MB), and test data never goes through the text checks.
 class TestBody {
   @IsString() input: string;
   @IsString() expectedOutput: string;
@@ -27,13 +29,15 @@ class TestBody {
   @Type(() => Number) @IsNumber() @Min(0) points: number;
 }
 
+// The same text limits as a problem typed by hand (problem.dto.ts): confirmed drafts become problems, and their text
+// goes through the same checks (file-I/O detection), which must not be fed megabytes (OJ-15 F4).
 class DraftBody {
-  @IsString() title: string;
+  @IsString() @MaxLength(200) title: string;
   @IsIn(Difficulties) difficulty: Difficulty;
-  @IsString() statement: string;
-  @IsString() inputFormat: string;
-  @IsString() outputFormat: string;
-  @IsString() constraints: string;
+  @IsString() @MaxLength(100_000) statement: string;
+  @IsString() @MaxLength(20_000) inputFormat: string;
+  @IsString() @MaxLength(20_000) outputFormat: string;
+  @IsString() @MaxLength(20_000) constraints: string;
   @IsInt() timeLimitMs: number;
   @IsInt() memoryLimitMb: number;
   @IsArray() @ArrayMaxSize(200) @ValidateNested({ each: true }) @Type(() => TestBody) tests: TestBody[];

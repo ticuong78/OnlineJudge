@@ -1,5 +1,5 @@
-import { Difficulties, Languages, type BankScope, type Difficulty, type Language, type SuggestProblemSectionRequest } from '@oj/contracts';
-import { Type } from 'class-transformer';
+import { Difficulties, Languages, MAX_TAG_LENGTH, SuggestableSections, type BankScope, type Difficulty, type Language, type SuggestProblemSectionRequest } from '@oj/contracts';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
@@ -9,6 +9,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -18,16 +19,27 @@ import {
 import { PaginationQuery } from '../../../shared/presentation/pagination.dto.js';
 
 export class ProblemListQuery extends PaginationQuery {
-  @IsOptional() @IsIn(['mine', 'public', 'all']) scope?: BankScope;
+  @IsOptional() @IsIn(['mine', 'public', 'organization', 'all']) scope?: BankScope;
+  /** `organization` scope: narrow to one of the viewer's organizations. */
+  @IsOptional() @IsUUID() organizationId?: string;
   @IsOptional() @IsString() @MaxLength(200) search?: string;
   @IsOptional() @IsIn(Difficulties) difficulty?: Difficulty;
-  @IsOptional() @IsString() @MaxLength(50) tag?: string;
+  /** One or more topics (`?tag=a&tag=b`): problems carrying all of them (OJ-20). */
+  @IsOptional() @Transform(({ value }) => (Array.isArray(value) ? value : [value]))
+  @IsArray() @ArrayMaxSize(5) @IsString({ each: true }) @MaxLength(MAX_TAG_LENGTH, { each: true }) tag?: string[];
+}
+
+/** The bank scope whose tags are counted (OJ-20). */
+export class ProblemTagsQuery {
+  @IsOptional() @IsIn(['mine', 'public', 'organization', 'all']) scope?: BankScope;
+  @IsOptional() @IsUUID() organizationId?: string;
 }
 
 export class UpsertProblemBody {
   @IsString() @MaxLength(200) title: string;
   @IsIn(Difficulties, { message: 'Mức độ khó không hợp lệ.' }) difficulty: Difficulty;
-  @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) tags: string[];
+  /** A loose size guard only: the domain applies the 40-character limit after normalising, with a clear message. */
+  @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @MaxLength(200, { each: true }) tags: string[];
   @IsString() @MaxLength(100_000) statement: string;
   @IsString() @MaxLength(20_000) inputFormat: string;
   @IsString() @MaxLength(20_000) outputFormat: string;
@@ -70,7 +82,7 @@ class DraftContentBody {
 }
 
 export class SuggestSectionBody {
-  @IsIn(['statement', 'inputFormat', 'outputFormat', 'constraints']) section: SuggestProblemSectionRequest['section'];
+  @IsIn(SuggestableSections) section: SuggestProblemSectionRequest['section'];
   @ValidateNested() @Type(() => DraftContentBody) problem: DraftContentBody;
 }
 
@@ -88,6 +100,9 @@ export class SharingBody {
   @IsBoolean() isPublic: boolean;
   @IsBoolean() publicTests: boolean;
   @IsBoolean() publicSolution: boolean;
+  /** OJ-8: organizations of the owner that see the whole problem; each is checked against the actor's memberships. */
+  // Required, not defaulted: a client that leaves it out must not silently remove all organization sharing.
+  @IsArray() @ArrayMaxSize(20) @IsUUID('all', { each: true }) organizationIds: string[];
 }
 
 export class UpsertSolutionBody {

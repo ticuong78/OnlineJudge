@@ -1,8 +1,9 @@
-import { readFileSync } from 'node:fs';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { validateEnvironment } from './config/environment.js';
+import { databaseOptions, openDatabase, retryDatabaseError } from './database.js';
 import { AssessmentModule } from './modules/assessment/assessment.module.js';
 import { CatalogModule } from './modules/catalog/catalog.module.js';
 import { ClassroomModule } from './modules/classroom/classroom.module.js';
@@ -15,18 +16,18 @@ import { SharedModule } from './shared/shared.module.js';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '.env.local'] }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '.env.local'], validate: validateEnvironment }),
     EventEmitterModule.forRoot(),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        type: 'postgres',
-        url: config.getOrThrow<string>('DATABASE_URL'),
+        ...databaseOptions((key) => config.get<string>(key)),
         autoLoadEntities: true,
-        synchronize: config.get('DB_SYNC', 'false') === 'true',
-        // Hosted Postgres (e.g. Supabase) signs its certificate with its own CA: verify against that file.
-        ...(config.get<string>('DATABASE_SSL_CA') ? { ssl: { ca: readFileSync(config.get<string>('DATABASE_SSL_CA')!, 'utf8') } } : {}),
+        // A database that is not up yet is retried; a failed migration is not (it would run again each time).
+        toRetry: retryDatabaseError,
       }),
+      // Migrations under a lock, then DB_SYNC in development, before any module reads the database (OJ-26, OJ-28).
+      dataSourceFactory: (options) => openDatabase(options!),
     }),
     SharedModule,
     // Bounded contexts

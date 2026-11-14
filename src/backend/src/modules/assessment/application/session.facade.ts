@@ -13,6 +13,11 @@ export class SessionFacade {
     return this.sessions.prepareSubmission(actor, sessionId, problemKey);
   }
 
+  /** Checks the actor may read this session problem now, and returns its sample tests only (trial runs, OJ-18). */
+  trialTarget(actor: Actor, sessionId: string, problemKey: string): Promise<JudgeTarget> {
+    return this.sessions.trialTarget(actor, sessionId, problemKey);
+  }
+
   /** Current test data of a session problem (for rejudging; no permission checks); null if it was removed. */
   judgeTarget(sessionId: string, problemKey: string): Promise<JudgeTarget | null> {
     return this.sessions.judgeTarget(sessionId, problemKey);

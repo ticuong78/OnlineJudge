@@ -14,6 +14,7 @@ export interface ProblemSnapshot {
   ownerId: string;
   title: string;
   difficulty: ProblemDetailDto['difficulty'];
+  tags: string[];
   statement: string;
   inputFormat: string;
   outputFormat: string;
@@ -70,6 +71,7 @@ export class CatalogFacade {
         ownerId: p.owner.id,
         title: c.title,
         difficulty: c.difficulty,
+        tags: c.tags,
         statement: c.statement,
         inputFormat: c.inputFormat,
         outputFormat: c.outputFormat,

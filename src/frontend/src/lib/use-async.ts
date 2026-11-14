@@ -1,11 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type DependencyList } from 'react';
-import { errorMessage } from './api';
+import { ApiError, errorMessage } from './api';
 
 export interface AsyncState<T> {
   data: T | undefined;
   error: string | null;
+  /** HTTP status of the failed call (0 when the server could not be reached), for branching without reading text. */
+  errorStatus: number | null;
   loading: boolean;
   reload: () => void;
   setData: (updater: T | ((prev: T | undefined) => T)) => void;
@@ -15,6 +17,7 @@ export interface AsyncState<T> {
 export function useAsync<T>(fn: () => Promise<T>, deps: DependencyList, enabled = true): AsyncState<T> {
   const [data, setDataState] = useState<T | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [tick, setTick] = useState(0);
   const callId = useRef(0);
@@ -27,12 +30,16 @@ export function useAsync<T>(fn: () => Promise<T>, deps: DependencyList, enabled 
     const id = ++callId.current;
     setLoading(true);
     setError(null);
+    setErrorStatus(null);
     fn()
       .then((d) => {
         if (id === callId.current) setDataState(d);
       })
       .catch((e) => {
-        if (id === callId.current) setError(errorMessage(e));
+        if (id === callId.current) {
+          setError(errorMessage(e));
+          setErrorStatus(e instanceof ApiError ? e.status : null);
+        }
       })
       .finally(() => {
         if (id === callId.current) setLoading(false);
@@ -47,5 +54,5 @@ export function useAsync<T>(fn: () => Promise<T>, deps: DependencyList, enabled 
     );
   }, []);
 
-  return { data, error, loading, reload, setData };
+  return { data, error, errorStatus, loading, reload, setData };
 }
