@@ -90,13 +90,16 @@ Teachers do **not** sign up here; they are invited by email.
    session close, whichever is first. Warnings at 15, 5 and 1 minutes ("Bật/Tắt âm báo").
 3. Open a problem: read "Đề bài", "Dữ liệu vào", "Kết quả", "Ràng buộc" and the examples ("Sao chép" copies them).
 4. Choose the language ("Ngôn ngữ"), write code in the editor ("Mã mẫu" restores the template), click "Nộp bài".
-   Your draft is kept per problem and language in this browser.
-5. "Kết quả chấm" appears under the editor: "Đang chờ chấm" → "Đang chấm" → the verdict and score; with full
+   Your draft is kept per problem and language in this browser, for your account only: on a shared computer the next
+   student starts from the template. Your drafts stay after "Đăng xuất" and come back when you sign in again there.
+5. "Kết quả chấm" appears under the editor (on a phone the page scrolls to it after "Nộp bài"): "Đang chờ chấm" → "Đang chấm" → the verdict and score; with full
    feedback, "Chi tiết từng test". After an AC: "Sang bài tiếp theo". Earlier tries: tab "Bài nộp của tôi".
 6. What you see depends on the teacher's choice, shown as a rule on the session page: every test ("Xem kết quả từng
    test ngay"), only the verdict and score ("Chỉ xem kết quả chung và điểm"), or nothing until the session closes
    ("Kết quả hiện sau khi phiên đóng"; the result says "Đã nộp").
-7. Questions: "Câu hỏi về bài này" → "Hỏi về bài này" (class sessions only). The teacher answers on the class board.
+7. Questions: "Câu hỏi về bài này" → "Hỏi về bài này" (class sessions only). You stay on the problem (useful in a
+   timed session); the question appears in that list, marked "Chờ giáo viên trả lời" until a teacher replies. The teacher
+   answers on the class board.
 
 Limits: source code up to 64 KB; at most 3 of your submissions waiting to be judged at once.
 You cannot submit when: the session has not opened ("Phiên chưa mở…"), it is closed ("Phiên đã đóng, không nhận bài
@@ -150,6 +153,11 @@ If you already have an account and were invited into an **organization**, the in
     đọc/ghi file". Regular accounts click "Chuyển sang nhập/xuất chuẩn"; VIP accounts turn on "Dùng gợi ý" for that
     section (they do not see the conversion button).
   - Limits: time 100–15,000 ms, memory 16–1024 MB, up to 200 tests, each test up to 8 MB.
+  - "Giao bài" is available once the problem has at least one test ("Thêm ít nhất một test để giao bài.").
+- **Unsaved work**: leaving a problem, set or solution with unsaved changes asks "Rời trang khi chưa lưu?" ("Ở lại" /
+  "Rời trang"); so do switching tabs on a problem page and "Đăng xuất". A new problem is also kept as a draft in this
+  browser: come back to "Tạo bài" and it is restored ("Đã khôi phục bản nháp chưa lưu…", "Bỏ bản nháp" to start over).
+  Signing out deletes these drafts.
 - **Problem page**: "Giao bài", "Xóa bài" (sessions already given keep their frozen copy); tabs "Đề bài & bộ test", "Xem như học sinh", "Lời giải"
   ("Hướng dẫn giải", code, "Tải file code", "Lưu lời giải").
 - **Sharing** ("Chia sẻ"): "Công khai đề bài" (other teachers see the statement and examples and can copy),
@@ -211,7 +219,8 @@ Sample files to try: `samples/exams/` (see docs/testing/local-setup.md).
 ### 3.8 Home page
 "Giao bài" (or "Tạo lớp đầu tiên" with no class), shortcuts "Nhập đề", "Tạo bài", "Ngân hàng", "Luyện tập"; "Lớp của
 tôi" with pending request counts; "N bài nộp cần xem lại" when there are new hints; "Phiên sắp hết hạn" / "Phiên đang
-mở"; organization invitations ("Lời mời vào tổ chức") at the top.
+mở"; "N câu hỏi chờ trả lời": students' questions in your classes that no teacher has answered yet (newest five,
+each opens the thread); organization invitations ("Lời mời vào tổ chức") at the top.
 
 ---
 

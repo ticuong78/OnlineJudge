@@ -26,6 +26,8 @@ pnpm dev:backend | pnpm dev:engine | pnpm dev:frontend
 pnpm typecheck             # all packages
 pnpm test                  # backend and engine: node --test under test/*.test.ts
 pnpm --filter @oj/backend test -- --test-name-pattern "classroom"   # one area
+pnpm --filter @oj/backend migration:generate src/migrations/<slug>   # after an entity change; then list it in src/migrations/index.ts
+pnpm --filter @oj/backend migration:show | migration:revert | migration:check
 ```
 
 Verification gate before any push: `pnpm build:shared && pnpm typecheck && pnpm test`. The pre-push hook runs it on changed packages; CI runs it on everything.
@@ -34,13 +36,14 @@ Verification gate before any push: `pnpm build:shared && pnpm typecheck && pnpm 
 
 1. Bounded contexts live in `src/backend/src/modules/<context>` with four layers: `domain` (aggregates, value objects, repository abstract classes, domain services), `application` (services, facades, ports), `infrastructure` (TypeORM entities and repositories, mailers, Claude adapters), `presentation` (controllers, guards, DTO validation). Keep new code in the right layer; do not import infrastructure from domain.
 2. Contexts: identity, classroom, catalog, importing, assessment, integrity, community, judging. Dependency direction: `integrity -> judging -> assessment -> catalog, classroom -> identity`; `community -> assessment, classroom`. Never add a dependency against this direction. Reactions in the other direction go through domain events (`<context>.events.ts`) and `@nestjs/event-emitter`.
-3. A context talks to another only through that context's published facade (`application/<context>.facade.ts`) behind a local port (anti-corruption layer). No reaching into another context's repository or ORM entity.
+3. A context talks to another only through that context's published facade (`application/<context>.facade.ts`) behind a local port (anti-corruption layer). No reaching into another context's repository or ORM entity. The one shared kernel is AI access and allowances (`shared/application/ai-access.ts`, `ai-quota.ts`, `ai-availability.ts`): abstract ports and a use case that every AI feature needs, implemented by Identity and wired in `identity.module.ts`. Contexts inject them directly (ADR 0005). Do not add other shared use cases without an ADR.
 4. Repositories are abstract classes in `domain/`; TypeORM implementations in `infrastructure/`. The domain never sees TypeORM.
 5. Errors: throw `DomainError` subclasses from `shared/domain/domain-error.ts`; `ApiExceptionFilter` maps them to `ApiErrorBody`. Messages shown to users are Vietnamese; error `code` values are stable English identifiers.
 6. Contracts first: any new request, response or enum goes into `src/shared/src/api.ts` or `enums.ts`, then `pnpm build:shared`, then backend and frontend use it. No duplicated DTO shapes in packages.
 7. Judge jobs are self-contained (`judge-messages.ts`): the engine never reads the database. Keep it that way.
 8. Frontend: `src/frontend/src/lib/api.ts` is the only HTTP client; pages under `app/(auth)`, `app/(main)`, `app/(print)`; shared UI in `components/`. Business rules stay in the backend; the frontend validates for usability only.
 9. Frontend text is never written inline: it goes into `src/frontend/src/i18n/messages/vi/<ns>.ts` and the same key into `en/<ns>.ts` (OJ-12, `use-intl`). Components use `useTranslations`; code outside components uses `tr()` from `i18n/runtime.ts` at call time. `i18n-coverage.test.ts` fails on Vietnamese text left in components. API errors are translated by their `code`.
+10. The schema comes from migrations in `src/backend/src/migrations` (ADR 0003), run by the API at startup. Every entity change ships with a generated migration, listed in `migrations/index.ts` and reviewed in the same PR; data fixes for existing rows are migrations too, never a one-off script or manual SQL. Never edit a migration that has been released. `DB_SYNC=true` is for a throwaway local database only; generate migrations against a database built only by migrations (`DB_SYNC=false`), or `DB_SYNC` will already have applied the change and nothing is generated. `migration:run` and `migration:revert` take the same advisory lock as startup. `migrations.integration.test.ts` fails when entities and migrations differ.
 
 ## Security rules (non-negotiable)
 

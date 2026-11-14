@@ -80,7 +80,7 @@ judging) still need a second human reviewer, as their specs say.
 |---|---|
 | `NODE_ENV` | `production` switches on the production checks: strong `JWT_SECRET` and `ADMIN_PASSWORD` required, SMTP required, `TRUST_PROXY=true` refused |
 | `PORT` | API port (default 4000) |
-| `DATABASE_URL`, `DB_SYNC`, `DATABASE_SSL_CA` | Postgres; `DB_SYNC=true` creates/alters tables in development (migrations: OJ-5, draft) |
+| `DATABASE_URL`, `DB_SYNC`, `DATABASE_SSL_CA` | Postgres; the schema comes from migrations run at startup (OJ-5). `DB_SYNC=true` only for a throwaway development database, refused in production |
 | `REDIS_URL` | rate limits, sign-in memory, judge queues |
 | `JWT_SECRET`, `JWT_EXPIRES_IN` | tokens (empty in development = random per start) |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | the single administrator, created at start |
@@ -123,7 +123,7 @@ later (not implemented).
 |---|---|
 | Teacher plans | Free (everything except AI) and VIP (AI), switched by the administrator; no payment |
 | Organization plan (OJ-8) | Done for the pilot: seats, end date, AI, org admins, several organizations per teacher, organization classes, sharing inside the organization, leaving rules; org admins archive but do not delete classes |
-| Hardening | Done locally, not yet pushed: OJ-1 (identity), OJ-2 (sandbox supervisor), OJ-3 (judging admission and watchdog), OJ-7 (UX fixes). OJ-4 (integrity fingerprint): code done, spec still draft. OJ-5 (migrations) and OJ-6 (history rewrite, license): not started |
+| Hardening | Done locally, not yet pushed: OJ-1 (identity), OJ-2 (sandbox supervisor), OJ-3 (judging admission and watchdog), OJ-7 (UX fixes). OJ-4 (integrity fingerprint): code done, spec still draft. OJ-5 (migrations): done, see OJ-26 and OJ-28 for the lock and startup. OJ-6 (history rewrite, license): not started |
 | Tests (OJ-9) | Unit, integration, HTTP and browser end-to-end; CI job added (not run yet) |
 
 Out of scope / later (from the specs and planning): sharing problem **sets** with organizations, payment and usage
@@ -145,7 +145,7 @@ decimal checker), AI gateway with metering, parent consent for minors.
 | K-8 | Only one administrator account exists | No delegation beyond org admins | identity |
 | K-9 | The CI workflow is not committed yet (`.github/` untracked), so it has never run. (Its push trigger and the pre-push hook named `main`; both use `master` since 2026-11-08.) | No automatic checks yet | `.github/workflows/ci.yml` |
 | K-14 | Low advisory left after the 2026-11-08 audit: KaTeX prototype pollution (via `rehype-katex`). `dompurify` is forced to `>=3.4.17` by a pnpm override in `pnpm-workspace.yaml` until `monaco-editor` ships it; remove the override then. `typeorm` wants `ioredis` 5 while the backend uses 6 (peer warning) | Low | frontend, backend dependencies |
-| K-10 | Migrations not in place (OJ-5 draft); development relies on `DB_SYNC` | Production schema changes need care | backend |
+| K-10 | ~~Migrations not in place~~ Closed by OJ-5: migrations run at startup, `DB_SYNC` refused in production | — | backend |
 | ~~K-11~~ | Fixed in OJ-10: one entry per copied pair (unique pair key, insert-or-ignore), also when both are judged at once. Duplicates created before the fix stay | | integrity |
 | K-12 | 18 routes for "any signed-in user" (sessions, classes, threads, submissions, progress, `auth/me`) have no `@Roles`; they rely on the sign-in guard plus ownership checks, which differs from CLAUDE.md security rule 1 as written | Rule and code disagree: decide whether to add `@Roles` or reword the rule | `public-routes.test.ts` pins the list |
 | ~~K-13~~ | Fixed in OJ-10: every error has a `code` (`request.invalid`, `request.not_found`, `server.error`, …); `ApiErrorBody.code` is required | | `domain-error.filter.ts` |

@@ -302,7 +302,7 @@ No automated load, accessibility or cross-browser tests exist yet (G-3).
 | OJ-2 sandbox supervisor | engine `docker-sandbox*`, `leftovers`, `supervisor-protocol`, `judge`, `classify` | S-03, S-04 |
 | OJ-3 judging admission and watchdog | `judging`; integration admission and `findStale`; e2e `classroom` (limits) | S-05, charter 8 |
 | OJ-4 integrity fingerprint | `fingerprint`, `integrity-community` | T-10 |
-| OJ-5 migrations | — (not started) | — |
+| OJ-5 migrations | `migrations.integration.test.ts` (empty, old `master` with data, `DB_SYNC`-built, revert, drift guard); the other integration suites build their schema through migrations | Dev database upgraded 2026-11-14 |
 | OJ-7 product-review UX fixes | frontend `lib.test` (points), browser `student-submits` | S-02, S-03, S-05, S-07, O-06 |
 | OJ-8 organization plan | `organization`, `organization-access`, `organization.integration`; e2e `organization`; browser `organization` | O-01–O-10, A-03–A-06 |
 | OJ-9 test suites | this plan | — |

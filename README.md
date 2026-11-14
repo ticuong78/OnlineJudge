@@ -32,6 +32,14 @@ Hệ thống chấm bài lập trình tự động cho lớp học:
   - Khi tạo lớp, giáo viên chọn lớp thuộc tổ chức nào hoặc là lớp cá nhân (lớp cá nhân chuyển vào tổ chức được, không chuyển ra được). Quản lý tổ chức **xem và quản lý mọi lớp của tổ chức** như giáo viên của lớp: học sinh, phiên, kết quả, bài nộp, chấm lại, gợi ý cần xem lại, bảng tin, giao lớp cho giáo viên khác của tổ chức. Quản lý tổ chức lưu trữ được lớp nhưng không xóa hẳn được (chỉ giáo viên phụ trách lớp và admin).
   - Bài tập có thể chia sẻ **trong tổ chức**: giáo viên của tổ chức xem toàn bộ bài (đề, test ẩn, lời giải) và lưu bản sao; người ngoài tổ chức không thấy.
   - Giáo viên của tổ chức còn hạn và có kèm AI được dùng các tính năng AI (như tài khoản VIP). Hết hạn thì tắt AI và không mời thêm; lớp, bài và dữ liệu vẫn giữ nguyên.
+- **Lộ trình học** (OJ-24): giáo viên xếp các phiên luyện tập công khai thành lộ trình từ dễ đến khó theo một chủ đề, mỗi bước có ghi chú điểm mới. Học sinh thấy tiến độ từng bước và nút "Làm tiếp" tới bài chưa giải; không khóa bước nào. Bước "ôn tập tổng hợp" là phiên bật "Ẩn chủ đề của bài": học sinh không thấy chủ đề cho tới khi phiên đóng.
+- **Nhập đề từ ảnh chụp** (OJ-23, VIP): tải ảnh .png/.jpg/.webp (tối đa 5MB), AI đọc thành các bài để kiểm tra trước khi lưu. **Gợi ý tên bài bằng AI** (OJ-22): công tắc "Dùng gợi ý" cạnh ô tên bài, tính vào lượt viết lại đề.
+- **Lượt dùng AI mỗi tháng** (OJ-21): mọi giáo viên dùng thử được AI trong giới hạn hằng tháng, đặt lại vào ngày 1 (giờ Việt Nam):
+  - **Gói miễn phí** (giáo viên thường): 3 lần đọc đề bằng AI, 20 lần viết lại đề, 3 lần gợi ý test mỗi tháng; không có kiểm tra dùng AI.
+  - **Gói VIP** (giáo viên VIP hoặc thuộc tổ chức có kèm AI): 100 lần đọc đề, 500 lần viết lại, 100 lần gợi ý test, 2000 lần kiểm tra dùng AI.
+  - **Admin:** không giới hạn.
+  - Chỉ tính lần dùng thành công; AI lỗi thì không mất lượt. Hết lượt đọc đề thì vẫn nhập được bằng cách đọc theo mẫu; hết lượt viết lại hoặc gợi ý test thì nút báo ngày có lượt mới. Ngoài ra mỗi giáo viên dùng tối đa 10 yêu cầu AI mỗi phút.
+  - Giáo viên xem lượt còn lại cạnh mỗi nút AI và trong thẻ "Lượt dùng AI tháng này" ở trang chủ. Các con số đặt trong `.env` (`AI_LIMIT_*`).
   - Khi giáo viên rời tổ chức: lớp của tổ chức do họ dạy **ở lại tổ chức** (chuyển cho quản lý); giáo viên giữ bài của mình, tổ chức giữ một bản sao các bài đã chia sẻ trong tổ chức.
 - Chấm tự động C, C++, Python, Java, JavaScript; bảng điểm theo phiên; in đề và in đáp án từ ngân hàng.
 - **Hai ngôn ngữ giao diện**: tiếng Việt (mặc định) và tiếng Anh, đổi bằng nút **VI / EN** ở thanh trên cùng và ở các trang đăng nhập. Lựa chọn được nhớ trong cookie `oj_locale`. Chỉ giao diện đổi ngôn ngữ; đề bài, nội dung người dùng và email giữ nguyên. Chữ giao diện nằm trong `src/frontend/src/i18n/messages/{vi,en}` (thư viện `use-intl`); thêm chữ mới thì thêm vào cả hai file, thiếu khóa tiếng Anh là lỗi typecheck.
@@ -124,6 +132,7 @@ pnpm dev:frontend
 - Gửi email: khi để trống `SMTP_HOST`, email (mã OTP, link mời) **được in ra log của backend** thay vì gửi thật. Chỉ dùng cho môi trường phát triển: với `NODE_ENV=production`, backend không khởi động nếu thiếu `SMTP_HOST`. Để gửi bằng Gmail, bạn cần bật xác minh 2 bước cho tài khoản Gmail, tạo **App Password**, rồi đặt `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_USER=<gmail>` và `SMTP_PASS=<app password>`. Gmail giới hạn khoảng 500 email/ngày, đủ cho một lớp học.
 - AI: đặt `ANTHROPIC_API_KEY` trong `src/backend/.env`. Model chọn riêng cho từng việc: `CLAUDE_MODEL` cho đọc đề (mặc định `claude-sonnet-5-5`), `CLAUDE_TESTGEN_MODEL` cho gợi ý test (mặc định bằng `CLAUDE_MODEL`) và `CLAUDE_REVIEW_MODEL` cho kiểm tra dùng AI (mặc định `claude-haiku-5-5`, rẻ vì chạy trên từng bài nộp). Khi để trống key, đọc đề dùng bộ đọc theo mẫu và bỏ qua kiểm tra dùng AI. Với Sonnet/Opus, lệnh gọi bật sẵn *refusal fallback* phía server (`fallbacks: "default"`); Haiku không hỗ trợ nên không gửi tham số này.
 - Giáo viên tạo lớp và đặt mã lớp ở trang **Lớp**. Học sinh dùng mã đó để xin vào lớp (khi đăng ký hoặc ở trang **Lớp của tôi**), rồi giáo viên duyệt ở trang lớp.
+- Cơ sở dữ liệu: backend tự tạo và cập nhật bảng bằng migration khi khởi động (xem mục *Nâng cấp*).
 - Sau khi cập nhật mã engine, build lại image runner: `pnpm runner:build` (engine không khởi động với image cũ).
 - Dữ liệu mẫu để thử giao diện: xem mục **Dữ liệu mẫu (seed)** ngay dưới đây.
 - Không có Docker? Có thể chạy engine với `SANDBOX=local`: code chạy thẳng trên máy, **không cách ly**, chỉ dùng để thử.
@@ -203,12 +212,53 @@ Kiểm thử tích hợp và end-to-end chỉ dùng **cơ sở dữ liệu tạm
 - **Phiên đăng nhập**: token gắn với mật khẩu hiện tại. Đổi hay đặt lại mật khẩu, hoặc xóa tài khoản, là mọi token cũ hết hiệu lực ngay. Vai trò và tên luôn lấy từ tài khoản, không tin nội dung token.
 - **Cấu hình**: không có khóa bí mật nào biết trước. Thiếu `JWT_SECRET` thì production không khởi động, còn môi trường phát triển dùng khóa ngẫu nhiên; khóa ngắn hoặc giá trị mẫu bị từ chối ở mọi môi trường.
 - **Sau reverse proxy** (nginx, Caddy, load balancer): đặt `TRUST_PROXY=<số proxy đứng trước API>` (thường là `1`), nếu không backend thấy mọi người cùng một IP (của proxy) và giới hạn tần suất sẽ chặn nhầm cả trường. Không đặt `TRUST_PROXY=true`: khi đó ai cũng giả được IP bằng header `X-Forwarded-For` (với `NODE_ENV=production` backend từ chối khởi động).
-- **Nâng cấp từ bản cũ**: build lại image sandbox (`pnpm runner:build`; engine không chạy với image cũ); các bảng và cột mới (tổ chức, thành viên, `pairKey` của cảnh báo đạo văn…) được tạo tự động khi `DB_SYNC=true`; mọi token cũ hết hiệu lực (người dùng đăng nhập lại một lần); cột `submissions.queuedAt` được thêm tự động khi `DB_SYNC=true` (nếu tắt `DB_SYNC`, chạy `ALTER TABLE submissions ADD COLUMN "queuedAt" timestamptz;`); `.env` cũ còn `JWT_SECRET=change-me…` phải đổi.
+- **Nâng cấp từ bản cũ**: xem mục *Nâng cấp* bên dưới.
 
 ## Triển khai
 
 - **Frontend → Vercel**: Root Directory `src/frontend`, đặt biến môi trường `NEXT_PUBLIC_API_URL=https://<api-domain>/api`. Chi tiết xem `src/frontend/README.md`.
-- **Backend + engine + Postgres + Redis**: chạy trên một máy chủ/VPS có Docker. Engine cần quyền gọi `docker` để tạo sandbox. Trong production đặt `NODE_ENV=production`, `JWT_SECRET` ngẫu nhiên (bắt buộc, `openssl rand -hex 32`), mật khẩu admin mạnh, `CORS_ORIGINS` và `FRONTEND_URL` là domain thật, và `TRUST_PROXY` nếu đứng sau reverse proxy (xem mục *Bảo mật và giới hạn*). Server in cảnh báo khi cấu hình production còn trỏ về localhost. Redis phải chạy với `maxmemory-policy noeviction` (mặc định của Redis, và BullMQ cũng cần): nếu Redis được phép xóa khóa khi đầy bộ nhớ, bộ đếm giới hạn tần suất có thể bị xóa mất. Production cần cột `linkHash` trong bảng `verifications` và cột `faultSource` trong bảng `submissions`; nếu không dùng `DB_SYNC`, chạy `ALTER TABLE verifications ADD COLUMN "linkHash" varchar(255);` và `ALTER TABLE submissions ADD COLUMN "faultSource" varchar(16);`. Dự án chưa có migration: lần đầu cần `DB_SYNC=true` để tạo bảng (server cảnh báo), hãy sao lưu trước khi nâng cấp.
+- **Backend + engine + Postgres + Redis**: chạy trên một máy chủ/VPS có Docker. Engine cần quyền gọi `docker` để tạo sandbox. Trong production đặt `NODE_ENV=production`, `JWT_SECRET` ngẫu nhiên (bắt buộc, `openssl rand -hex 32`), mật khẩu admin mạnh, `CORS_ORIGINS` và `FRONTEND_URL` là domain thật, và `TRUST_PROXY` nếu đứng sau reverse proxy (xem mục *Bảo mật và giới hạn*). Server in cảnh báo khi cấu hình production còn trỏ về localhost. Redis phải chạy với `maxmemory-policy noeviction` (mặc định của Redis, và BullMQ cũng cần): nếu Redis được phép xóa khóa khi đầy bộ nhớ, bộ đếm giới hạn tần suất có thể bị xóa mất. Bảng được tạo và cập nhật bằng migration khi backend khởi động (xem mục *Nâng cấp*); để `DB_SYNC=false`.
+
+### Nâng cấp
+
+Cấu trúc bảng do **migration** quản lý (`src/backend/src/migrations`, ADR 0003). Backend tự chạy các migration còn thiếu
+khi khởi động, trong một giao dịch, **trước khi** nhận yêu cầu; nếu một migration lỗi, cơ sở dữ liệu giữ nguyên và
+backend không khởi động. Không cần chạy SQL bằng tay.
+
+1. **Sao lưu** cơ sở dữ liệu (`pg_dump`).
+2. Triển khai mã mới, **build lại image sandbox** (`pnpm runner:build`; engine không chạy với image cũ).
+3. **Khởi động** backend rồi engine. Lần đầu lên bản này, các migration tạo bảng và cột mới (tổ chức, lượt AI, lộ trình…)
+   và chuẩn hóa chủ đề của đề bài và buổi học cũ. Máy chủ trước đây dùng `DB_SYNC` cũng nâng cấp như vậy: migration
+   chỉ thêm phần còn thiếu. Có thể khởi động nhiều bản backend cùng lúc: chỉ một bản chạy migration (khóa trong
+   PostgreSQL), các bản khác chờ tối đa 10 phút. Migration lỗi thì backend dừng ngay, không thử lại, và cơ sở dữ liệu
+   giữ nguyên.
+4. **Kiểm tra `.env`** theo `.env.example`: `DB_SYNC` phải là `false` trong production (server từ chối khởi động nếu
+   bật); `JWT_SECRET` cũ còn `change-me…` phải đổi. **AI cho giáo viên thường:** từ bản này, giáo viên không VIP có một ít
+   lượt AI mỗi tháng (mặc định 3 lần nhập đề, 20 lần viết lại, 3 lần gợi ý test). Muốn giữ như trước, đặt
+   `AI_LIMIT_FREE_IMPORT=0`, `AI_LIMIT_FREE_SECTION=0` và `AI_LIMIT_FREE_TESTS=0`. Quản trị viên không giới hạn lượt theo
+   tháng nhưng vẫn tối đa `AI_ADMIN_RATE_PER_MINUTE` (mặc định 60) yêu cầu AI mỗi phút.
+5. Mọi token cũ hết hiệu lực: người dùng đăng nhập lại một lần.
+
+Lệnh cho người phát triển (đọc `DATABASE_URL` từ `src/backend/.env`):
+
+```bash
+pnpm --filter @oj/backend migration:show
+```
+
+```bash
+pnpm --filter @oj/backend migration:generate src/migrations/<ten-thay-doi>
+```
+
+```bash
+pnpm --filter @oj/backend migration:revert
+```
+
+Sửa entity thì phải kèm migration: `migration:generate` tạo tệp từ chênh lệch giữa entity và cơ sở dữ liệu, rồi thêm
+lớp mới vào `src/migrations/index.ts`. Chạy `migration:generate` trên một cơ sở dữ liệu **chỉ do migration tạo ra**
+(`DB_SYNC=false`): nếu `DB_SYNC` đã sửa bảng theo entity mới thì không còn chênh lệch nào để tạo migration.
+`migration:run` và `migration:revert` dùng cùng khóa với backend, nên chạy được cả khi backend đang khởi động;
+migration đầu tiên (baseline) không thể hoàn tác. `migration:check` và kiểm thử `migrations.integration.test.ts` báo
+lỗi khi entity và migration lệch nhau.
 
 ## Tài liệu
 
