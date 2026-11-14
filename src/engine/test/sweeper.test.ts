@@ -105,7 +105,10 @@ test('start() sweeps immediately and then on the interval; stop() ends it', asyn
   const docker = new FakeDocker(() => result());
   const sweeper = new SandboxSweeper(docker, { intervalMs: 20, now: () => NOW, log: () => undefined });
   sweeper.start();
-  await new Promise((r) => setTimeout(r, 110));
+  // Wait for the sweeps rather than a fixed 110ms: under the full suite's load the 20ms timers can run late, and a
+  // fixed sleep then saw only 2 sweeps although the interval works.
+  const deadline = Date.now() + 2_000;
+  while (docker.calls.length < 3 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
   sweeper.stop();
   const after = docker.calls.length;
   assert.ok(after >= 3, `expected an immediate sweep plus several interval sweeps, got ${after}`);

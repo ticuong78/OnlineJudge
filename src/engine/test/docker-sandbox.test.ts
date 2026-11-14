@@ -51,8 +51,8 @@ const sandbox = new DockerSandbox({ image, compileMemoryMb: 768 });
 const judge = new JudgeSubmission(sandbox);
 
 const SAMPLE_TESTS = [
-  { id: 't1', input: '1 2\n', expectedOutput: '3\n', points: 1 },
-  { id: 't2', input: '10 20\n', expectedOutput: '30\n', points: 1 },
+  { id: 't1', input: '1 2\n', expectedOutput: '3\n', points: 1, isSample: false },
+  { id: 't2', input: '10 20\n', expectedOutput: '30\n', points: 1, isSample: false },
 ];
 
 const job = (language: JudgeJob['language'], sourceCode: string, over: Partial<JudgeJob> = {}): JudgeJob => ({
@@ -387,14 +387,14 @@ int main(void) {
   puts("3");
   return 0;
 }`;
-  const tests = [1, 2].map((i) => ({ id: `t${i}`, input: '', expectedOutput: '3\n', points: 1 }));
+  const tests = [1, 2].map((i) => ({ id: `t${i}`, input: '', expectedOutput: '3\n', points: 1, isSample: false }));
   for (let attempt = 0; attempt < 2; attempt++) { // which process the kernel picks under memory pressure varies
     const result = await judge.execute(job('c', fill, { memoryLimitMb: 64, timeLimitMs: 1000, testCases: tests }));
     assert.ok(result.type === 'finished' && result.verdict !== 'IE', JSON.stringify(result));
   }
 });
 
-const threeTests = [1, 2, 3].map((i) => ({ id: `t${i}`, input: '', expectedOutput: '3\n', points: 1 }));
+const threeTests = [1, 2, 3].map((i) => ({ id: `t${i}`, input: '', expectedOutput: '3\n', points: 1, isSample: false }));
 /** Judges a C program on three tests (16 MB limit) and returns the per-test verdicts; never a sandbox failure. */
 async function judgeC(source: string): Promise<string[]> {
   const result = await judge.execute(job('c', source, { memoryLimitMb: 16, timeLimitMs: 1000, testCases: threeTests }));
@@ -517,7 +517,7 @@ dtest('large input and large output round-trip exactly through the exec pipes', 
   const echo = 'import sys\ndata = sys.stdin.buffer.read()\nsys.stdout.buffer.write((str(len(data)) + "\\n").encode())\nsys.stdout.buffer.write(data[: 3 * 1024 * 1024])\n';
   const input = '0123456789abcdef'.repeat(512 * 1024); // 8 MiB
   const expected = `${input.length}\n${input.slice(0, 3 * 1024 * 1024)}`;
-  const r = await judge.execute(job('python', echo, { timeLimitMs: 5000, testCases: [{ id: 'big', input, expectedOutput: expected, points: 1 }] }));
+  const r = await judge.execute(job('python', echo, { timeLimitMs: 5000, testCases: [{ id: 'big', input, expectedOutput: expected, points: 1, isSample: false }] }));
   assert.equal(r.verdict, 'AC', JSON.stringify(r).slice(0, 300));
 });
 

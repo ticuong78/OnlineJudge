@@ -1,12 +1,13 @@
 import { Queue, Worker } from 'bullmq';
 import {
   JUDGE_JOBS_QUEUE,
+  TRIAL_MAX_AGE_MS,
   JUDGE_RESULTS_QUEUE,
   type JudgeJob,
   type JudgeJobProgress,
   type JudgeResultMessage,
 } from '@oj/contracts';
-import { JudgeSubmission, judgeWithinDeadline } from './application/judge-submission';
+import { isStaleTrial, JudgeSubmission, judgeWithinDeadline } from './application/judge-submission';
 import { createShutdown } from './application/shutdown';
 import { loadConfig } from './config';
 import type { Sandbox } from './domain/sandbox';
@@ -43,19 +44,29 @@ async function main() {
 
   const judge = new JudgeSubmission(sandbox);
   const results = new Queue<JudgeResultMessage>(JUDGE_RESULTS_QUEUE, { connection });
+  // A trial's result carries program output: it is not kept in the queue's history once the backend has taken it.
   const publish = (msg: JudgeResultMessage) =>
-    results.add(msg.type, msg, { removeOnComplete: 1000, removeOnFail: 1000, attempts: 5, backoff: { type: 'exponential', delay: 1000 } });
+    results.add(msg.type, msg, {
+      removeOnComplete: msg.trial ? true : 1000,
+      removeOnFail: msg.trial ? true : 1000,
+      attempts: 5,
+      backoff: { type: 'exponential', delay: 1000 },
+    });
 
   const worker = new Worker<JudgeJob>(
     JUDGE_JOBS_QUEUE,
     async (job) => {
+      // Nobody can read a trial's result once its record has expired: skip it rather than run it for nothing.
+      if (isStaleTrial(job.data, job.timestamp, Date.now(), TRIAL_MAX_AGE_MS)) return;
       // Announce when this job will have been stopped, so the backend's watchdog can tell a long run from a dead engine.
       const deadlineMs = judge.deadlineMs(job.data);
       const progress: JudgeJobProgress = { deadlineAt: Date.now() + deadlineMs, startedAt: job.processedOn ?? Date.now() };
       await job.updateProgress(progress);
-      await publish({ type: 'started', submissionId: job.data.submissionId, judgeRun: job.data.judgeRun });
+      // A trial run's messages say so, so the backend routes them to its trial store and never to a submission.
+      const trial = job.data.trial ? { trial: true as const } : {};
+      await publish({ type: 'started', submissionId: job.data.submissionId, judgeRun: job.data.judgeRun, ...trial });
       // Always yields a result within the job's deadline, so a hung sandbox cannot hold this worker slot for ever.
-      await publish(await judgeWithinDeadline(judge, job.data, deadlineMs));
+      await publish({ ...(await judgeWithinDeadline(judge, job.data, deadlineMs)), ...trial });
     },
     { connection, concurrency: config.concurrency },
   );

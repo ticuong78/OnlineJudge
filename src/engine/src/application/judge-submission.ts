@@ -1,4 +1,4 @@
-import type { JudgeJob, JudgeResultMessage, TestCaseResult } from '@oj/contracts';
+import { TRIAL_OUTPUT_MAX_CHARS, type JudgeJob, type JudgeResultMessage, type JudgeJobTestCase, type TestCaseResult } from '@oj/contracts';
 import { languageSpecFor, withMemory } from '../domain/language';
 import { BUILD_TIMEOUT_MS, ioBudgetBytes, jobDeadlineMs, maxOutputBytes } from '../domain/resource-plan';
 import type { RunLimits, Sandbox } from '../domain/sandbox';
@@ -70,6 +70,8 @@ export class JudgeSubmission {
           memoryKb: run.memoryKb,
           points: verdict === 'AC' ? testCase.points : 0,
           message: runMessage(run, verdict),
+          isSample: testCase.isSample,
+          ...trialOutput(job, testCase, run.stdout),
         });
         if (run.leftovers) break; // the container is no longer trusted for the remaining tests
       }
@@ -87,6 +89,20 @@ export class JudgeSubmission {
       await session.dispose();
     }
   }
+}
+
+/**
+ * A trial run (OJ-18) shows the program's output next to the expected one. Only for trial jobs, and only on sample
+ * tests: a submission's results never carry program output, so it cannot leak a hidden test's data.
+ */
+function trialOutput(job: JudgeJob, testCase: JudgeJobTestCase, stdout: string): { output?: string } {
+  if (!job.trial || !testCase.isSample) return {};
+  return { output: cleanText(stdout.slice(0, TRIAL_OUTPUT_MAX_CHARS)) };
+}
+
+/** A trial job queued longer than `maxAgeMs` ago: its result could no longer be read (OJ-18). Never a submission. */
+export function isStaleTrial(job: JudgeJob, queuedAt: number, now: number, maxAgeMs: number): boolean {
+  return job.trial === true && now - queuedAt > maxAgeMs;
 }
 
 /** What a student is told when the judge itself failed on their submission. */

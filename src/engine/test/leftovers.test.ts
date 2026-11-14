@@ -26,7 +26,7 @@ class Scripted implements Sandbox {
 
 const job = (language: JudgeJob['language'] = 'python'): JudgeJob => ({
   submissionId: 's', judgeRun: 1, language, sourceCode: 'x', timeLimitMs: 1000, memoryLimitMb: 64,
-  testCases: [1, 2, 3].map((i) => ({ id: `t${i}`, input: '', expectedOutput: '3\n', points: 1 })),
+  testCases: [1, 2, 3].map((i) => ({ id: `t${i}`, input: '', expectedOutput: '3\n', points: 1, isSample: false })),
 });
 
 test('a program that leaves processes behind gets a counted RE on that test, not a free system error (NEW-1)', async () => {

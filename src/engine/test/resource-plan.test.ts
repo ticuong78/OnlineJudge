@@ -56,7 +56,7 @@ test('run memory cap: program budget + capture buffers + scratch allowance', () 
 
 const job = (tests: number, timeLimitMs = 1000) => ({
   timeLimitMs,
-  testCases: Array.from({ length: tests }, () => ({ id: 't', input: '', expectedOutput: '', points: 1 })),
+  testCases: Array.from({ length: tests }, () => ({ id: 't', input: '', expectedOutput: '', points: 1, isSample: false })),
 });
 
 test('job deadline: start + write + build + every test at its wall limit + margin', () => {

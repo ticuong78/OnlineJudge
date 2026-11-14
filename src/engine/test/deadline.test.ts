@@ -22,7 +22,7 @@ const job: JudgeJob = {
   sourceCode: 'print(3)',
   timeLimitMs: 1000,
   memoryLimitMb: 64,
-  testCases: [{ id: 't1', input: '', expectedOutput: '3\n', points: 1 }],
+  testCases: [{ id: 't1', input: '', expectedOutput: '3\n', points: 1, isSample: false }],
 };
 
 const okRun: RunResult = {
