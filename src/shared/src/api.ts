@@ -8,6 +8,31 @@ import type {
 } from './enums';
 import type { TestCaseResult } from './judge-messages';
 
+// ---------- AI usage (OJ-21) ----------
+/** What counts against a monthly allowance: one successful request each. */
+export const AiFeatures = ['IMPORT', 'IMAGE_IMPORT', 'SECTION', 'TESTS', 'AI_USAGE_CHECK'] as const;
+export type AiFeature = (typeof AiFeatures)[number];
+/** NONE: students. FREE: teachers without VIP. PLUS: VIP teachers and organizations with AI. UNLIMITED: administrators. */
+export type AiPlan = 'NONE' | 'FREE' | 'PLUS' | 'UNLIMITED';
+
+export interface AiFeatureUsageDto {
+  feature: AiFeature;
+  /** Uses allowed this month; null = no limit. */
+  limit: number | null;
+  used: number;
+}
+
+export interface AiUsageDto {
+  plan: AiPlan;
+  /** The month the counts belong to, Vietnam time ("2026-11"). */
+  period: string;
+  /** When the allowances start again (ISO, the 1st of next month 00:00 Vietnam time). */
+  resetsAt: string;
+  /** False when the server has no AI key: nothing is counted and AI features are off. */
+  aiAvailable: boolean;
+  features: AiFeatureUsageDto[];
+}
+
 // ---------- Identity ----------
 export interface UserDto {
   id: string;
@@ -18,8 +43,10 @@ export interface UserDto {
   createdAt: string;
   /** VIP teacher: may use the AI features. Only meaningful for teachers. */
   vip: boolean;
-  /** Whether this account may use the AI features (administrators, VIP teachers, members of an active organization with AI). */
+  /** Full AI access (administrators, VIP teachers, members of an active organization with AI): needed for the AI-usage check. */
   canUseAi: boolean;
+  /** How much AI this account may use (OJ-21): NONE for students, FREE (monthly allowance) for other teachers. */
+  aiPlan: AiPlan;
   /** Teachers: the organizations they belong to (OJ-8). Empty for students and administrators. */
   organizations: OrganizationMembershipDto[];
 }
@@ -370,6 +397,94 @@ export interface ProblemDetailDto extends ProblemSummaryDto {
   canEdit: boolean;
 }
 
+// ---------- Learning paths (OJ-24) ----------
+export interface UpsertLearningPathRequest {
+  title: string;
+  description: string;
+  /** A standard topic id or a free tag (normalised); null = no topic. */
+  topic: string | null;
+  isPublic: boolean;
+  /** 1–30 steps, each an open public PRACTICE or HOMEWORK session, in order. */
+  steps: { sessionId: string; title: string; note: string }[];
+}
+
+/** `GET /paths` pages (OJ-27): `limit` defaults to PATHS_PAGE_SIZE and may be at most PATHS_MAX_PAGE. */
+export const PATHS_PAGE_SIZE = 24;
+export const PATHS_MAX_PAGE = 100;
+
+/** Query of `GET /paths`. `before` is the `next` cursor of the previous page (OJ-28). */
+export interface ListPathsQuery {
+  scope?: 'public' | 'mine';
+  limit?: number;
+  before?: string;
+}
+
+/**
+ * One page of `GET /paths`, newest first by creation (OJ-28). `next` is an opaque cursor for `?before=`, or null on
+ * the last page. Editing or removing a path between pages never makes another one skipped or repeated.
+ */
+export interface LearningPathPageDto {
+  items: LearningPathSummaryDto[];
+  next: string | null;
+}
+
+export interface LearningPathSummaryDto {
+  id: string;
+  title: string;
+  description: string;
+  topic: string | null;
+  ownerId: string;
+  ownerName: string;
+  isPublic: boolean;
+  stepCount: number;
+  /** The caller's own progress over the path's problems. */
+  solved: number;
+  total: number;
+  updatedAt: string;
+}
+
+export interface PathStepDto {
+  sessionId: string;
+  title: string;
+  note: string;
+  /** The session hides topics while it runs: a mixed review step. */
+  review: boolean;
+  sessionTitle: string;
+  state: SessionState;
+  /** False when the session is gone; the step is shown but cannot be opened. */
+  available: boolean;
+  problems: { key: string; title: string; difficulty: Difficulty; tags: string[]; solved: boolean }[];
+  solved: number;
+  total: number;
+}
+
+export interface LearningPathDto extends LearningPathSummaryDto {
+  canEdit: boolean;
+  steps: PathStepDto[];
+  /** The first unsolved problem of the first unfinished open step; null when everything is solved. */
+  next: { sessionId: string; key: string; title: string; stepIndex: number } | null;
+}
+
+/** A tag and how many problems in the chosen bank scope carry it (OJ-20). */
+export interface ProblemTagDto {
+  tag: string;
+  count: number;
+}
+
+/** A problem of an open public practice session, found by topic (OJ-20). */
+export interface PracticeProblemDto {
+  sessionId: string;
+  sessionTitle: string;
+  key: string;
+  code: string;
+  title: string;
+  difficulty: Difficulty;
+  points: number;
+  tags: string[];
+  /** The viewer has solved it in this session. */
+  solved: boolean;
+}
+
 /** mine = own bank; public = shared by anyone; all = everything (admin only). */
 /** organization = shared with one of the viewer's organizations (problems only). */
 export type BankScope = 'mine' | 'public' | 'organization' | 'all';
@@ -433,9 +548,13 @@ export interface ProblemDraftContent {
   samples?: { input: string; expectedOutput: string }[];
 }
 
-/** Ask the AI to (re)write one text section of a problem being written. */
+/** What the AI can rewrite: the four text sections, and the title (OJ-22; a title has no input or output). */
+export const SuggestableSections = ['title', 'statement', 'inputFormat', 'outputFormat', 'constraints'] as const;
+export type SuggestableSection = (typeof SuggestableSections)[number];
+
+/** Ask the AI to (re)write one section of a problem being written. */
 export interface SuggestProblemSectionRequest {
-  section: 'statement' | 'inputFormat' | 'outputFormat' | 'constraints';
+  section: SuggestableSection;
   problem: ProblemDraftContent;
 }
 
@@ -488,10 +607,12 @@ export interface ProblemDraftDto {
 
 export interface ParsedExamDto {
   fileName: string;
-  /** AI = read by Claude; BASIC = rule-based reader (no API key, or the AI reader failed). */
+  /** AI = read by Claude; BASIC = rule-based reader (no API key, the AI reader failed, or no AI uses left). */
   parser: 'AI' | 'BASIC';
   drafts: ProblemDraftDto[];
   rawText: string;
+  /** The basic reader was used because this month's AI readings are used up (OJ-21). */
+  aiQuotaExhausted?: true;
 }
 
 export interface ImportProblemsRequest {
@@ -559,6 +680,11 @@ export interface SessionProblemSummaryDto {
   difficulty: Difficulty;
   points: number;
   order: number;
+  /**
+   * Topics (OJ-20): standard topic ids or free tags. Empty for students while a TEST or EXAM is not closed (a topic gives
+   * away the method), and for sessions created before topics were copied into sessions.
+   */
+  tags: string[];
 }
 
 /**
@@ -580,6 +706,8 @@ export interface SessionSettingsDto {
   checkPlagiarism: boolean;
   /** Ask Claude whether submissions look AI-generated. Needs ANTHROPIC_API_KEY on the server. */
   checkAiUsage: boolean;
+  /** Students do not see the problems' topics until the session closes (a mixed review, OJ-24). Optional in requests. */
+  hideTopics?: boolean;
 }
 
 /** A participant's personal time window in a timed session. */
@@ -722,6 +850,40 @@ export interface SubmitRequest {
   sourceCode: string;
 }
 
+/** Run code on a problem's sample tests without submitting it (OJ-18). */
+export interface CreateTrialRunRequest {
+  language: Language;
+  sourceCode: string;
+}
+
+/** PENDING: queued; JUDGING: an engine took it; DONE: `verdict` is set. */
+export type TrialRunStatus = 'PENDING' | 'JUDGING' | 'DONE';
+
+export interface TrialRunTestDto {
+  input: string;
+  expectedOutput: string;
+  /** What the program printed (cut to 4,000 characters); null when it did not run on this test. */
+  output: string | null;
+  verdict: Verdict | null;
+  timeMs: number | null;
+  memoryKb: number | null;
+  /** Short diagnostic, e.g. the runtime error. */
+  message: string | null;
+}
+
+/** A trial run lives 15 minutes and is visible only to the user who started it. Nothing is recorded. */
+export interface TrialRunDto {
+  id: string;
+  sessionId: string;
+  problemKey: string;
+  language: Language;
+  status: TrialRunStatus;
+  verdict: Verdict | null;
+  compileOutput: string | null;
+  tests: TrialRunTestDto[];
+  createdAt: string;
+}
+
 export interface SubmissionDto {
   id: string;
   sessionId: string;
@@ -758,6 +920,11 @@ export interface SubmissionDetailDto extends SubmissionDto {
  */
 export interface LearningRecordDto {
   totals: { solvedProblems: number; completedSessions: number; startedSessions: number };
+  /**
+   * Per topic (OJ-20): problems the student attempted and solved, over sessions whose topics they may see. A problem in
+   * two sessions counts twice. Sorted by attempted, most first.
+   */
+  topics: { tag: string; attempted: number; solved: number }[];
   groups: {
     /** null = public practice */
     classId: string | null;
@@ -838,6 +1005,9 @@ export interface ThreadReplyDto {
   canDelete: boolean;
 }
 
+/** `GET /threads/awaiting` returns at most this many questions, newest first (OJ-26). */
+export const AWAITING_QUESTIONS_LIMIT = 50;
+
 export interface ThreadSummaryDto {
   id: string;
   classId: string;
@@ -852,6 +1022,8 @@ export interface ThreadSummaryDto {
   sessionTitle: string | null;
   problemKey: string | null;
   replyCount: number;
+  /** A student's question with no reply from a teacher or administrator yet (false for announcements and staff questions). */
+  awaitingAnswer: boolean;
   lastActivityAt: string;
   createdAt: string;
 }
@@ -893,4 +1065,10 @@ export interface ApiErrorBody {
   code: string;
   /** Extra data for the client, e.g. `sessionId` of the session that already exists. */
   details?: Record<string, string>;
+}
+
+/** What the server can do right now, for staff screens (OJ-13). */
+export interface FeaturesDto {
+  /** A Claude key is configured. Without it AI controls are shown disabled with the reason. */
+  ai: boolean;
 }
