@@ -1,13 +1,27 @@
+import type { AiPlan } from '@oj/contracts';
 import { DomainError } from '../domain/domain-error.js';
 import type { Actor } from './actor.js';
 
 /**
- * Port: who may use the AI features. Only administrators and VIP teachers may; regular teacher accounts may not.
- * Implemented by the Identity context, which looks the account up on every call so an upgrade (or a downgrade)
- * applies at once, without signing in again.
+ * Full AI access, as before OJ-21: PLUS or UNLIMITED. Needed to turn on the AI-usage check for a session. The one place
+ * this rule lives: `AiAccess.allows` and `MeDto.canUseAi` both use it (OJ-26).
+ */
+export function hasFullAi(plan: AiPlan): boolean {
+  return plan === 'PLUS' || plan === 'UNLIMITED';
+}
+
+/**
+ * Port: how much AI an account may use (OJ-21). Implemented by the Identity context, which looks the account up on
+ * every call so an upgrade (or a downgrade, or an organization plan ending) applies at once, without signing in again.
  */
 export abstract class AiAccess {
-  abstract allows(userId: string): Promise<boolean>;
+  /** NONE (students), FREE (teachers: a monthly allowance), PLUS (VIP or organization AI), UNLIMITED (administrators). */
+  abstract plan(userId: string): Promise<AiPlan>;
+
+  /** Full AI access (`hasFullAi`). */
+  async allows(userId: string): Promise<boolean> {
+    return hasFullAi(await this.plan(userId));
+  }
 
   /** Throws a 403 explaining the VIP requirement when the actor may not use AI. */
   async ensureAllowed(actor: Actor): Promise<void> {

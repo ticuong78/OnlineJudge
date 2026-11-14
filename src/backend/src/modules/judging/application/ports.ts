@@ -20,6 +20,8 @@ export interface SubmissionTarget {
 export abstract class SessionGateway {
   /** Throws when the actor may not submit to this session problem right now. */
   abstract prepareSubmission(actor: Actor, sessionId: string, problemKey: string): Promise<SubmissionTarget>;
+  /** Throws when the actor may not read this session problem right now; returns its sample tests only. */
+  abstract trialTarget(actor: Actor, sessionId: string, problemKey: string): Promise<SubmissionTarget>;
   abstract canReview(actor: Actor, sessionId: string): Promise<boolean>;
   /** Current test data of a session problem, for rejudging; null when the session no longer has that problem. */
   abstract judgeTarget(sessionId: string, problemKey: string): Promise<SubmissionTarget | null>;
@@ -45,4 +47,6 @@ export abstract class JudgeQueue {
   abstract inspect(submissionId: string, judgeRun: number): Promise<QueuedRun | null>;
   /** Removes the job of this judge run, so it is not run (again) after the submission was ended. Best effort. */
   abstract discard(submissionId: string, judgeRun: number): Promise<void>;
+  /** Removes a trial run's job if it is still waiting (nobody reads its result any more). Best effort. */
+  abstract discardTrial(trialId: string): Promise<void>;
 }

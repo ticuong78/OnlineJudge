@@ -2,6 +2,7 @@ import { Catch, HttpException, Logger, type ArgumentsHost, type ExceptionFilter 
 import type { ApiErrorBody } from '@oj/contracts';
 import type { Response } from 'express';
 import { DomainError, type DomainErrorKind } from '../domain/domain-error.js';
+import { errorForLog } from '../domain/mask-email.js';
 
 const STATUS: Record<DomainErrorKind, number> = {
   validation: 400,
@@ -57,7 +58,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
         code: HTTP_CODES[statusCode] ?? (statusCode >= 500 ? 'server.error' : 'request.failed'),
       };
     } else {
-      this.logger.error(exception);
+      this.logger.error(errorForLog(exception));
       body = { statusCode: 500, message: 'Đã xảy ra lỗi hệ thống.', code: 'server.error' };
     }
     res.status(body.statusCode).json(body);

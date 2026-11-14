@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
+import { AI_LIMIT_KEYS } from '../shared/application/ai-quota.js';
 
 export type Env = Record<string, unknown>;
 
@@ -57,7 +58,7 @@ export function checkEnvironment(raw: Env): EnvironmentReport {
       errors.push('SMTP_HOST is required in production: without it, emails (with their one-time codes) are only written to the server log.');
     }
     if (text(env, 'DB_SYNC') === 'true') {
-      warnings.push('DB_SYNC=true in production: the database schema is altered automatically at startup. Take backups before deploying entity changes.');
+      errors.push('DB_SYNC=true is not allowed in production: it alters tables to match the code without review and can drop a column with its data. The schema comes from the migrations, which run at startup (README, "Nâng cấp").');
     }
     for (const key of ['CORS_ORIGINS', 'FRONTEND_URL']) {
       if (!text(env, key) || /localhost|127\.0\.0\.1/.test(text(env, key))) {
@@ -70,6 +71,18 @@ export function checkEnvironment(raw: Env): EnvironmentReport {
   if (trust === 'true') {
     const why = 'TRUST_PROXY=true trusts X-Forwarded-For from anyone, so clients can fake their IP and walk around rate limits. Use the number of proxies in front of the API (e.g. TRUST_PROXY=1).';
     (production ? errors : warnings).push(why);
+  }
+
+  // Monthly AI allowances (OJ-21): a whole number of uses (0 turns the feature off for that plan) or "unlimited".
+  for (const key of AI_LIMIT_KEYS) {
+    const value = text(env, key);
+    if (value && value !== 'unlimited' && !/^\d+$/.test(value)) {
+      errors.push(`${key} must be a whole number of uses (0 or more) or "unlimited" (got "${value}").`);
+    }
+  }
+  for (const key of ['AI_RATE_PER_MINUTE', 'AI_ADMIN_RATE_PER_MINUTE']) {
+    const aiRate = text(env, key);
+    if (aiRate && !(/^\d+$/.test(aiRate) && Number(aiRate) > 0)) errors.push(`${key} must be a positive whole number (got "${aiRate}").`);
   }
 
   for (const key of ['MAX_PENDING_SUBMISSIONS', 'JUDGE_STALE_AFTER_SECONDS', 'JUDGE_GIVE_UP_AFTER_SECONDS']) {

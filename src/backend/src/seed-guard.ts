@@ -2,7 +2,7 @@
  * Decides whether the development seed may run, before anything connects.
  *
  * It must run before Nest starts: creating the application context already connects to the database (and alters
- * the schema when DB_SYNC=true), creates the administrator and starts background jobs. So the check reads the
+ * runs the migrations), creates the administrator and starts background jobs. So the check reads the
  * environment the same way ConfigModule will (see app.module.ts) instead of asking ConfigService afterwards.
  */
 import { readFileSync } from 'node:fs';

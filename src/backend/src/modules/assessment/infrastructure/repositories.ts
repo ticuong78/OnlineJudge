@@ -3,9 +3,10 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import type { BankScope, ProblemSetType } from '@oj/contracts';
 import { DataSource, In, Repository } from 'typeorm';
 import { ProblemSet } from '../domain/problem-set.js';
-import { AttemptRepository, ProblemSetRepository, SessionRepository, type SessionFilter } from '../domain/repositories.js';
+import { AttemptRepository, LearningPathRepository, ProblemSetRepository, SessionRepository, type PathPage, type SessionFilter } from '../domain/repositories.js';
+import { LearningPath } from '../domain/learning-path.js';
 import { Attempt, Session, SessionSettings, TimeWindow } from '../domain/session.js';
-import { ProblemSetOrmEntity, SessionAttemptOrmEntity, SessionOrmEntity, SessionTestsOrmEntity } from './orm-entities.js';
+import { LearningPathOrmEntity, ProblemSetOrmEntity, SessionAttemptOrmEntity, SessionOrmEntity, SessionTestsOrmEntity } from './orm-entities.js';
 
 @Injectable()
 export class TypeOrmProblemSetRepository extends ProblemSetRepository {
@@ -95,13 +96,21 @@ export class TypeOrmSessionRepository extends SessionRepository {
     }
     if (filter.includePublic) conditions.push('s.classId IS NULL');
     if (!conditions.length) return [];
-    const rows = await this.db
+    const qb = this.db
       .getRepository(SessionOrmEntity)
       .createQueryBuilder('s')
-      .where(`(${conditions.join(' OR ')})`, { classIds: filter.classIds === 'ALL' ? [] : filter.classIds })
-      .orderBy('s.createdAt', 'DESC')
-      .getMany();
+      .where(`(${conditions.join(' OR ')})`, { classIds: filter.classIds === 'ALL' ? [] : filter.classIds });
+    if (filter.types) qb.andWhere('s.type IN (:...types)', { types: filter.types });
+    if (filter.openAt) {
+      qb.andWhere('(s.opensAt IS NULL OR s.opensAt <= :at) AND (s.closesAt IS NULL OR s.closesAt > :at)', { at: filter.openAt });
+    }
+    const rows = await qb.orderBy('s.createdAt', 'DESC').getMany();
     return rows.map((row) => toSession(row, {}));
+  }
+
+  async findListing(ids: string[]) {
+    if (!ids.length) return [];
+    return (await this.db.getRepository(SessionOrmEntity).findBy({ id: In(ids) })).map((row) => toSession(row, {}));
   }
 
   async findByClass(classId: string) {
@@ -132,6 +141,7 @@ export class TypeOrmSessionRepository extends SessionRepository {
           maxSubmissionsPerProblem: s.settings.maxSubmissionsPerProblem,
           feedback: s.settings.feedback,
           checkPlagiarism: s.settings.checkPlagiarism,
+          hideTopics: s.settings.hideTopics,
           checkAiUsage: s.settings.checkAiUsage,
         },
         createdById: s.createdBy.id,
@@ -158,7 +168,7 @@ export class TypeOrmSessionRepository extends SessionRepository {
   }
 }
 
-function toSession(row: SessionOrmEntity, tests: Record<string, Session['snapshot']['problems'][number]['testCases']>): Session {
+export function toSession(row: SessionOrmEntity, tests: Record<string, Session['snapshot']['problems'][number]['testCases']>): Session {
   return Session.rehydrate(row.id, {
     title: row.title,
     description: row.description,
@@ -169,7 +179,8 @@ function toSession(row: SessionOrmEntity, tests: Record<string, Session['snapsho
     window: TimeWindow.of(row.opensAt, row.closesAt),
     settings: row.settings?.feedback ? SessionSettings.of(row.settings) : SessionSettings.defaults,
     createdBy: { id: row.createdById, name: row.createdByName },
-    problems: row.problems.map((p) => ({ ...p, testCases: tests[p.key] ?? [] })),
+    // Sessions stored before OJ-20 have no tags.
+    problems: row.problems.map((p) => ({ ...p, tags: p.tags ?? [], testCases: tests[p.key] ?? [] })),
     retiredKeys: row.retiredKeys ?? [],
     createdAt: row.createdAt,
   });
@@ -201,3 +212,49 @@ export class TypeOrmAttemptRepository extends AttemptRepository {
     await this.repo.delete({ sessionId });
   }
 }
+
+@Injectable()
+export class TypeOrmLearningPathRepository extends LearningPathRepository {
+  constructor(@InjectDataSource() private readonly db: DataSource) {
+    super();
+  }
+
+  private get repo() {
+    return this.db.getRepository(LearningPathOrmEntity);
+  }
+
+  async findById(id: string) {
+    const row = await this.repo.findOneBy({ id });
+    return row ? toPath(row) : null;
+  }
+
+  async list(filter: { publicOnly?: boolean; ownerId?: string }, { limit, before }: PathPage) {
+    const q = this.repo.createQueryBuilder('p');
+    if (filter.publicOnly) q.andWhere('p.isPublic = true');
+    if (filter.ownerId) q.andWhere('p.ownerId = :ownerId', { ownerId: filter.ownerId });
+    // Row comparison: strictly after the cursor in (createdAt DESC, id DESC) order.
+    if (before) q.andWhere('(p.createdAt, p.id) < (:createdAt, :id)', { createdAt: before.createdAt, id: before.id });
+    const rows = await q.orderBy('p.createdAt', 'DESC').addOrderBy('p.id', 'DESC').take(limit).getMany();
+    return rows.map(toPath);
+  }
+
+  async save(path: LearningPath) {
+    const s = path.snapshot;
+    await this.repo.save({
+      id: path.id, ownerId: s.owner.id, ownerName: s.owner.name, title: s.title, description: s.description, topic: s.topic,
+      isPublic: s.isPublic, steps: s.steps, createdAt: s.createdAt, updatedAt: s.updatedAt,
+    });
+  }
+
+  async delete(id: string) {
+    await this.repo.delete({ id });
+  }
+}
+
+function toPath(row: LearningPathOrmEntity): LearningPath {
+  return LearningPath.rehydrate(row.id, {
+    owner: { id: row.ownerId, name: row.ownerName }, title: row.title, description: row.description, topic: row.topic,
+    isPublic: row.isPublic, steps: row.steps ?? [], createdAt: row.createdAt, updatedAt: row.updatedAt,
+  });
+}
+

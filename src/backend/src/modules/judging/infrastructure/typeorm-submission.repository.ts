@@ -91,6 +91,59 @@ export class TypeOrmSubmissionRepository extends SubmissionRepository {
       .execute();
     return (result.affected ?? 0) > 0;
   }
+
+  async markJudging(id: string, judgeRun: number) {
+    const result = await this.repo
+      .createQueryBuilder()
+      .update(SubmissionOrmEntity)
+      .set({ status: 'JUDGING' })
+      .where('"id" = :id AND "judgeRun" = :judgeRun AND "status" = :pending', { id, judgeRun, pending: 'PENDING' })
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
+  async storeResult(submission: Submission) {
+    const s = submission.snapshot;
+    // Only the result columns: one conditional UPDATE, so a late "started", a rejudge or the watchdog that wrote in
+    // the meantime is never overwritten by a full-row save of a copy loaded before it.
+    const result = await this.repo
+      .createQueryBuilder()
+      .update(SubmissionOrmEntity)
+      .set({
+        status: s.status,
+        verdict: s.verdict,
+        score: s.score,
+        compileOutput: s.compileOutput,
+        faultSource: s.faultSource,
+        testResults: s.testResults,
+        judgedAt: s.judgedAt,
+      })
+      .where('"id" = :id AND "judgeRun" = :judgeRun AND "status" <> :done', { id: submission.id, judgeRun: s.judgeRun, done: 'DONE' })
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
+  async requeue(submission: Submission, fromRun: number) {
+    const s = submission.snapshot;
+    const result = await this.repo
+      .createQueryBuilder()
+      .update(SubmissionOrmEntity)
+      .set({
+        totalPoints: s.totalPoints,
+        judgeRun: s.judgeRun,
+        status: s.status,
+        verdict: s.verdict,
+        score: s.score,
+        compileOutput: s.compileOutput,
+        faultSource: s.faultSource,
+        testResults: s.testResults,
+        queuedAt: s.queuedAt,
+        judgedAt: s.judgedAt,
+      })
+      .where('"id" = :id AND "judgeRun" = :fromRun', { id: submission.id, fromRun })
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
 }
 
 @Injectable()

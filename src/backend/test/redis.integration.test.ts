@@ -7,6 +7,8 @@ import { RedisRateLimiter } from '../src/shared/infrastructure/redis-rate-limite
 import { RedisRecentSignIns } from '../src/modules/identity/infrastructure/redis-recent-sign-ins.js';
 import { rateLimiterContract } from './support/rate-limiter-contract.js';
 import { recentSignInsContract } from './support/recent-sign-ins-contract.js';
+import { trialStoreContract } from './support/trial-store-contract.js';
+import { RedisTrialStore } from '../src/modules/judging/infrastructure/redis-trial-store.js';
 import { throwaway } from './support/throwaway.js';
 
 /**
@@ -43,6 +45,23 @@ describe('Redis', { skip }, () => {
   recentSignInsContract('Redis sign-in memory', () => {
     const clock = { now: Date.now() };
     return { clock, signIns: new RedisRecentSignIns(redis, () => clock.now, `${prefix}si:`) };
+  });
+
+  trialStoreContract('Redis trial store', () => new RedisTrialStore(redis, `${prefix}trial:`));
+
+  test('trial runs expire on their own (OJ-18)', async () => {
+    const store = new RedisTrialStore(redis, `${prefix}trial:`);
+    const id = randomBytes(8).toString('hex');
+    await store.create({ id, userId: 'u', sessionId: 's', problemKey: 'A', language: 'python', createdAt: '', samples: [] });
+    await store.markStarted(id);
+    // The started mark copies the record's remaining time, read a moment before the record's own is read here.
+    const startedTtl = await redis.pttl(`${prefix}trial:${id}:started`);
+    const ttl = await redis.pttl(`${prefix}trial:${id}`);
+    assert.ok(ttl > 14 * 60_000 && ttl <= 15 * 60_000, `record ttl ${ttl}`);
+    assert.ok(startedTtl > 0 && startedTtl <= ttl + 50, 'the started mark expires with the record');
+    assert.equal(await store.claimSlot('u', id), true);
+    const slotTtl = await redis.pttl(`${prefix}trial:slot:u`);
+    assert.ok(slotTtl > 0 && slotTtl <= 90_000, `slot ttl ${slotTtl}`);
   });
 
   test('flooding the limiter with other keys does not wipe a live counter (R2-F1)', async () => {

@@ -1,4 +1,4 @@
-import type { Role } from '@oj/contracts';
+import type { AiPlan, Role } from '@oj/contracts';
 import { AggregateRoot, newId } from '../../../shared/domain/aggregate-root.js';
 import { assert, DomainError } from '../../../shared/domain/domain-error.js';
 
@@ -108,9 +108,14 @@ export class User extends AggregateRoot {
     this.props.vip = vip;
   }
 
-  /** AI features are for administrators and VIP teachers only. */
-  get canUseAi(): boolean {
-    return this.props.role === 'ADMIN' || (this.props.role === 'TEACHER' && this.props.vip);
+  /**
+   * The account's own AI plan (OJ-21): administrators unlimited, VIP teachers PLUS, other teachers a FREE allowance,
+   * students none. An organization with AI can raise a teacher to PLUS (`withOrganizationAi`).
+   */
+  aiPlan(organizationAi = false): AiPlan {
+    if (this.props.role === 'ADMIN') return 'UNLIMITED';
+    if (this.props.role !== 'TEACHER') return 'NONE';
+    return this.props.vip || organizationAi ? 'PLUS' : 'FREE';
   }
 
   ensureDeletable(): void {

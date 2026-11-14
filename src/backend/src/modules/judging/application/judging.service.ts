@@ -8,10 +8,12 @@ import {
   type SubmissionDetailDto,
   type SubmissionDto,
   type SubmitRequest,
+  type TestCaseResult,
 } from '@oj/contracts';
 import type { Actor } from '../../../shared/application/actor.js';
 import { EventPublisher } from '../../../shared/application/event-publisher.js';
 import { DomainError } from '../../../shared/domain/domain-error.js';
+import { errorForLog } from '../../../shared/domain/mask-email.js';
 import { ENQUEUE_FAILED_MESSAGE, RESULT_NOT_STORED_MESSAGE, SourceCode, Submission } from '../domain/submission.js';
 import { SubmissionQueries, SubmissionRepository } from '../domain/submission.repository.js';
 import { REJUDGE_STARTED, type RejudgeStartedEvent } from '../judging.events.js';
@@ -92,8 +94,11 @@ export class JudgingService {
       const target = targets.get(k);
       // A problem removed from the session (sync with its set): its submissions keep their last result.
       if (!target) continue;
+      const fromRun = submission.snapshot.judgeRun;
       submission.rejudge(totalPoints(target));
-      await this.submissions.save(submission);
+      // Conditional on the run it was loaded at: a second rejudge running at the same time must not reset a run
+      // whose result is already stored (security-verifier on OJ-14).
+      if (!(await this.submissions.requeue(submission, fromRun))) continue;
       await this.enqueue(submission, target);
       queued++;
     }
@@ -108,24 +113,34 @@ export class JudgingService {
       this.logger.warn(`Result for unknown submission ${message.submissionId}`);
       return;
     }
-    if (!submission.isCurrentRun(message.judgeRun ?? 1)) return;
-    if (message.type === 'started') submission.startJudging();
-    else submission.complete(message.verdict, message.testResults, message.compileOutput ?? null, message.systemFault ?? null);
+    const run = message.judgeRun ?? 1;
+    if (!submission.isCurrentRun(run)) return;
+    // Conditional writes only (review B3): results are handled 8 at a time, so a full-row save of a copy loaded a
+    // moment ago could put a finished submission back to JUDGING or undo a rejudge.
+    if (message.type === 'started') {
+      await this.submissions.markJudging(submission.id, run);
+      return;
+    }
+    // Program output belongs to trial runs only (OJ-18); a submission never stores it, whatever an engine sends.
+    const testResults = message.testResults.map(({ output: _output, ...result }) => result);
+    submission.complete(message.verdict, testResults, message.compileOutput ?? null, message.systemFault ?? null);
+    let stored: boolean;
     try {
-      await this.submissions.save(submission);
+      stored = await this.submissions.storeResult(submission);
     } catch (error) {
-      if (message.type !== 'finished') throw error;
       // A result the database refuses would otherwise stay unstored until the watchdog calls it lost, which never
       // counts: a program could make that happen on purpose (audit F-2). Store a system error attributed to it instead.
-      this.logger.error(`Cannot store the result of submission ${submission.id}; storing a system error instead`, error as Error);
+      this.logger.error(`Cannot store the result of submission ${submission.id}; storing a system error instead`, errorForLog(error));
       const fresh = await this.submissions.findById(submission.id);
-      if (!fresh || !fresh.isCurrentRun(message.judgeRun ?? 1)) return;
+      if (!fresh || !fresh.isCurrentRun(run)) return;
       fresh.complete('IE', [], RESULT_NOT_STORED_MESSAGE, 'program');
-      await this.submissions.save(fresh);
       fresh.pullEvents();
+      await this.submissions.storeResult(fresh);
       return;
     }
     const events = submission.pullEvents();
+    // Someone else finished this run first (a duplicate delivery, a rejudge, the watchdog): theirs stands.
+    if (!stored) return;
     // Internal errors are the system's fault, not the student's attempt.
     if (submission.snapshot.verdict !== 'IE') await this.events.publish(events);
   }
@@ -134,15 +149,17 @@ export class JudgingService {
     const submission = await this.submissions.findById(id);
     if (!submission) throw DomainError.notFound('judging.not_found', 'Không tìm thấy bài nộp.');
     const s = submission.snapshot;
-    if (s.userId !== actor.id && !(await this.sessions.canReview(actor, s.sessionId))) {
+    const reviewer = await this.sessions.canReview(actor, s.sessionId);
+    if (s.userId !== actor.id && !reviewer) {
       throw DomainError.forbidden('judging.not_owner', 'Bạn chỉ xem được bài nộp của mình.');
     }
     const [dto] = await this.toDtos(actor, [submission]);
+    const tests = dto.resultsHidden || dto.testsHidden ? [] : s.testResults;
     return {
       ...dto,
       sourceCode: s.source.text,
       compileOutput: dto.resultsHidden ? null : s.compileOutput,
-      testResults: dto.resultsHidden || dto.testsHidden ? [] : s.testResults,
+      testResults: reviewer ? tests : tests.map(studentView),
     };
   }
 
@@ -175,10 +192,10 @@ export class JudgingService {
         testCases: target.testCases,
       });
     } catch (error) {
-      this.logger.error(`Cannot enqueue submission ${submission.id}`, error as Error);
-      submission.failToEnqueue(ENQUEUE_FAILED_MESSAGE);
-      await this.submissions.save(submission);
-      submission.pullEvents(); // an internal error is not an attempt worth recording
+      this.logger.error(`Cannot enqueue submission ${submission.id}`, errorForLog(error));
+      // Conditional, not a full-row save: a queue that timed out may still have taken the job, and its result may be
+      // stored by now; that result stands (security-verifier on OJ-14). A system error is not an attempt.
+      await this.submissions.failIfUnfinished(submission.id, s.judgeRun, ENQUEUE_FAILED_MESSAGE);
     }
   }
 
@@ -193,6 +210,17 @@ export class JudgingService {
       return toDto(s, v);
     });
   }
+}
+
+/**
+ * A test result as its own student sees it: diagnostics of hidden tests are dropped (OJ-15 F1). A runtime-error message
+ * holds the program's error output, so a program that prints its input there would otherwise reveal every hidden test.
+ * Results stored before the flag existed count as hidden. The verdict, time and memory stay.
+ */
+export function studentView(t: TestCaseResult): TestCaseResult {
+  if (t.isSample === true || t.message === undefined) return t;
+  const { message: _hidden, ...rest } = t;
+  return rest;
 }
 
 const totalPoints = (target: SubmissionTarget) => target.testCases.reduce((sum, t) => sum + t.points, 0);

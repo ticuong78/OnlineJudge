@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import type { Difficulty, Language } from '@oj/contracts';
-import { DataSource, In, Not } from 'typeorm';
+import { DataSource, In, Not, type SelectQueryBuilder } from 'typeorm';
 import { Problem, ResourceLimits, Sharing, Solution, TestCase } from '../domain/problem.js';
 import {
   ProblemQueries,
   ProblemRepository,
   type ProblemListFilter,
+  type ProblemScopeFilter,
   type ProblemSummaryRow,
 } from '../domain/problem.repository.js';
 import { ProblemOrmEntity, TestCaseOrmEntity } from './problem.orm-entities.js';
@@ -100,10 +101,38 @@ export class TypeOrmProblemRepository extends ProblemRepository {
   }
 }
 
+/** The bank scope as a WHERE clause; shared by the list and the tag counts so they can never disagree. */
+function inScope(qb: SelectQueryBuilder<ProblemOrmEntity>, filter: ProblemScopeFilter) {
+  if (filter.scope === 'mine') qb.andWhere('p.ownerId = :viewer', { viewer: filter.viewerId });
+  else if (filter.scope === 'public') qb.andWhere('p.isPublic = true');
+  else if (filter.scope === 'organization') {
+    // Only organizations the service has checked against the viewer's memberships; none = nothing.
+    const orgs = filter.organizationIds ?? [];
+    if (!orgs.length) qb.andWhere('1 = 0');
+    else qb.andWhere('p.sharedOrganizationIds && CAST(:orgs AS uuid[])', { orgs });
+  }
+}
+
 @Injectable()
 export class TypeOrmProblemQueries extends ProblemQueries {
   constructor(@InjectDataSource() private readonly db: DataSource) {
     super();
+  }
+
+  async tagCounts(filter: ProblemScopeFilter) {
+    const tagged = this.db.getRepository(ProblemOrmEntity).createQueryBuilder('p').select('unnest(p.tags)', 'tag');
+    inScope(tagged, filter);
+    const rows = await this.db
+      .createQueryBuilder()
+      .select('t.tag', 'tag')
+      .addSelect('COUNT(*)', 'count')
+      .from(`(${tagged.getQuery()})`, 't')
+      .setParameters(tagged.getParameters())
+      .groupBy('t.tag')
+      .orderBy('count', 'DESC')
+      .addOrderBy('t.tag', 'ASC')
+      .getRawMany<{ tag: string; count: string }>();
+    return rows.map((r) => ({ tag: r.tag, count: Number(r.count) }));
   }
 
   async list(filter: ProblemListFilter) {
@@ -116,14 +145,7 @@ export class TypeOrmProblemQueries extends ProblemQueries {
         'p.isPublic', 'p.publicTests', 'p.publicSolution', 'p.sharedOrganizationIds',
         'p.copiedFromId', 'p.copiedFromCode', 'p.copiedFromOwner',
       ]);
-    if (filter.scope === 'mine') qb.andWhere('p.ownerId = :viewer', { viewer: filter.viewerId });
-    else if (filter.scope === 'public') qb.andWhere('p.isPublic = true');
-    else if (filter.scope === 'organization') {
-      // Only organizations the service has checked against the viewer's memberships; none = nothing.
-      const orgs = filter.organizationIds ?? [];
-      if (!orgs.length) qb.andWhere('1 = 0');
-      else qb.andWhere('p.sharedOrganizationIds && CAST(:orgs AS uuid[])', { orgs });
-    }
+    inScope(qb, filter);
     if (filter.search) {
       qb.andWhere('(p.title ILIKE :q OR p.statement ILIKE :q OR CAST(p.seq AS text) = :seq)', {
         q: `%${filter.search}%`,
@@ -131,7 +153,7 @@ export class TypeOrmProblemQueries extends ProblemQueries {
       });
     }
     if (filter.difficulty) qb.andWhere('p.difficulty = :d', { d: filter.difficulty });
-    if (filter.tag) qb.andWhere(':tag = ANY(p.tags)', { tag: filter.tag.toLowerCase() });
+    if (filter.tags?.length) qb.andWhere('p.tags @> CAST(:tags AS text[])', { tags: filter.tags });
 
     const [rows, total] = await qb
       .orderBy('p.seq', 'ASC')

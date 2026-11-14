@@ -25,3 +25,10 @@ test('the running app keeps rate limits in Redis, not in a process-local table t
 test('the running app keeps recent sign-ins in Redis, so exemptions survive restarts (R2-F2)', () => {
   assert.ok(built(IdentityModule, RecentSignIns) instanceof RedisRecentSignIns);
 });
+
+test('the running app keeps trial runs in Redis with an expiry, never in the database (OJ-18)', async () => {
+  const { JudgingModule } = await import('../src/modules/judging/judging.module.js');
+  const { TrialStore } = await import('../src/modules/judging/application/trial-store.js');
+  const { RedisTrialStore } = await import('../src/modules/judging/infrastructure/redis-trial-store.js');
+  assert.ok(built(JudgingModule, TrialStore) instanceof RedisTrialStore);
+});

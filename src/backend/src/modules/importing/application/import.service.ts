@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { fileIoFields, fileIoMessage, isAboutFileIo, type ImportProblemsResponse, type ParsedExamDto, type ProblemDraftDto } from '@oj/contracts';
 import type { Actor } from '../../../shared/application/actor.js';
-import { AiAccess } from '../../../shared/application/ai-access.js';
-import { assert } from '../../../shared/domain/domain-error.js';
-import { documentFileProblem } from '../domain/document-file.js';
+import { AiQuota } from '../../../shared/application/ai-quota.js';
+import { assert, DomainError } from '../../../shared/domain/domain-error.js';
+import { documentFileProblem, imageMediaType } from '../domain/document-file.js';
 import { documentText, type ExamDocument } from '../domain/exam-document.js';
 import { ExamParser } from '../domain/exam-parser.js';
 import { stripExternalLinks } from '../../../shared/domain/external-links.js';
@@ -20,7 +20,7 @@ export class ImportService {
     private readonly reader: DocumentReader,
     private readonly smartReader: SmartExamReader,
     private readonly catalog: ProblemCatalogGateway,
-    private readonly ai: AiAccess,
+    private readonly quota: AiQuota,
   ) {}
 
   /**
@@ -31,9 +31,36 @@ export class ImportService {
   async parse(actor: Actor, file: UploadedFile): Promise<ParsedExamDto> {
     const problem = documentFileProblem(file);
     if (problem) throw problem;
+    if (imageMediaType(file.originalName)) return this.extractImage(actor, file);
     // The text layer may be empty (scanned PDF); that only matters if the AI reader is not used.
     const doc: ExamDocument | null = await this.reader.read(file).catch(() => null);
     return this.extract(actor, file, doc);
+  }
+
+  /**
+   * A photo of a problem (OJ-23): only the AI can read it, so it needs an AI use (`IMAGE_IMPORT`: VIP and organizations)
+   * and is refused, not read by template, when none is left. A failed reading gives the use back.
+   */
+  private async extractImage(actor: Actor, file: UploadedFile): Promise<ParsedExamDto> {
+    if (!this.smartReader.available) {
+      throw DomainError.validation('import.image_needs_ai', 'Máy chủ chưa cấu hình AI nên chưa đọc được ảnh chụp đề. Hãy tải file .docx/.pdf hoặc dán nội dung đề.');
+    }
+    // A refusal (no allowance, limit, rate) is the user's answer; an unreachable store is not their fault.
+    const reserved = await this.quota.tryReserve(actor.id, 'IMAGE_IMPORT').catch((error: Error) => {
+      this.logger.warn(`AI allowance unavailable for a photo import: ${error.message}`);
+      throw DomainError.conflict('import.ai_busy', 'Hệ thống AI đang bận, chưa đọc được ảnh lúc này. Hãy thử lại sau ít phút.');
+    });
+    if (!('ticket' in reserved)) throw this.quota.refusal('IMAGE_IMPORT', reserved);
+    const ticket = reserved.ticket;
+    let drafts: ProblemDraftDto[];
+    try {
+      drafts = await this.smartReader.read(file, null);
+    } catch (error) {
+      await this.quota.refund(ticket);
+      this.logger.warn(`AI could not read the image ${file.originalName}: ${(error as Error).message}`);
+      throw DomainError.validation('import.image_unreadable', 'AI chưa đọc được đề trong ảnh này. Hãy chụp rõ hơn, thẳng góc và đủ sáng, rồi thử lại.');
+    }
+    return { fileName: file.originalName, parser: 'AI', drafts: drafts.map(cleanDraft), rawText: '' };
   }
 
   /** Step 1 for text pasted by the teacher instead of a file: same reading, same drafts. */
@@ -49,21 +76,46 @@ export class ImportService {
 
   private async extract(actor: Actor, file: UploadedFile, doc: ExamDocument | null): Promise<ParsedExamDto> {
     const rawText = doc ? documentText(doc) : '';
-    const aiAllowed = await this.ai.allows(actor.id);
-
-    if (aiAllowed && this.smartReader.available) {
+    // One AI reading per document (OJ-21). Without a use left the basic reader takes over: an import is never refused,
+    // not even when the allowance cannot be checked (Redis down): the AI is then simply not used (review B).
+    const reserved = this.smartReader.available
+      ? await this.quota.tryReserve(actor.id, 'IMPORT').catch((error: Error) => {
+        this.logger.warn(`AI allowance unavailable for an import, using the rule-based parser: ${error.message}`);
+        return null;
+      })
+      : null;
+    let aiFailed = false;
+    if (reserved && 'ticket' in reserved) {
+      let drafts: ProblemDraftDto[] | null = null;
       try {
-        const drafts = await this.smartReader.read(file, doc);
-        return { fileName: file.originalName, parser: 'AI', drafts: drafts.map(cleanDraft), rawText };
+        drafts = await this.smartReader.read(file, doc);
       } catch (error) {
+        // Only the AI call is refunded; what follows it cannot cost a use.
+        await this.quota.refund(reserved.ticket);
+        aiFailed = true;
         this.logger.warn(`AI reader failed for ${file.originalName}, using the rule-based parser: ${(error as Error).message}`);
       }
+      if (drafts) return { fileName: file.originalName, parser: 'AI', drafts: drafts.map(cleanDraft), rawText };
     }
+    const refused = reserved && 'refused' in reserved ? reserved.refused : null;
+    const exhausted = refused === 'quota';
 
     assert(doc && rawText.trim().length > 0, 'import.empty_document',
       'Không đọc được chữ trong tài liệu (có thể là PDF dạng ảnh scan). '
-        + (aiAllowed ? 'Đọc đề bằng AI sẽ xử lý được loại tệp này.' : 'Tài khoản giáo viên VIP có thể đọc loại tệp này bằng AI.'));
-    return { fileName: file.originalName, parser: 'BASIC', drafts: this.parser.parse(doc).map(cleanDraft), rawText };
+        + (exhausted
+          ? 'Đọc đề bằng AI xử lý được loại tệp này, nhưng bạn đã dùng hết lượt của tháng này.'
+          : refused === 'rate' || aiFailed || (this.smartReader.available && !reserved)
+            ? 'Đọc đề bằng AI xử lý được loại tệp này; hãy thử lại sau ít phút.'
+            : this.smartReader.available && refused !== 'none'
+              ? 'Đọc đề bằng AI sẽ xử lý được loại tệp này.'
+              : 'Tài khoản giáo viên VIP có thể đọc loại tệp này bằng AI.'));
+    return {
+      fileName: file.originalName,
+      parser: 'BASIC',
+      drafts: this.parser.parse(doc).map(cleanDraft),
+      rawText,
+      ...(exhausted ? { aiQuotaExhausted: true as const } : {}),
+    };
   }
 
   /** Step 2: create problems from the reviewed drafts; samples become sample test cases. */

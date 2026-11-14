@@ -21,6 +21,10 @@ export class ClassroomMembership extends ClassMembership {
   membership(userId: string, classId: string) {
     return this.classrooms.membership(userId, classId);
   }
+
+  activeManagedClassIds(actor: Actor) {
+    return this.classrooms.activeManagedClassIds(actor);
+  }
 }
 
 @Injectable()

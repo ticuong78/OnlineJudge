@@ -182,9 +182,4 @@ export class Submission extends AggregateRoot {
     };
     this.record(event);
   }
-
-  /** The queue could not accept the job. */
-  failToEnqueue(reason: string): void {
-    this.complete('IE', [], reason, 'infrastructure');
-  }
 }

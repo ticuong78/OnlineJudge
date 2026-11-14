@@ -24,6 +24,8 @@ class MemoryFlags extends IntegrityFlagRepository {
     return true;
   }
   async markChecked(id: string, kind: IntegrityFlagKind) { const k = `${id}|${kind}`; if (this.checked.has(k)) return false; this.checked.add(k); return true; }
+  async claimFirstAiReview(s: string, p: string, u: string) { return this.markChecked(`${s}|${p}|${u}`, 'AI_USAGE'); }
+  async releaseFirstAiReview(s: string, p: string, u: string) { this.checked.delete(`${s}|${p}|${u}|AI_USAGE`); }
   async sessionIdsWithFlags() { return [...new Set(this.rows.map((f) => f.snapshot.sessionId))]; }
 }
 

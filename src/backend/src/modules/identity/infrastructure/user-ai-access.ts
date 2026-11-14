@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { AiPlan } from '@oj/contracts';
 import { AiAccess } from '../../../shared/application/ai-access.js';
 import { aiFromOrganizations, membershipViewsOf } from '../application/organization-memberships.js';
 import { OrganizationRepository } from '../domain/organization.repository.js';
@@ -17,10 +18,11 @@ export class UserAiAccess extends AiAccess {
     super();
   }
 
-  async allows(userId: string): Promise<boolean> {
+  async plan(userId: string): Promise<AiPlan> {
     const user = await this.users.findById(userId);
-    if (!user) return false;
-    if (user.canUseAi) return true;
-    return user.role === 'TEACHER' && aiFromOrganizations(await membershipViewsOf(this.organizations, userId));
+    if (!user) return 'NONE';
+    // Organizations are only looked up for a regular teacher: they can raise FREE to PLUS, nothing else.
+    if (user.aiPlan() !== 'FREE') return user.aiPlan();
+    return user.aiPlan(aiFromOrganizations(await membershipViewsOf(this.organizations, userId)));
   }
 }

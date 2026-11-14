@@ -34,7 +34,43 @@ const isParagraph = (b: DocumentBlock): b is { kind: 'paragraph'; text: string }
 
 // ---------- Patterns (matched against folded text) ----------
 
-const PROBLEM_HEADER = /^(bai tap|bai|cau|problem|exercise|task)\s*(?:so\s*)?(\d+|[ivx]+)\s*(?:[:.)\-–—]|\s|$)\s*(.*)$/;
+/** A problem header is one short line; longer paragraphs are content (the split below always required this). */
+const MAX_HEADER_LENGTH = 200;
+/**
+ * "Bài 1.", "Câu 2:", "Problem III -": the header up to its title. The title is the rest of the paragraph (see
+ * matchProblemHeader); with no `(.*)$` after it this pattern cannot backtrack far (each whitespace run is greedy).
+ */
+const PROBLEM_HEADER_PREFIX = /^(bai tap|bai|cau|problem|exercise|task)\s*(?:so\s*)?(\d+|[ivx]+)\s*(?:[:.)\-–—]|\s|$)\s*/;
+/** A title never holds one of these (the old single pattern read the title with `(.*)$`, whose dot skips them). */
+const LINE_BREAK = /[\n\r\u2028\u2029]/;
+
+/**
+ * Index where a run of `chars` at the end of `text` starts (text.length when there is none), found from the end.
+ * `/[…]+$/` scans that run again from every position of a long run not at the end, which is quadratic: a 100k-space
+ * first line took over 15 seconds in the title clean-up (OJ-15 F4).
+ */
+function trailingStart(text: string, chars: RegExp): number {
+  let i = text.length;
+  while (i > 0 && chars.test(text[i - 1])) i--;
+  return i;
+}
+
+/**
+ * Matches a problem header on one folded paragraph, in linear time (OJ-15 F4). The old single pattern
+ * `PREFIX(.*)$` could split its three optional whitespace runs in cubically many ways, and when the title failed on a
+ * line break every split was tried: "Bài 1" + thousands of
+ * spaces + U+2028 blocked the server for minutes. Same answer, found directly: the prefix with greedy whitespace, then
+ * the rest of the paragraph as the title, which matches only if it holds no line break. (A line break inside the
+ * whitespace before the title is fine, as before: "Bài 1\u2028Tổng hai số" is still a header.) Returns the groups
+ * the old pattern did: [whole, word, number, title].
+ */
+function matchProblemHeader(folded: string): [string, string, string, string] | null {
+  const prefix = PROBLEM_HEADER_PREFIX.exec(folded);
+  if (!prefix) return null;
+  const title = folded.slice(prefix[0].length);
+  if (LINE_BREAK.test(title)) return null;
+  return [folded, prefix[1], prefix[2], title];
+}
 
 type Section = 'statement' | 'input' | 'output' | 'constraints' | 'example' | 'explanation';
 
@@ -52,7 +88,8 @@ const SAMPLE_IO_HEADER = /^(sample (input|output)|input mau|output mau)\b/;
 
 const TIME_RE = /(thoi gian|time limit|time)[^\d\n]{0,30}?(\d+(?:[.,]\d+)?)\s*(ms|milliseconds?|giay|s|sec|seconds?)\b/;
 const MEMORY_RE = /(bo nho|memory(?: limit)?)[^\d\n]{0,30}?(\d+(?:[.,]\d+)?)\s*(mb|kb|gb|megabytes?)\b/;
-const DIFFICULTY_RE = /(do kho|muc do|difficulty|level)\s*[:=\-–]?\s*(rat kho|very hard|expert|trung binh|medium|kho|hard|de|easy|[1-5])\b/;
+// One whitespace run before the optional separator and one after it, not two adjacent optional runs (OJ-15 F4).
+const DIFFICULTY_RE = /(do kho|muc do|difficulty|level)\s*(?:[:=\-–]\s*)?(rat kho|very hard|expert|trung binh|medium|kho|hard|de|easy|[1-5])\b/;
 const STARS_RE = /(★|⭐|\*){1,5}/;
 
 interface Metadata {
@@ -108,7 +145,7 @@ function splitIntoProblems(blocks: DocumentBlock[]): { preamble: DocumentBlock[]
   const preamble: DocumentBlock[] = [];
   const segments: Segment[] = [];
   for (const block of blocks) {
-    if (block.kind === 'paragraph' && PROBLEM_HEADER.test(fold(block.text.trim())) && block.text.length < 200) {
+    if (block.kind === 'paragraph' && block.text.length < MAX_HEADER_LENGTH && matchProblemHeader(fold(block.text.trim()))) {
       segments.push({ header: block.text.trim(), blocks: [] });
     } else if (segments.length) {
       segments[segments.length - 1].blocks.push(block);
@@ -168,13 +205,12 @@ class DraftBuilder {
 
   private extractTitle(header: string): string {
     const folded = fold(header);
-    const m = PROBLEM_HEADER.exec(folded);
+    const m = matchProblemHeader(folded);
     let title = m ? header.slice(header.length - m[3].length) : header;
     title = title
       .replace(/\(\s*\d+(?:[.,]\d+)?\s*(điểm|diem|points?|đ)\s*\)/gi, '')
-      .replace(/\b\d+(?:[.,]\d+)?\s*(điểm|points?)\b/gi, '')
-      .replace(/[-–—:.\s]+$/, '')
-      .trim();
+      .replace(/\b\d+(?:[.,]\d+)?\s*(điểm|points?)\b/gi, '');
+    title = title.slice(0, trailingStart(title, /[-–—:.\s]/u)).trim();
     if (!title && m) title = header.trim();
     return title;
   }
@@ -188,7 +224,7 @@ class DraftBuilder {
   }
 
   private handleParagraph(raw: string) {
-    const text = raw.replace(/\s+$/g, '');
+    const text = raw.trimEnd();
     const trimmed = text.trim();
     if (!trimmed) {
       return;
@@ -268,7 +304,9 @@ class DraftBuilder {
       const m = re.exec(folded);
       if (!m) continue;
       const after = folded.slice(m[0].length);
-      const colon = /^\s*(\([^)]*\))?\s*[:.]/.exec(after);
+      // One whitespace run before the optional "(...)" and one after it: two adjacent \s* runs made a long line of
+      // spaces quadratic to reject (OJ-15 F4). Accepts exactly what the old pattern accepted.
+      const colon = /^\s*(?:\([^)]*\)\s*)?[:.]/.exec(after);
       if (colon) return { section, rest: trimmed.slice(m[0].length + colon[0].length).trim() };
       if (folded.length <= 40) return { section, rest: '' };
     }
@@ -276,7 +314,7 @@ class DraftBuilder {
   }
 
   private handleTable(rows: string[][]) {
-    const cleaned = rows.map((r) => r.map((c) => c.replace(/\s+$/g, ''))).filter((r) => r.some((c) => c.trim()));
+    const cleaned = rows.map((r) => r.map((c) => c.trimEnd())).filter((r) => r.some((c) => c.trim()));
     if (!cleaned.length) return;
     const header = cleaned[0].map((c) => fold(c.trim()));
     const inCol = header.findIndex((c) => /(input|vao|\.inp\b|dau vao)/.test(c));
@@ -342,11 +380,13 @@ class DraftBuilder {
   }
 }
 
+/** The lines without blank lines at either end. By index: shift() in a loop was quadratic on many blank lines (OJ-15 F4). */
 function block(lines: string[]): string {
-  const out = [...lines];
-  while (out.length && !out[0].trim()) out.shift();
-  while (out.length && !out[out.length - 1].trim()) out.pop();
-  return out.length ? out.join('\n') + '\n' : '';
+  let first = 0;
+  let last = lines.length;
+  while (first < last && !lines[first].trim()) first++;
+  while (last > first && !lines[last - 1].trim()) last--;
+  return first < last ? lines.slice(first, last).join('\n') + '\n' : '';
 }
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));

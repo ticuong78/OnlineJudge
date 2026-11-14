@@ -10,9 +10,15 @@ import {
 import { Queue, Worker } from 'bullmq';
 import { JudgeQueue, type QueuedRun } from '../application/ports.js';
 import { JudgingService } from '../application/judging.service.js';
+import { TrialRunService } from '../application/trial-run.service.js';
 
 /** One job per judge run, so a rejudge is never deduplicated against the first run. */
 export const judgeJobId = (submissionId: string, judgeRun: number) => `${submissionId}-${judgeRun}`;
+
+/** Trial ids are UUIDs like submission ids; the prefix keeps the two kinds of job apart in the queue. */
+export const trialJobId = (trialId: string) => `trial-${trialId}`;
+/** Any priority puts a job after the non-prioritized ones (submissions). */
+const TRIAL_PRIORITY = 10;
 
 /**
  * States in which a job will never produce a result any more. Everything else (waiting, active, delayed, a
@@ -41,6 +47,18 @@ export class BullMqJudgeQueue extends JudgeQueue implements OnModuleDestroy {
   }
 
   async enqueue(job: JudgeJob) {
+    if (job.trial) {
+      // A trial waits behind every real submission (BullMQ takes prioritized jobs after the plain ones), is tried
+      // once, and leaves nothing behind: its result lives in the trial store.
+      await this.queue.add('trial', job, {
+        jobId: trialJobId(job.submissionId),
+        priority: TRIAL_PRIORITY,
+        attempts: 1,
+        removeOnComplete: true,
+        removeOnFail: true,
+      });
+      return;
+    }
     await this.queue.add('judge', job, {
       jobId: judgeJobId(job.submissionId, job.judgeRun),
       attempts: 2,
@@ -74,12 +92,18 @@ export class BullMqJudgeQueue extends JudgeQueue implements OnModuleDestroy {
     await job?.remove().catch(() => undefined);
   }
 
+  /** Only a waiting job can be removed; a running one finishes and its result is dropped with its expired record. */
+  async discardTrial(trialId: string) {
+    const job = await this.queue.getJob(trialJobId(trialId));
+    await job?.remove().catch(() => undefined);
+  }
+
   async onModuleDestroy() {
     await this.queue.close();
   }
 }
 
-/** Consumer side: applies results published by the engine to Submission aggregates. */
+/** Consumer side: applies results published by the engine to Submission aggregates, or to the trial store. */
 @Injectable()
 export class JudgeResultsConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(JudgeResultsConsumer.name);
@@ -88,12 +112,13 @@ export class JudgeResultsConsumer implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService,
     private readonly judging: JudgingService,
+    private readonly trials: TrialRunService,
   ) {}
 
   onModuleInit() {
     this.worker = new Worker<JudgeResultMessage>(
       JUDGE_RESULTS_QUEUE,
-      (job) => this.judging.applyJudgeResult(job.data),
+      (job) => routeResult(job.data, this.judging, this.trials),
       { connection: connectionFrom(this.config), concurrency: 8 },
     );
     this.worker.on('failed', (job, error) => this.logger.error(`Result job ${job?.id} failed: ${error.message}`));
@@ -103,4 +128,13 @@ export class JudgeResultsConsumer implements OnModuleInit, OnModuleDestroy {
   async onModuleDestroy() {
     await this.worker?.close();
   }
+}
+
+/** A trial's result goes to the trial store only: it must never be applied to (or looked up as) a submission. */
+export function routeResult(
+  message: JudgeResultMessage,
+  judging: Pick<JudgingService, 'applyJudgeResult'>,
+  trials: Pick<TrialRunService, 'applyResult'>,
+): Promise<void> {
+  return message.trial ? trials.applyResult(message) : judging.applyJudgeResult(message);
 }

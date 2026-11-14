@@ -4,8 +4,9 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { DataSource } from 'typeorm';
 import { IntegrityFlag, type SubmissionRef } from '../src/modules/integrity/domain/integrity-flag.js';
-import { IntegrityCheckOrmEntity, IntegrityFlagOrmEntity, TypeOrmIntegrityFlagRepository } from '../src/modules/integrity/infrastructure/persistence.js';
+import { IntegrityCheckOrmEntity, IntegrityFirstReviewOrmEntity, IntegrityFlagOrmEntity, TypeOrmIntegrityFlagRepository } from '../src/modules/integrity/infrastructure/persistence.js';
 import { throwaway } from './support/throwaway.js';
+import { migratedOptions } from './support/migrated-schema.js';
 
 /** K-11 on real PostgreSQL: the unique pair key keeps one plagiarism flag per pair, even under parallel inserts. */
 const { url, skip } = throwaway('TEST_DATABASE_URL');
@@ -20,7 +21,7 @@ describe('PostgreSQL: one plagiarism flag per pair (K-11)', { skip }, () => {
     admin = new DataSource({ type: 'postgres', url });
     await admin.initialize();
     await admin.query(`CREATE SCHEMA "${schema}"`);
-    ds = new DataSource({ type: 'postgres', url, schema, entities: [IntegrityFlagOrmEntity, IntegrityCheckOrmEntity], synchronize: true, extra: { max: 20 } });
+    ds = new DataSource(migratedOptions(url, schema, [IntegrityFlagOrmEntity, IntegrityCheckOrmEntity, IntegrityFirstReviewOrmEntity], { max: 20 }));
     await ds.initialize();
     flags = new TypeOrmIntegrityFlagRepository(ds);
   });
@@ -55,4 +56,18 @@ describe('PostgreSQL: one plagiarism flag per pair (K-11)', { skip }, () => {
     assert.equal(ai1.pairKey, null);
     assert.equal((await flags.list({ sessionIds: [ctx.sessionId] })).filter((f) => f.snapshot.kind === 'AI_USAGE').length, 2);
   });
+
+  test('OJ-21: the first AI review per student and problem is claimed once, also in parallel; others are separate', async () => {
+    const [session, hs1, hs2] = [randomUUID(), randomUUID(), randomUUID()];
+    const results = await Promise.all(Array.from({ length: 10 }, () => flags.claimFirstAiReview(session, 'A', hs1)));
+    assert.equal(results.filter(Boolean).length, 1);
+    assert.equal(await flags.claimFirstAiReview(session, 'B', hs1), true, 'another problem');
+    assert.equal(await flags.claimFirstAiReview(session, 'A', hs2), true, 'another student');
+    assert.equal(await flags.claimFirstAiReview(randomUUID(), 'A', hs1), true, 'another session');
+    // OJ-26: stored by session, problem and student in their own table, no longer as a hashed id in integrity_checks.
+    const rows = (await ds.query('SELECT "problemKey" FROM integrity_first_reviews WHERE "sessionId" = $1 ORDER BY "problemKey"', [session])) as { problemKey: string }[];
+    assert.deepEqual(rows.map((r) => r.problemKey), ['A', 'A', 'B']);
+    assert.equal((await ds.query(`SELECT count(*)::int AS n FROM integrity_checks WHERE kind = 'AI_FIRST'`))[0].n, 0);
+  });
 });
+

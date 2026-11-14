@@ -73,9 +73,9 @@ test('required settings are reported together, not one restart at a time', () =>
 });
 
 test('production warns about settings that only make sense on a developer machine', () => {
-  const r = checkEnvironment({ ...good, NODE_ENV: 'production', DB_SYNC: 'true', CORS_ORIGINS: 'http://localhost:3000' });
+  const r = checkEnvironment({ ...good, NODE_ENV: 'production', CORS_ORIGINS: 'http://localhost:3000' });
   assert.equal(r.errors.length, 0);
-  assert.equal(r.warnings.length, 3, r.warnings.join('\n'));
+  assert.equal(r.warnings.length, 2, r.warnings.join('\n'));
   assert.deepEqual(checkEnvironment({ ...good, DB_SYNC: 'true', CORS_ORIGINS: 'http://localhost:3000' }).warnings, [], 'quiet in development');
 });
 
@@ -114,4 +114,10 @@ test('the administrator password must not be a known default, and must be long e
 test('production is only an explicit NODE_ENV=production', () => {
   assert.equal(isProduction({ NODE_ENV: 'production' }), true);
   for (const NODE_ENV of [undefined, 'development', 'test', 'Production']) assert.equal(isProduction({ NODE_ENV }), false);
+});
+
+test('OJ-5: DB_SYNC=true is refused in production (the schema comes from migrations), allowed in development', () => {
+  const r = checkEnvironment({ ...good, NODE_ENV: 'production', DB_SYNC: 'true' });
+  assert.ok(r.errors.some((e) => e.startsWith('DB_SYNC=true is not allowed in production')), r.errors.join('\n'));
+  assert.ok(!checkEnvironment({ ...good, DB_SYNC: 'true' }).errors.some((e) => e.includes('DB_SYNC')));
 });

@@ -61,8 +61,10 @@ const ANY_SIGNED_IN_USER = new Set([
 
 test('every route declares its roles or is public (CLAUDE.md security rule 1)', () => {
   const undeclared: string[] = [];
+  const seen = new Set<string>();
   let routes = 0;
-  for (const file of controllerFiles(join(__dirname, '../src/modules'))) {
+  // src/shared holds cross-cutting controllers (GET /features), which follow the same rule.
+  for (const file of [...controllerFiles(join(__dirname, '../src/modules')), ...controllerFiles(join(__dirname, '../src/shared'))]) {
     const source = readFileSync(file, 'utf8');
     for (const cls of source.matchAll(/((?:@\w+\([^)]*\)\s*)+)export class (\w+)/g)) {
       const start = cls.index + cls[0].length;
@@ -72,11 +74,13 @@ test('every route declares its roles or is public (CLAUDE.md security rule 1)', 
       for (const m of body.matchAll(/((?:\s*@[A-Z]\w*\([^)]*\)[^\n]*)+)\n\s+(?:async\s+)?(\w+)\(/g)) {
         if (!/@(Get|Post|Put|Delete|Patch)\(/.test(m[1])) continue;
         routes++;
+        seen.add(`${cls[2]}.${m[2]}`);
         if (!classDeclares && !/@Roles\(|@Public\(/.test(m[1])) undeclared.push(`${cls[2]}.${m[2]}`);
       }
     }
   }
   assert.ok(routes >= 100, `the scan found the routes (${routes})`);
+  assert.ok(seen.has('FeaturesController.get'), 'the scan covers controllers in src/shared too');
   assert.deepEqual(undeclared.filter((r) => !ANY_SIGNED_IN_USER.has(r)), [], 'routes without @Roles or @Public');
   assert.deepEqual([...ANY_SIGNED_IN_USER].filter((r) => !undeclared.includes(r)), [], 'remove routes from ANY_SIGNED_IN_USER once they declare @Roles');
 });

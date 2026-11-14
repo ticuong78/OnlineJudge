@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import { DomainError } from '../src/shared/domain/domain-error.js';
 import { DisplayName, Email, Phone, User } from '../src/modules/identity/domain/user.js';
 import { MAX_ATTEMPTS, Verification } from '../src/modules/identity/domain/verification.js';
+import { toUserDto } from '../src/modules/identity/application/account.service.js';
+import { hasFullAi } from '../src/shared/application/ai-access.js';
 
 const email = Email.of('An@Truong.edu.vn');
 
@@ -52,18 +54,22 @@ test('verification expires', () => {
   assert.ok(invite.isUsable(new Date(t0.getTime() + 6 * 24 * 3600_000)));
 });
 
-test('only VIP teachers (and the administrator) may use AI', () => {
+test('full AI (the AI-usage check) is for VIP teachers and the administrator; it follows the AI plan (OJ-26)', () => {
   const account = (address: string) => ({ email: Email.of(address), displayName: DisplayName.of('Lan'), phone: null, passwordHash: 'h' });
   const teacher = User.acceptTeacherInvitation(account('gv@truong.edu.vn'));
   assert.equal(teacher.vip, false, 'new teachers start on a regular account');
-  assert.equal(teacher.canUseAi, false);
+  assert.equal(hasFullAi(teacher.aiPlan()), false);
+  assert.equal(toUserDto(teacher).canUseAi, false);
+  assert.equal(toUserDto(teacher).aiPlan, 'FREE', 'a regular teacher has a FREE allowance but not full AI');
   teacher.setVip(true);
-  assert.equal(teacher.canUseAi, true);
+  assert.equal(toUserDto(teacher).canUseAi, true);
+  assert.equal(toUserDto(teacher).aiPlan, 'PLUS');
   teacher.setVip(false);
-  assert.equal(teacher.canUseAi, false);
+  assert.equal(hasFullAi(teacher.aiPlan()), false);
+  assert.equal(hasFullAi(teacher.aiPlan(true)), true, 'an organization with AI gives full AI');
 
   const student = User.registerStudent(account('hs@truong.edu.vn'));
   assert.throws(() => student.setVip(true), /Chỉ tài khoản giáo viên/);
-  assert.equal(student.canUseAi, false);
-  assert.equal(User.bootstrapAdmin(account('admin@truong.edu.vn')).canUseAi, true);
+  assert.equal(toUserDto(student).canUseAi, false);
+  assert.equal(toUserDto(User.bootstrapAdmin(account('admin@truong.edu.vn'))).canUseAi, true);
 });

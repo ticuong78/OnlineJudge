@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { hasFileIo, ioSideOf, toStandardIo } from '@oj/contracts';
+import { hasFileIo, ioSideOf, normalizeTag, toStandardIo } from '@oj/contracts';
 import type {
+  BankScope,
   Paginated,
+  ProblemTagDto,
   ProblemSectionSuggestionDto,
   ProblemDetailDto,
   ProblemSummaryDto,
@@ -19,12 +21,12 @@ import type {
 } from '@oj/contracts';
 import { isOrgMember, type Actor } from '../../../shared/application/actor.js';
 import { MEMBER_LEFT_ORGANIZATION, type MemberLeftOrganizationEvent } from '../../identity/identity.events.js';
-import { AiAccess, aiRequiresVip } from '../../../shared/application/ai-access.js';
+import { AiQuota } from '../../../shared/application/ai-quota.js';
 import { EventPublisher } from '../../../shared/application/event-publisher.js';
 import { DomainError } from '../../../shared/domain/domain-error.js';
 import { stripExternalLinks } from '../../../shared/domain/external-links.js';
 import { Problem, ResourceLimits, Sharing, Solution } from '../domain/problem.js';
-import { ProblemQueries, ProblemRepository, type ProblemListFilter } from '../domain/problem.repository.js';
+import { ProblemQueries, ProblemRepository, type ProblemListFilter, type ProblemScopeFilter } from '../domain/problem.repository.js';
 import { toDetailDto, toSummaryDto, toTestCaseDto } from './problem.mapper.js';
 import { ProblemSectionWriter, TestCaseSuggester, type TestSuggestionContext } from './ports.js';
 import { UnshareChecks } from './unshare-checks.js';
@@ -40,7 +42,7 @@ export class ProblemService {
     private readonly events: EventPublisher,
     private readonly suggester: TestCaseSuggester,
     private readonly writer: ProblemSectionWriter,
-    private readonly ai: AiAccess,
+    private readonly quota: AiQuota,
     private readonly unshareChecks: UnshareChecks,
   ) {}
 
@@ -50,15 +52,28 @@ export class ProblemService {
     actor: Actor,
     filter: Omit<ProblemListFilter, 'viewerId' | 'organizationIds'> & { organizationId?: string },
   ): Promise<Paginated<ProblemSummaryDto>> {
-    if (filter.scope === 'all' && actor.role !== 'ADMIN') {
+    const { organizationId, tags, ...rest } = filter;
+    const scope = this.scopeFor(actor, filter.scope, organizationId);
+    // Filters use the stored form, so "Quy hoạch động" finds problems tagged "dp" (OJ-20).
+    const wanted = tags?.map(normalizeTag).filter(Boolean);
+    const { rows, total } = await this.queries.list({ ...rest, ...scope, tags: wanted });
+    return { items: rows.map(toSummaryDto), total, page: filter.page, pageSize: filter.pageSize };
+  }
+
+  /** Tags in a bank scope with their problem counts; the same scope rules as `list` (OJ-20). */
+  async tagCounts(actor: Actor, scope: BankScope, organizationId?: string): Promise<ProblemTagDto[]> {
+    return this.queries.tagCounts(this.scopeFor(actor, scope, organizationId));
+  }
+
+  /** Checks the scope is allowed, and resolves the organizations it may cover. */
+  private scopeFor(actor: Actor, scope: BankScope, organizationId?: string): ProblemScopeFilter {
+    if (scope === 'all' && actor.role !== 'ADMIN') {
       throw DomainError.forbidden('catalog.scope_all', 'Chỉ quản trị viên được xem toàn bộ ngân hàng.');
     }
-    const { organizationId, ...rest } = filter;
     // Organization scope: only the viewer's own organizations (students have none), optionally one of them.
     const mine = actor.role === 'TEACHER' ? (actor.organizations ?? []).map((o) => o.id) : [];
     const organizationIds = organizationId ? mine.filter((id) => id === organizationId) : mine;
-    const { rows, total } = await this.queries.list({ ...rest, viewerId: actor.id, organizationIds });
-    return { items: rows.map(toSummaryDto), total, page: filter.page, pageSize: filter.pageSize };
+    return { scope, viewerId: actor.id, organizationIds };
   }
 
   async get(actor: Actor, id: string): Promise<ProblemDetailDto> {
@@ -201,9 +216,9 @@ export class ProblemService {
   /** AI-proposed tests for a saved problem (its solution helps); nothing is saved. */
   async suggestTestCases(actor: Actor, problemId: string, input: SuggestTestCasesRequest): Promise<TestCaseSuggestionsDto> {
     const problem = await this.loadEditable(actor, problemId);
-    await this.ai.ensureAllowed(actor);
     const { content, limits, solution } = problem;
     return this.suggestTests(
+      actor,
       { ...content, ...limits, solution: solution && { language: solution.language, code: solution.code, explanation: solution.explanation } },
       problem.testCases.map((t) => ({ input: t.data.input, expectedOutput: t.data.expectedOutput })),
       input,
@@ -212,10 +227,10 @@ export class ProblemService {
 
   /** AI-proposed tests for a problem still being written (creating, importing); nothing is saved. */
   async suggestDraftTests(actor: Actor, input: SuggestDraftTestsRequest): Promise<TestCaseSuggestionsDto> {
-    await this.ai.ensureAllowed(actor);
     const { timeLimitMs, memoryLimitMb, ...content } = input.problem;
     const limits = ResourceLimits.default;
     return this.suggestTests(
+      actor,
       { ...content, timeLimitMs: timeLimitMs ?? limits.timeLimitMs, memoryLimitMb: memoryLimitMb ?? limits.memoryLimitMb, solution: null },
       input.tests,
       input,
@@ -223,13 +238,17 @@ export class ProblemService {
   }
 
   private async suggestTests(
+    actor: Actor,
     problem: Omit<TestSuggestionContext, 'existingTests' | 'count' | 'focus'>,
     existing: { input: string; expectedOutput: string }[],
     input: SuggestTestCasesRequest,
   ): Promise<TestCaseSuggestionsDto> {
+    // No key: nothing to count, the feature is simply off (OJ-21).
     if (!this.suggester.available) {
       throw DomainError.validation('catalog.ai_unavailable', 'Máy chủ chưa cấu hình AI nên chưa gợi ý test được.');
     }
+    // One use per request, whatever the number of tests; given back if the AI call fails.
+    const ticket = await this.quota.reserve(actor.id, 'TESTS');
     let result: TestCaseSuggestionsDto;
     try {
       result = await this.suggester.suggest({
@@ -239,6 +258,7 @@ export class ProblemService {
         focus: input.focus?.trim() || null,
       });
     } catch (error) {
+      await this.quota.refund(ticket);
       this.logger.warn(`Test suggestions failed for "${problem.title}": ${(error as Error).message}`);
       throw DomainError.validation('catalog.ai_failed', 'AI chưa gợi ý được test lúc này. Hãy thử lại sau ít phút.');
     }
@@ -253,13 +273,32 @@ export class ProblemService {
     return { ...result, suggestions };
   }
 
+  /** AI title (OJ-22): one use of the SECTION allowance; no file-I/O fallback, a title has no input or output. */
+  private async suggestTitle(actor: Actor, problem: SuggestProblemSectionRequest['problem']): Promise<ProblemSectionSuggestionDto> {
+    if (!this.writer.available) throw aiUnavailable();
+    const ticket = await this.quota.reserve(actor.id, 'SECTION');
+    let written: { text: string; notes: string[] };
+    try {
+      written = await this.writer.write('title', problem);
+    } catch (error) {
+      await this.quota.refund(ticket);
+      this.logger.warn(`Title rewrite failed: ${(error as Error).message}`);
+      throw aiFailed();
+    }
+    const text = cleanTitle(stripExternalLinks(written.text).text);
+    if (!text) throw aiFailed();
+    return { text, notes: cleanNotes(written.notes) };
+  }
+
   /**
    * AI rewrite of one text section of a problem being written (possibly not saved yet); nothing is saved.
    * Text sections never come back with file input/output; without an API key (or for a regular, non-VIP teacher
    * account) only that rule-based rewrite is offered.
    */
   async suggestSection(actor: Actor, input: SuggestProblemSectionRequest): Promise<ProblemSectionSuggestionDto> {
-    const { section, problem } = input;
+    if (input.section === 'title') return this.suggestTitle(actor, input.problem);
+    const { problem } = input;
+    const section = input.section;
     const side = ioSideOf(section);
     const current = problem[section];
     // Without AI, the one fix we can still offer is standard input/output.
@@ -267,26 +306,37 @@ export class ProblemService {
       text: toStandardIo(current, side),
       notes: ['Máy chủ chưa dùng được AI nên chỉ chuyển phần đọc/ghi file sang nhập/xuất chuẩn.'],
     });
-    if (!(await this.ai.allows(actor.id))) {
-      if (hasFileIo(current, side)) {
-        return { ...ruleBased(), notes: ['Tài khoản thường không dùng được AI nên chỉ chuyển phần đọc/ghi file sang nhập/xuất chuẩn.'] };
-      }
-      throw aiRequiresVip();
-    }
     if (!this.writer.available) {
       if (hasFileIo(current, side)) return ruleBased();
       throw aiUnavailable();
     }
+    // One use per rewrite (OJ-21). The rule-based standard-I/O rewrite stays free when no AI use is left.
+    // If the allowance cannot be checked (Redis down), the free rule-based fix is still offered; AI is not (review B).
+    const reserved = await this.quota.tryReserve(actor.id, 'SECTION').catch((error: Error) => {
+      if (hasFileIo(current, side)) return null;
+      throw error;
+    });
+    if (!reserved) return ruleBased();
+    if (!('ticket' in reserved)) {
+      if (reserved.refused !== 'rate' && hasFileIo(current, side)) {
+        const why = reserved.refused === 'quota' ? 'Bạn đã dùng hết lượt AI tháng này' : 'Tài khoản này không dùng được AI';
+        return { ...ruleBased(), notes: [`${why} nên chỉ chuyển phần đọc/ghi file sang nhập/xuất chuẩn.`] };
+      }
+      throw this.quota.refusal('SECTION', reserved);
+    }
+    let written: { text: string; notes: string[] };
     try {
-      const { text, notes } = await this.writer.write(section, problem);
-      // Neither file input/output nor links to other places come back, whatever the model wrote.
-      const clean = stripExternalLinks(text).text;
-      return { text: hasFileIo(clean, side) ? toStandardIo(clean, side) : clean, notes };
+      written = await this.writer.write(section, problem);
     } catch (error) {
+      // Only the AI call is refunded; the clean-up below cannot cost a use.
+      await this.quota.refund(reserved.ticket);
       this.logger.warn(`Section rewrite (${section}) failed: ${(error as Error).message}`);
       if (hasFileIo(current, side)) return ruleBased();
       throw aiFailed();
     }
+    // Neither file input/output nor links to other places come back, whatever the model wrote.
+    const clean = stripExternalLinks(written.text).text;
+    return { text: hasFileIo(clean, side) ? toStandardIo(clean, side) : clean, notes: cleanNotes(written.notes) };
   }
 
   async setSolution(actor: Actor, problemId: string, input: UpsertSolutionRequest): Promise<SolutionDto> {
@@ -323,3 +373,21 @@ const aiFailed = () => DomainError.validation('catalog.ai_failed', 'AI chưa g�
 const sameInput = (s: string) => s.trim().split(/\s+/).join(' ');
 const owner = (actor: Actor) => ({ id: actor.id, name: actor.name });
 const limitsOf = (input: UpsertProblemRequest) => ResourceLimits.of(input.timeLimitMs, input.memoryLimitMb);
+
+/** A title as the AI should return it (OJ-22): one line, no "Bài 1." numbering or final full stop, at most 120 characters. */
+export function cleanTitle(raw: string): string {
+  const line = raw.replace(/\s+/g, ' ').trim()
+    .replace(/^#+\s*/, '')
+    .replace(/[*_`~]+/g, '')
+    .replace(/^(bài|problem|câu)\s*\d+\s*[.:)\-–]\s*/i, '')
+    .replace(/^["'“]|["'”]$/g, '')
+    .replace(/[.。]+$/, '')
+    .trim();
+  return line.length <= 120 ? line : `${line.slice(0, 119).trimEnd()}…`;
+}
+
+/** AI notes shown to the teacher: links to other places are removed, as from the text itself (review N6). */
+function cleanNotes(notes: string[]): string[] {
+  return notes.map((n) => stripExternalLinks(n).text.trim()).filter(Boolean);
+}
+

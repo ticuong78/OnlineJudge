@@ -31,8 +31,8 @@ export class DomainError extends Error {
     return new DomainError('unauthorized', code, message);
   }
   /** Too many attempts; the client may try again after `retryAfterSeconds` (sent as `Retry-After`). */
-  static rateLimited(code: string, message: string, retryAfterSeconds: number) {
-    return new DomainError('rate_limited', code, message, { retryAfterSeconds: String(Math.max(1, Math.ceil(retryAfterSeconds))) });
+  static rateLimited(code: string, message: string, retryAfterSeconds: number, details?: Record<string, string>) {
+    return new DomainError('rate_limited', code, message, { ...details, retryAfterSeconds: String(Math.max(1, Math.ceil(retryAfterSeconds))) });
   }
 }
 

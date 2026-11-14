@@ -10,14 +10,59 @@ interface Node {
   text: string;
 }
 
-const EQUATION = /<m:oMathPara\b[^>]*>[\s\S]*?<\/m:oMathPara>|<m:oMath\b[^>]*>[\s\S]*?<\/m:oMath>/g;
-
 /** Replaces every equation in a document.xml with a text run holding its plain-text form. */
 export function inlineEquations(documentXml: string): string {
-  return documentXml.replace(EQUATION, (equation) => {
+  return replaceEquations(documentXml, (equation) => {
     const text = render(parse(equation)).trim();
     return text ? `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>` : '';
   });
+}
+
+// Opening tags, tried at a position (sticky). Attributes are bounded: real ones are short, and an unbounded run let
+// every "<m:oMath" of a long unclosed sequence rescan to the end of the document.
+const OPEN_PARA = /<m:oMathPara\b[^>]{0,1000}>/y;
+const OPEN_MATH = /<m:oMath\b[^>]{0,1000}>/y;
+
+/**
+ * Same matches as `/<m:oMathPara\b[^>]*>[\s\S]*?<\/m:oMathPara>|<m:oMath\b[^>]*>[\s\S]*?<\/m:oMath>/g` (leftmost,
+ * paragraph first, up to the nearest closing tag), in linear time. That pattern searched for a closing tag again from
+ * every opening tag: repeated unclosed "<m:oMath>" in a 10 MB upload was quadratic (OJ-15 F4). Here the next closing
+ * tag of each kind is found once and reused until the scan passes it.
+ */
+function replaceEquations(xml: string, replace: (equation: string) => string): string {
+  const kinds = { para: { tag: '</m:oMathPara>', at: -1 }, math: { tag: '</m:oMath>', at: -1 } };
+  /** Index of the first closing tag of this kind at or after `from`; -1 once there is none left. */
+  const closingAt = (kind: { tag: string; at: number }, from: number) => {
+    if (kind.at === -2) return -1;
+    if (kind.at < from) kind.at = xml.indexOf(kind.tag, from);
+    if (kind.at < 0) kind.at = -2;
+    return kind.at < 0 ? -1 : kind.at;
+  };
+  let out = '';
+  let copied = 0;
+  let from = 0;
+  for (;;) {
+    const start = xml.indexOf('<m:oMath', from);
+    if (start < 0) break;
+    let end = -1;
+    for (const [open, kind] of [[OPEN_PARA, kinds.para], [OPEN_MATH, kinds.math]] as const) {
+      open.lastIndex = start;
+      const tag = open.exec(xml);
+      if (!tag) continue;
+      const at = closingAt(kind, start + tag[0].length);
+      if (at >= 0) {
+        end = at + kind.tag.length;
+        break;
+      }
+    }
+    if (end < 0) {
+      from = start + 1;
+      continue;
+    }
+    out += xml.slice(copied, start) + replace(xml.slice(start, end));
+    copied = from = end;
+  }
+  return out + xml.slice(copied);
 }
 
 function parse(xml: string): Node {

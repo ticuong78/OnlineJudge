@@ -17,6 +17,7 @@ import {
   OrganizationOrmEntity,
 } from '../src/modules/identity/infrastructure/organization.orm-entity.js';
 import { TypeOrmOrganizationRepository } from '../src/modules/identity/infrastructure/typeorm-organization.repository.js';
+import { migratedOptions } from './support/migrated-schema.js';
 
 /**
  * OJ-8 persistence on real PostgreSQL: the seat lock under parallel requests, the conditional accept, the
@@ -39,14 +40,14 @@ describe('PostgreSQL: organizations (OJ-8)', { skip }, () => {
     admin = new DataSource({ type: 'postgres', url });
     await admin.initialize();
     await admin.query(`CREATE SCHEMA "${schema}"`);
-    ds = new DataSource({
-      type: 'postgres',
-      url,
-      schema,
-      entities: [OrganizationOrmEntity, OrganizationMemberOrmEntity, OrganizationInvitationOrmEntity, ClassroomOrmEntity, ProblemOrmEntity, TestCaseOrmEntity],
-      synchronize: true,
-      extra: { max: 20 },
-    });
+    ds = new DataSource(
+      migratedOptions(
+        url,
+        schema,
+        [OrganizationOrmEntity, OrganizationMemberOrmEntity, OrganizationInvitationOrmEntity, ClassroomOrmEntity, ProblemOrmEntity, TestCaseOrmEntity],
+        { max: 20 },
+      ),
+    );
     await ds.initialize();
     orgs = new TypeOrmOrganizationRepository(ds);
     classes = new TypeOrmClassroomRepository(ds.getRepository(ClassroomOrmEntity));
@@ -169,6 +170,34 @@ describe('PostgreSQL: organizations (OJ-8)', { skip }, () => {
     assert.deepEqual((await classes.findByOrganizations([a])).map((c) => c.id), [inA.id]);
     assert.equal((await classes.findById(personal.id))!.organizationId, null);
     assert.deepEqual(await classes.findByOrganizations([]), []);
+  });
+
+  test('topics (OJ-20): the bank filter needs every chosen tag, and tag counts follow the scope', async () => {
+    const owner = { id: randomUUID(), name: 'Minh' };
+    const other = { id: randomUUID(), name: 'Lan' };
+    const make = async (who: typeof owner, tags: string[]) => {
+      const p = Problem.create(await problems.nextSeq(), who, {
+        title: `Bài ${randomBytes(2).toString('hex')}`, difficulty: 'EASY', tags, statement: 's', inputFormat: 'i', outputFormat: 'o', constraints: '',
+      }, ResourceLimits.default);
+      await problems.save(p);
+      return p;
+    };
+    const both = await make(owner, ['Mảng', 'Tổng tiền tố']);
+    const arraysOnly = await make(owner, ['arrays']);
+    await make(owner, ['quy hoạch động', 'mảng']);
+    await make(other, ['arrays', 'dp']); // another teacher's private problem: never counted for `owner`
+
+    const mine = async (tags: string[]) =>
+      (await queries.list({ scope: 'mine', viewerId: owner.id, tags, page: 1, pageSize: 50 })).rows.map((r) => r.id);
+    assert.deepEqual(await mine(['arrays', 'prefix-sums']), [both.id]);
+    assert.equal((await mine(['arrays'])).length, 3);
+    assert.ok((await mine(['arrays'])).includes(arraysOnly.id));
+    assert.deepEqual(await queries.tagCounts({ scope: 'mine', viewerId: owner.id, organizationIds: [] }), [
+      { tag: 'arrays', count: 3 },
+      { tag: 'dp', count: 1 },
+      { tag: 'prefix-sums', count: 1 },
+    ]);
+    assert.deepEqual(await queries.tagCounts({ scope: 'organization', viewerId: owner.id, organizationIds: [] }), []);
   });
 
   test('problems: organization sharing round-trips; the organization scope uses array overlap and is empty without organizations', async () => {

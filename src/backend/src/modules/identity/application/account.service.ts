@@ -17,6 +17,7 @@ import { LOGIN_PER_ACCOUNT, LOGIN_PER_ACCOUNT_AND_IP, LOGIN_PER_IP, SIGNUP_CODES
 import { RecentSignIns } from './recent-sign-ins.js';
 import { OrganizationRepository } from '../domain/organization.repository.js';
 import { aiFromOrganizations, membershipViewsOf } from './organization-memberships.js';
+import { hasFullAi } from '../../../shared/application/ai-access.js';
 
 export function validatePassword(password: string): void {
   assert(password.length >= 6 && password.length <= 128, 'identity.weak_password', 'Mật khẩu phải có ít nhất 6 ký tự.');
@@ -353,6 +354,7 @@ function accountWideLoginKey(email: Email) {
 
 /** `organizations`: the user's memberships (OJ-8); AI may also come from an active organization. */
 export function toUserDto(user: User, organizations: OrganizationMembershipDto[] = []): UserDto {
+  const plan = user.aiPlan(aiFromOrganizations(organizations));
   return {
     id: user.id,
     email: user.email.value,
@@ -361,7 +363,8 @@ export function toUserDto(user: User, organizations: OrganizationMembershipDto[]
     phone: user.phone?.value ?? null,
     createdAt: user.createdAt.toISOString(),
     vip: user.vip,
-    canUseAi: user.canUseAi || (user.role === 'TEACHER' && aiFromOrganizations(organizations)),
+    canUseAi: hasFullAi(plan),
+    aiPlan: plan,
     organizations,
   };
 }

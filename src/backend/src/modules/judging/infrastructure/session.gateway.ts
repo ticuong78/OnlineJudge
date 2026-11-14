@@ -13,6 +13,10 @@ export class AssessmentSessionGateway extends SessionGateway {
     return this.sessions.prepareSubmission(actor, sessionId, problemKey);
   }
 
+  trialTarget(actor: Actor, sessionId: string, problemKey: string) {
+    return this.sessions.trialTarget(actor, sessionId, problemKey);
+  }
+
   canReview(actor: Actor, sessionId: string) {
     return this.sessions.canReview(actor, sessionId);
   }

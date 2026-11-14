@@ -7,7 +7,7 @@ import type { JudgeJob, JudgeResultMessage } from '@oj/contracts';
 import type { Actor } from '../src/shared/application/actor.js';
 import type { DomainError } from '../src/shared/domain/domain-error.js';
 import { JudgeWatchdog, LOST_RESULT_MESSAGE } from '../src/modules/judging/application/judge-watchdog.js';
-import { JudgingService } from '../src/modules/judging/application/judging.service.js';
+import { JudgingService, studentView } from '../src/modules/judging/application/judging.service.js';
 import {
   JudgeQueue,
   SessionGateway,
@@ -73,6 +73,33 @@ class MemorySubmissions extends SubmissionRepository {
     this.rows.set(id, Submission.rehydrate(id, { ...failed.snapshot, judgedAt: now }));
     return true;
   }
+  // Same contract as the TypeORM version: conditional on the run (and status), so stale copies change nothing.
+  async markJudging(id: string, judgeRun: number) {
+    await sleep(1);
+    const s = this.rows.get(id);
+    if (!s || s.snapshot.judgeRun !== judgeRun || s.snapshot.status !== 'PENDING') return false;
+    this.rows.set(id, Submission.rehydrate(id, { ...s.snapshot, status: 'JUDGING' }));
+    return true;
+  }
+  async requeue(next: Submission, fromRun: number) {
+    await sleep(1);
+    const s = this.rows.get(next.id);
+    if (!s || s.snapshot.judgeRun !== fromRun) return false;
+    this.rows.set(next.id, copy(next));
+    return true;
+  }
+  async storeResult(done: Submission) {
+    await sleep(1);
+    const s = this.rows.get(done.id);
+    if (!s || s.snapshot.judgeRun !== done.snapshot.judgeRun || s.snapshot.status === 'DONE') return false;
+    const d = done.snapshot;
+    this.rows.set(done.id, Submission.rehydrate(done.id, {
+      ...s.snapshot,
+      status: d.status, verdict: d.verdict, score: d.score, compileOutput: d.compileOutput,
+      faultSource: d.faultSource, testResults: d.testResults, judgedAt: d.judgedAt,
+    }));
+    return true;
+  }
 }
 
 class FakeQueue extends JudgeQueue {
@@ -94,6 +121,7 @@ class FakeQueue extends JudgeQueue {
     if (this.down) throw new Error('redis is down');
     return this.live.get(`${id}-${run}`) ?? null;
   }
+  async discardTrial() {}
   async discard(id: string, run: number) {
     this.discarded.push(`${id}-${run}`);
     this.live.delete(`${id}-${run}`);
@@ -110,14 +138,17 @@ class FakeQueue extends JudgeQueue {
 
 const target = (maxSubmissions: number | null): SubmissionTarget => ({
   sessionTitle: 'Kiểm tra', problemTitle: 'A. Tổng', timeLimitMs: 1000, memoryLimitMb: 256, allowedLanguages: [], maxSubmissions,
-  testCases: [{ id: 'A-1', input: '1 2', expectedOutput: '3', points: 10 }],
+  testCases: [{ id: 'A-1', input: '1 2', expectedOutput: '3', points: 10, isSample: false }],
 });
 
 class FakeGateway extends SessionGateway {
   maxSubmissions: number | null = null;
   async prepareSubmission() { return target(this.maxSubmissions); }
-  async canReview() { return true; }
+  /** Who manages the session; everyone by default, as most tests here act as staff or do not care. */
+  reviews = (_actor: Actor) => true;
+  async canReview(actor: Actor) { return this.reviews(actor); }
   async judgeTarget() { return target(null); }
+  async trialTarget() { return target(null); }
   async visibility(_actor: Actor, ids: string[]) { return new Map<string, ResultVisibility>(ids.map((i) => [i, 'FULL'])); }
 }
 
@@ -217,10 +248,10 @@ test('engine system errors before any of the program ran (infrastructure) never 
 test('a result that cannot be stored becomes a counted system error, not a lost result that is free (F-2)', async () => {
   const t = setup();
   t.gateway.maxSubmissions = 1;
-  const save = t.submissions.save.bind(t.submissions);
-  t.submissions.save = async (s) => {
+  const store = t.submissions.storeResult.bind(t.submissions);
+  t.submissions.storeResult = async (s) => {
     if (s.snapshot.verdict === 'RE') throw new Error('unsupported Unicode escape sequence');
-    return save(s);
+    return store(s);
   };
   for (let i = 0; i < 3; i++) {
     assert.equal(await submitAs(t, student(1)), 'ok');
@@ -467,4 +498,132 @@ test('the watchdog never throws: a failing database just means the next pass tri
   const t = setup();
   t.submissions.findStale = async () => { throw new Error('db down'); };
   assert.equal(await t.watchdog.sweep(), 0);
+});
+
+// ---------------------------------------------------------------- review B3 (OJ-14): results never overwrite each other
+
+const acFor = (id: string, judgeRun = 1): JudgeResultMessage => ({
+  type: 'finished', submissionId: id, judgeRun, verdict: 'AC',
+  testResults: [{ testCaseId: 'A-1', verdict: 'AC', timeMs: 1, memoryKb: 1, points: 10 }],
+});
+
+test('B3 regression: "started" handled at the same time as the result never puts a finished submission back to JUDGING', async () => {
+  for (const order of ['finished first', 'started first'] as const) {
+    const t = setup();
+    assert.equal(await submitAs(t, student(1)), 'ok');
+    const id = latest(t).id;
+    const started: JudgeResultMessage = { type: 'started', submissionId: id, judgeRun: 1 };
+    const both = order === 'finished first' ? [acFor(id), started] : [started, acFor(id)];
+    await Promise.all(both.map((m) => t.service.applyJudgeResult(m)));
+    const s = t.submissions.rows.get(id)!.snapshot;
+    assert.equal(s.status, 'DONE', order);
+    assert.equal(s.verdict, 'AC', order);
+    assert.equal(t.events.published.length, 1, `${order}: the scoreboard hears about it once`);
+  }
+});
+
+test('B3 regression: a duplicate result is stored once and published once', async () => {
+  const t = setup();
+  assert.equal(await submitAs(t, student(1)), 'ok');
+  const id = latest(t).id;
+  await Promise.all([t.service.applyJudgeResult(acFor(id)), t.service.applyJudgeResult(acFor(id))]);
+  assert.equal(t.submissions.rows.get(id)!.snapshot.verdict, 'AC');
+  assert.equal(t.events.published.length, 1);
+});
+
+test('B3 regression: a result of the old run that lands during a rejudge does not undo it', async () => {
+  const t = setup();
+  assert.equal(await submitAs(t, student(1)), 'ok');
+  const id = latest(t).id;
+  await t.service.applyJudgeResult(acFor(id));
+  // The old run's (duplicate) result is being applied while the teacher rejudges.
+  await Promise.all([
+    t.service.applyJudgeResult(acFor(id, 1)),
+    t.service.rejudge({ id: 'teacher', role: 'TEACHER', name: 'Cô Lan' }, SESSION, null),
+  ]);
+  const s = t.submissions.rows.get(id)!.snapshot;
+  assert.equal(s.judgeRun, 2, 'the rejudge stands');
+  assert.equal(s.status, 'PENDING');
+  await t.service.applyJudgeResult(acFor(id, 2));
+  assert.equal(t.submissions.rows.get(id)!.snapshot.verdict, 'AC', 'and its own result is applied');
+});
+
+test('B3 follow-up: two rejudges at the same time queue the submission once and keep the stored result', async () => {
+  const t = setup();
+  assert.equal(await submitAs(t, student(1)), 'ok');
+  const id = latest(t).id;
+  await t.service.applyJudgeResult(acFor(id));
+  const teacher = { id: 'teacher', role: 'TEACHER', name: 'Cô Lan' } as Actor;
+  const jobsBefore = t.queue.jobs.length;
+  await Promise.all([t.service.rejudge(teacher, SESSION, null), t.service.rejudge(teacher, SESSION, null)]);
+  assert.equal(t.submissions.rows.get(id)!.snapshot.judgeRun, 2, 'one new run, not two');
+  assert.equal(t.queue.jobs.length - jobsBefore, 1, 'queued once');
+  await t.service.applyJudgeResult(acFor(id, 2));
+  await t.service.rejudge(teacher, SESSION, null).catch(() => undefined); // a later rejudge is a new, legitimate run
+  assert.equal(t.submissions.rows.get(id)!.snapshot.judgeRun, 3);
+});
+
+test('B3 follow-up: a queue error after the job was taken never overwrites a result already stored', async () => {
+  const t = setup();
+  // The queue takes the job, the engine's result is stored, and only then does the enqueue call report a timeout.
+  const enqueue = t.queue.enqueue.bind(t.queue);
+  t.queue.enqueue = async (job) => {
+    await enqueue(job);
+    await t.service.applyJudgeResult(acFor(job.submissionId, job.judgeRun));
+    throw new Error('Command timed out');
+  };
+  assert.equal(await submitAs(t, student(1)), 'ok');
+  const s = latest(t).snapshot;
+  assert.equal(s.verdict, 'AC', 'the real result stands');
+  assert.equal(t.events.published.length, 1);
+});
+
+// ---------------------------------------------------------------- OJ-15 F1: hidden tests' diagnostics stay hidden
+
+const leak = (id: string, isSample: boolean | undefined) => ({
+  testCaseId: id, verdict: 'RE' as const, timeMs: 1, memoryKb: 1, points: 0,
+  message: `Exit code 1\nsecret input of ${id}`, ...(isSample === undefined ? {} : { isSample }),
+});
+
+test('F1 regression: a student never sees the error output of a hidden test; a teacher does', async () => {
+  const t = setup();
+  const owner = student(1);
+  t.gateway.reviews = (a) => a.id !== owner.id; // the owner is a student, everyone else here manages the session
+  assert.equal(await submitAs(t, owner), 'ok');
+  const id = latest(t).id;
+  await t.service.applyJudgeResult({
+    type: 'finished', submissionId: id, judgeRun: 1, verdict: 'RE',
+    testResults: [leak('A-1', true), leak('A-2', false), leak('A-3', undefined)],
+  });
+
+  const mine = await t.service.get(owner, id);
+  assert.equal(mine.testResults.length, 3, 'every test is still listed, with its verdict');
+  assert.match(mine.testResults[0].message ?? '', /secret input of A-1/, 'a sample test keeps its diagnostic');
+  assert.equal(mine.testResults[1].message, undefined, 'a hidden test does not');
+  assert.equal(mine.testResults[2].message, undefined, 'a result stored before the flag counts as hidden');
+  assert.ok(!JSON.stringify(mine).includes('secret input of A-2') && !JSON.stringify(mine).includes('secret input of A-3'));
+
+  const teacher = { id: 'teacher', role: 'TEACHER', name: 'Cô Lan' } as Actor;
+  const reviewed = await t.service.get(teacher, id);
+  assert.ok(reviewed.testResults.every((r) => r.message?.includes('secret input')), 'the teacher sees every diagnostic');
+});
+
+test('F1: studentView keeps verdict, time, memory and points, and leaves message-less results alone', () => {
+  const hidden = studentView(leak('A-2', false));
+  assert.deepEqual(hidden, { testCaseId: 'A-2', verdict: 'RE', timeMs: 1, memoryKb: 1, points: 0, isSample: false });
+  const plain = { testCaseId: 'A-4', verdict: 'AC' as const, timeMs: 2, memoryKb: 3, points: 10 };
+  assert.equal(studentView(plain), plain);
+});
+
+test('a submission never stores program output, even if an engine sent some (OJ-18: output is for trial runs only)', async () => {
+  const t = setup();
+  assert.equal(await submitAs(t, student(1)), 'ok');
+  const id = latest(t).id;
+  await t.service.applyJudgeResult({
+    type: 'finished', submissionId: id, judgeRun: 1, verdict: 'WA',
+    testResults: [{ testCaseId: 'A-1', verdict: 'WA', timeMs: 1, memoryKb: 1, points: 0, isSample: false, output: 'hidden test data' }],
+  });
+  const stored = t.submissions.rows.get(id)!.snapshot.testResults;
+  assert.equal(stored.length, 1);
+  assert.equal('output' in stored[0], false);
 });

@@ -37,6 +37,13 @@ export class ClassroomFacade {
     return [...new Set([...taught, ...ofOrgs].map((c) => c.id))];
   }
 
+  /** The managed classes (`managedClassIds`) that are still active, as ids: archived ones are left out (OJ-28). */
+  async activeManagedClassIds(actor: Actor): Promise<string[]> {
+    const managed = await this.managedClassIds(actor);
+    const classes = managed === 'ALL' ? await this.classes.findAll() : await this.classes.findByIds(managed);
+    return classes.filter((c) => c.isActive).map((c) => c.id);
+  }
+
   async canManage(actor: Actor, classId: string): Promise<boolean> {
     const classroom = await this.classes.findById(classId);
     return !!classroom && classroom.isManagedBy(actor);

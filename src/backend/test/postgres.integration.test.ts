@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { DataSource } from 'typeorm';
 import { throwaway } from './support/throwaway.js';
@@ -12,6 +12,15 @@ import { UserOrmEntity, VerificationOrmEntity } from '../src/modules/identity/in
 import { LOST_RESULT_MESSAGE, SourceCode, Submission } from '../src/modules/judging/domain/submission.js';
 import { SubmissionOrmEntity } from '../src/modules/judging/infrastructure/submission.orm-entity.js';
 import { TypeOrmSubmissionRepository } from '../src/modules/judging/infrastructure/typeorm-submission.repository.js';
+import { Session, SessionSettings, TimeWindow } from '../src/modules/assessment/domain/session.js';
+import { LearningPathOrmEntity, SessionOrmEntity, SessionTestsOrmEntity } from '../src/modules/assessment/infrastructure/orm-entities.js';
+import { LearningPath } from '../src/modules/assessment/domain/learning-path.js';
+import { TypeOrmLearningPathRepository, TypeOrmSessionRepository } from '../src/modules/assessment/infrastructure/repositories.js';
+import { AiUsageOrmEntity } from '../src/modules/identity/infrastructure/ai-usage.orm-entity.js';
+import { TypeOrmAiUsageStore } from '../src/modules/identity/infrastructure/typeorm-ai-usage.store.js';
+import { migratedOptions } from './support/migrated-schema.js';
+import { ThreadOrmEntity, TypeOrmThreadRepository } from '../src/modules/community/infrastructure/persistence.js';
+import { Thread } from '../src/modules/community/domain/thread.js';
 
 /**
  * Proves the atomic statements are atomic in PostgreSQL itself (the in-memory fakes only model it).
@@ -31,7 +40,9 @@ describe('PostgreSQL', { skip }, () => {
     admin = new DataSource({ type: 'postgres', url });
     await admin.initialize();
     await admin.query(`CREATE SCHEMA "${schema}"`);
-    ds = new DataSource({ type: 'postgres', url, schema, entities: [UserOrmEntity, VerificationOrmEntity, SubmissionOrmEntity], synchronize: true });
+    ds = new DataSource(
+      migratedOptions(url, schema, [UserOrmEntity, VerificationOrmEntity, SubmissionOrmEntity, SessionOrmEntity, SessionTestsOrmEntity, AiUsageOrmEntity, LearningPathOrmEntity, ThreadOrmEntity]),
+    );
     await ds.initialize();
     verifications = new TypeOrmVerificationRepository(ds.getRepository(VerificationOrmEntity));
     submissions = new TypeOrmSubmissionRepository(ds.getRepository(SubmissionOrmEntity));
@@ -275,5 +286,164 @@ describe('PostgreSQL', { skip }, () => {
     const again = (await submissions.findById(s.id))!.snapshot;
     assert.equal(again.judgeRun, 2);
     assert.equal(again.queuedAt.getTime(), loaded.snapshot.queuedAt.getTime());
+  });
+  test('judge results are compare-and-set writes: no stale copy can undo a result or a rejudge (OJ-14 B3)', async () => {
+    const s = aSubmission(userId());
+    assert.equal(await submissions.admit(s, { maxPending: 10, maxForProblem: null }), 'ADMITTED');
+    const loaded = (await submissions.findById(s.id))!;
+
+    // The result is stored, then a late "started" arrives: it must not put the submission back to JUDGING.
+    const done = Submission.rehydrate(s.id, { ...loaded.snapshot });
+    done.complete('AC', [{ testCaseId: 'A-1', verdict: 'AC', timeMs: 3, memoryKb: 900, points: 10 }], null);
+    assert.equal(await submissions.storeResult(done), true);
+    assert.equal(await submissions.markJudging(s.id, 1), false);
+    assert.equal(await submissions.storeResult(done), false, 'a duplicate result changes nothing');
+    let row = (await submissions.findById(s.id))!.snapshot;
+    assert.deepEqual([row.status, row.verdict, row.score, row.testResults.length], ['DONE', 'AC', 100, 1]);
+
+    // Two rejudges from the same loaded run: only one applies.
+    const a = (await submissions.findById(s.id))!;
+    const b = (await submissions.findById(s.id))!;
+    a.rejudge(10);
+    b.rejudge(10);
+    const applied = await Promise.all([submissions.requeue(a, 1), submissions.requeue(b, 1)]);
+    assert.deepEqual(applied.filter(Boolean).length, 1);
+    row = (await submissions.findById(s.id))!.snapshot;
+    assert.deepEqual([row.judgeRun, row.status, row.verdict], [2, 'PENDING', null]);
+
+    // A result of the old run is ignored; run 2 goes PENDING -> JUDGING -> DONE.
+    assert.equal(await submissions.storeResult(done), false, 'run 1 result after the rejudge');
+    assert.equal(await submissions.markJudging(s.id, 2), true);
+    const run2 = (await submissions.findById(s.id))!;
+    run2.complete('WA', [], null);
+    assert.equal(await submissions.storeResult(run2), true);
+    assert.equal(await submissions.failIfUnfinished(s.id, 2, 'queue lost it'), false, 'the watchdog leaves it alone');
+    assert.equal((await submissions.findById(s.id))!.snapshot.verdict, 'WA');
+  });
+
+  // ---------------------------------------------------------------- sessions (OJ-20 review)
+
+  test('session listing: type and open-window filters in SQL, batch listing loads, and tags round-trip', async () => {
+    const repo = new TypeOrmSessionRepository(ds);
+    const hour = 3_600_000;
+    const now = Date.now();
+    const make = async (type: 'PRACTICE' | 'EXAM' | 'HOMEWORK', opensAt: number | null, closesAt: number | null) => {
+      const s = Session.create({
+        title: `${type} ${randomBytes(2).toString('hex')}`, description: '', type, classId: null, sourceSetId: null, assignmentKey: null,
+        window: TimeWindow.of(opensAt === null ? null : new Date(opensAt), closesAt === null ? null : new Date(closesAt)),
+        settings: SessionSettings.defaults, createdBy: { id: randomUUID(), name: 'Lan' },
+        problems: [{ sourceProblemId: randomUUID(), code: 'P1', title: 'Tổng', difficulty: 'EASY', tags: ['dp', 'arrays'], points: 10,
+          statement: '', inputFormat: '', outputFormat: '', constraints: '', timeLimitMs: 1000, memoryLimitMb: 256,
+          testCases: [{ input: '1', expectedOutput: '1', isSample: false, points: 10 }] }],
+      });
+      await repo.save(s);
+      return s;
+    };
+    const open = await make('PRACTICE', null, null);
+    const homework = await make('HOMEWORK', now - hour, now + hour);
+    await make('PRACTICE', now - 2 * hour, now - hour); // closed
+    await make('PRACTICE', now + hour, null); // upcoming
+    await make('EXAM', null, null);
+
+    const listed = await repo.list({ classIds: [], includeClass: false, includePublic: true, types: ['PRACTICE', 'HOMEWORK'], openAt: new Date(now) });
+    assert.deepEqual(new Set(listed.map((s) => s.id)), new Set([open.id, homework.id]));
+    const batch = await repo.findListing([open.id, homework.id, randomUUID()]);
+    assert.deepEqual(new Set(batch.map((s) => s.id)), new Set([open.id, homework.id]), 'missing ids are left out');
+    assert.deepEqual(batch[0].snapshot.problems[0].testCases, [], 'listing loads carry no test data');
+    assert.deepEqual(batch[0].snapshot.problems[0].tags, ['dp', 'arrays']);
+    assert.deepEqual(await repo.findListing([]), []);
+  });
+
+  // ---------------------------------------------------------------- AI allowances (OJ-21)
+
+  test('AI allowances: 20 parallel reserves against 3 succeed exactly 3 times; users, features and months are separate', async () => {
+    const store = new TypeOrmAiUsageStore(ds);
+    const user = randomUUID();
+    const results = await Promise.all(Array.from({ length: 20 }, () => store.reserve(user, 'TESTS', '2026-11', 3)));
+    assert.equal(results.filter(Boolean).length, 3);
+    assert.equal(await store.reserve(user, 'SECTION', '2026-11', 3), true, 'another feature');
+    assert.equal(await store.reserve(user, 'TESTS', '2026-12', 3), true, 'another month');
+    assert.equal(await store.reserve(randomUUID(), 'TESTS', '2026-11', 3), true, 'another user');
+    assert.equal(await store.reserve(user, 'TESTS', '2026-11', 0), false, 'a zero limit never reserves');
+    assert.equal(await store.reserve(user, 'TESTS', '2026-11', null), true, 'no limit');
+
+    await store.release(user, 'TESTS', '2026-11');
+    assert.deepEqual(Object.fromEntries(await store.used(user, '2026-11')), { TESTS: 3, SECTION: 1 });
+    for (let i = 0; i < 6; i++) await store.release(user, 'SECTION', '2026-11');
+    assert.equal((await store.used(user, '2026-11')).get('SECTION'), 0, 'never below zero');
+  });
+
+  // ---------------------------------------------------------------- learning paths (OJ-24)
+
+  test('learning paths round-trip with their steps; public and owner filters; delete', async () => {
+    const repo = new TypeOrmLearningPathRepository(ds);
+    const owner = { id: randomUUID(), name: 'Lan' };
+    const s1 = randomUUID();
+    const s2 = randomUUID();
+    const steps = [{ sessionId: s1, title: 'Bước 1', note: 'Làm quen' }, { sessionId: s2, title: 'Bước 2', note: '' }];
+    const sessions = [s1, s2].map((id) => ({ id, classId: null, type: 'PRACTICE' as const }));
+    const pub = LearningPath.create(owner, { title: 'QHĐ', description: 'd', topic: 'dp', isPublic: true, steps }, sessions);
+    const priv = LearningPath.create(owner, { title: 'Nháp', description: '', topic: null, isPublic: false, steps: steps.slice(0, 1) }, sessions);
+    await repo.save(pub);
+    await repo.save(priv);
+    const back = await repo.findById(pub.id);
+    assert.deepEqual(back?.snapshot.steps, steps);
+    assert.equal(back?.snapshot.topic, 'dp');
+    assert.ok((await repo.list({ publicOnly: true }, { limit: 100 })).some((p) => p.id === pub.id));
+    assert.ok(!(await repo.list({ publicOnly: true }, { limit: 100 })).some((p) => p.id === priv.id));
+    assert.deepEqual(new Set((await repo.list({ ownerId: owner.id }, { limit: 100 })).map((p) => p.id)), new Set([pub.id, priv.id]));
+    await repo.delete(priv.id);
+    assert.equal(await repo.findById(priv.id), null);
+
+    // OJ-27: pages are stable and do not overlap, newest first; private paths never appear.
+    const pager = { id: randomUUID(), name: 'Thầy Phân Trang' };
+    for (let i = 0; i < 5; i++) {
+      await repo.save(LearningPath.create(pager, { title: `Trang ${i}`, description: '', topic: null, isPublic: true, steps }, sessions));
+    }
+    const mineAll = await repo.list({ ownerId: pager.id }, { limit: 100 });
+    const after = (p: LearningPath) => ({ createdAt: p.snapshot.createdAt, id: p.id });
+    const first = await repo.list({ ownerId: pager.id }, { limit: 2 });
+    const second = await repo.list({ ownerId: pager.id }, { limit: 2, before: after(first[1]) });
+    const third = await repo.list({ ownerId: pager.id }, { limit: 2, before: after(second[1]) });
+    assert.deepEqual([...first, ...second, ...third].map((p) => p.id), mineAll.map((p) => p.id));
+    assert.equal(third.length, 1);
+    const times = mineAll.map((p) => p.snapshot.createdAt.getTime());
+    assert.deepEqual(times, [...times].sort((a, b) => b - a), 'newest first by creation (OJ-28)');
+    // OJ-28: the cursor compares (createdAt, id) in SQL, so a path sharing the cursor's creation time is not lost.
+    const twin = LearningPath.create(pager, { title: 'Cùng thời điểm', description: '', topic: null, isPublic: true, steps }, sessions);
+    (twin.snapshot as { createdAt: Date }).createdAt = first[1].snapshot.createdAt;
+    await repo.save(twin);
+    const afterFirst = await repo.list({ ownerId: pager.id }, { limit: 100, before: after(first[1]) });
+    assert.equal(afterFirst.some((p) => p.id === twin.id), twin.id < first[1].id, 'a twin with a smaller id comes after the cursor');
+  });
+
+  // ---------------------------------------------------------------- waiting questions (OJ-26)
+
+  test('OJ-26/28: the database returns only unanswered student questions of the given classes, newest first, limited', async () => {
+    const repo = new TypeOrmThreadRepository(ds.getRepository(ThreadOrmEntity));
+    const [c1, c2] = [randomUUID(), randomUUID()];
+    const student = { id: randomUUID(), name: 'Học sinh', role: 'STUDENT' as const };
+    const teacher = { id: randomUUID(), name: 'Cô Lan', role: 'TEACHER' as const };
+    const at = (minute: number) => new Date(Date.UTC(2026, 10, 14, 1, minute));
+    const make = async (classId: string, title: string, minute: number, init?: (t: Thread) => void) => {
+      const t = Thread.start({ classId, kind: 'QUESTION', title, body: 'Em bị WA', author: student, topic: null });
+      (t.snapshot as { createdAt: Date }).createdAt = at(minute);
+      init?.(t);
+      await repo.save(t);
+    };
+    await make(c1, 'Cũ', 1);
+    await make(c1, 'Có học sinh trả lời', 2, (t) => t.reply({ ...student, id: randomUUID() }, 'Mình cũng bị'));
+    await make(c1, 'Giáo viên đã trả lời', 3, (t) => t.reply(teacher, 'Kiểm tra tràn số'));
+    await make(c1, 'Mới', 4);
+    await make(c2, 'Lớp khác', 5);
+    const teacherQuestion = Thread.start({ classId: c1, kind: 'QUESTION', title: 'Câu của giáo viên', body: 'x', author: teacher, topic: null });
+    (teacherQuestion.snapshot as { createdAt: Date }).createdAt = at(6);
+    await repo.save(teacherQuestion);
+
+    const titles = async (ids: string[], limit = 10) => (await repo.listAwaitingQuestions(ids, limit)).map((t) => t.snapshot.title);
+    assert.deepEqual(await titles([c1]), ['Mới', 'Có học sinh trả lời', 'Cũ'], 'a reply by another student still waits');
+    assert.deepEqual(await titles([c1], 2), ['Mới', 'Có học sinh trả lời'], 'limited in SQL, newest first');
+    assert.deepEqual(await titles([c1, c2]), ['Lớp khác', 'Mới', 'Có học sinh trả lời', 'Cũ']);
+    assert.deepEqual(await titles([]), []);
   });
 });

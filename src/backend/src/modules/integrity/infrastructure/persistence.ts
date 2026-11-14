@@ -38,6 +38,18 @@ export class IntegrityCheckOrmEntity {
   @Column('timestamptz') checkedAt: Date;
 }
 
+/**
+ * One row per student and problem of a session whose first accepted solution had the AI-usage review (OJ-21), so
+ * resubmitting cannot spend the teacher's allowance again (OJ-26: before, a hashed id in `integrity_checks`).
+ */
+@Entity('integrity_first_reviews')
+export class IntegrityFirstReviewOrmEntity {
+  @PrimaryColumn('uuid') sessionId: string;
+  @PrimaryColumn({ type: 'varchar', length: 4 }) problemKey: string;
+  @PrimaryColumn('uuid') userId: string;
+  @Column('timestamptz') reviewedAt: Date;
+}
+
 @Injectable()
 export class TypeOrmIntegrityFlagRepository extends IntegrityFlagRepository {
   constructor(@InjectDataSource() private readonly db: DataSource) {
@@ -79,14 +91,37 @@ export class TypeOrmIntegrityFlagRepository extends IntegrityFlagRepository {
     return Array.isArray(result.raw) && result.raw.length > 0;
   }
 
+  /** A table with its schema when one is configured (raw SQL does not get TypeORM's prefixing). */
+  private table(entity: typeof IntegrityCheckOrmEntity | typeof IntegrityFirstReviewOrmEntity): string {
+    const { schema, tableName } = this.db.getMetadata(entity);
+    return schema ? `"${schema}"."${tableName}"` : `"${tableName}"`;
+  }
+
   /** True only for the first caller: the row is inserted atomically, a repeat hits the primary key and returns nothing. */
   async markChecked(submissionId: string, kind: IntegrityFlagKind) {
     const rows: unknown[] = await this.db.query(
-      `INSERT INTO integrity_checks ("submissionId", "kind", "checkedAt") VALUES ($1, $2, now())
+      `INSERT INTO ${this.table(IntegrityCheckOrmEntity)} ("submissionId", "kind", "checkedAt") VALUES ($1, $2, now())
        ON CONFLICT DO NOTHING RETURNING "submissionId"`,
       [submissionId, kind],
     );
     return rows.length > 0;
+  }
+
+  /** Atomic like `markChecked`: the primary key (session, problem, student) lets only the first claim insert. */
+  async claimFirstAiReview(sessionId: string, problemKey: string, userId: string) {
+    const rows: unknown[] = await this.db.query(
+      `INSERT INTO ${this.table(IntegrityFirstReviewOrmEntity)} ("sessionId", "problemKey", "userId", "reviewedAt") VALUES ($1, $2, $3, now())
+       ON CONFLICT DO NOTHING RETURNING "userId"`,
+      [sessionId, problemKey, userId],
+    );
+    return rows.length > 0;
+  }
+
+  async releaseFirstAiReview(sessionId: string, problemKey: string, userId: string) {
+    await this.db.query(
+      `DELETE FROM ${this.table(IntegrityFirstReviewOrmEntity)} WHERE "sessionId" = $1 AND "problemKey" = $2 AND "userId" = $3`,
+      [sessionId, problemKey, userId],
+    );
   }
 
   async sessionIdsWithFlags() {
@@ -115,3 +150,4 @@ function toDomain(row: IntegrityFlagOrmEntity): IntegrityFlag {
     acknowledgedByName: row.acknowledgedByName,
   });
 }
+

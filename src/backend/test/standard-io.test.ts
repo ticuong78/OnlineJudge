@@ -2,6 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fileIoFields, hasFileIo, isAboutFileIo, toStandardIo } from '@oj/contracts';
 
+/**
+ * Upper bound for the OJ-15 speed tests. Generous on purpose: the suites run in parallel and timings vary under load,
+ * while the quadratic versions these guard against took 4 to 34 seconds on the same inputs.
+ */
+const LIMIT_MS = 1_000;
+
 test('file-based input/output wording becomes standard input/output', () => {
   assert.equal(toStandardIo('Dữ liệu vào từ file BAI1.INP gồm hai số a, b.'), 'Dữ liệu vào từ đầu vào chuẩn gồm hai số a, b.');
   assert.equal(toStandardIo('Đọc dữ liệu từ tệp văn bản "SUM.INP":'), 'Đọc dữ liệu từ đầu vào chuẩn:');
@@ -99,4 +105,31 @@ test('a problem asking for files cannot be saved', async () => {
   assert.throws(() => problem.update({ ...content, outputFormat: 'Ghi ra tệp A.OUT số a.' }, ResourceLimits.default), /Phần Kết quả còn yêu cầu đọc\/ghi file/);
   assert.ok(hasFileIo('Dữ liệu vào (BAI1.INP): n'));
   assert.ok(!hasFileIo('Nhập từ bàn phím số n. In ra màn hình kết quả.'));
+});
+
+// ---------------------------------------------------------------- OJ-15 F4: problem text cannot stall the server
+
+test('F4 regression: file-I/O detection and rewriting stay linear on long runs of spaces', () => {
+  const sp = ' '.repeat(50_000);
+  for (const [name, run] of [
+    ['hasFileIo', () => hasFileIo(`của${sp}tệ`)], // 34 s before the fix; runs on every problem save
+    ['toStandardIo', () => toStandardIo(`${sp}x`)],
+    ['sentence-start rule', () => hasFileIo(`.${sp}x`)],
+  ] as const) {
+    const start = performance.now();
+    run();
+    assert.ok(performance.now() - start < LIMIT_MS, name);
+  }
+});
+
+test('F4 follow-up: long runs of "-" or "_" before a dot are linear too', () => {
+  for (const [name, run] of [
+    ['dashes', () => hasFileIo(`${'-'.repeat(100_000)}.x`)], // about 16 s at this size before the bound
+    ['underscores and dashes', () => toStandardIo(`${'_-'.repeat(50_000)}.inp`)],
+  ] as const) {
+    const start = performance.now();
+    run();
+    assert.ok(performance.now() - start < LIMIT_MS, name);
+  }
+  assert.equal(toStandardIo('Dữ liệu vào (BAI_1-A.INP): hai số'), 'Dữ liệu vào: hai số', 'ordinary names are still removed');
 });

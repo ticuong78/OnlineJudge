@@ -39,6 +39,21 @@ export abstract class SubmissionRepository {
    * a result that arrived a moment ago is never overwritten. True when this call ended it.
    */
   abstract failIfUnfinished(id: string, judgeRun: number, reason: string, now?: Date): Promise<boolean>;
+  /**
+   * PENDING -> JUDGING for that run only (compare-and-set). A "started" message handled after the result, or for an
+   * older run, matches nothing: it can never put a finished submission back to JUDGING (review B3).
+   */
+  abstract markJudging(id: string, judgeRun: number): Promise<boolean>;
+  /**
+   * Stores a completed submission's result, only if its run is still current and unfinished (compare-and-set).
+   * False when another result, a rejudge or the watchdog got there first; the caller then publishes nothing.
+   */
+  abstract storeResult(submission: Submission): Promise<boolean>;
+  /**
+   * Stores a rejudged submission (its new run, back to PENDING), only if it is still at `fromRun` (compare-and-set):
+   * two rejudges at the same time queue it once, and neither resets a result the other's run already stored.
+   */
+  abstract requeue(submission: Submission, fromRun: number): Promise<boolean>;
 }
 
 export interface SubmissionListFilter {
