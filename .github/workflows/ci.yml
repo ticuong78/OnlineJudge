@@ -47,7 +47,9 @@ jobs:
   # admitted and queued, not judged).
   e2e:
     needs: verify
-    runs-on: ubuntu-latest
+    # Pinned on purpose: ubuntu-latest moved to 26.04 under us and Playwright 1.56 could not install Chromium there.
+    # Move this image and the @playwright/test version together, in the same PR.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
       postgres:
