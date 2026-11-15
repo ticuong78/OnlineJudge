@@ -19,6 +19,9 @@
       "Read(**/.env.local)",
       "Bash(git push --force*)",
       "Bash(git push -f*)",
+      "Bash(git push --no-verify*)",
+      "Bash(git commit --no-verify*)",
+      "Read(~/.ssh/**)",
       "Bash(git reset --hard*)",
       "Bash(docker rm *)",
       "Bash(docker system prune*)"

@@ -5,7 +5,7 @@ description: Review the current branch's diff against OnlineJudge's architecture
 
 # Review
 
-Run on the diff against `main` (`git diff origin/main...HEAD`). Produce a list of findings, each with file and line, severity (blocking, should fix, nit) and a concrete fix. Say "nothing blocking" explicitly when that is the result.
+Run on the diff against `master` (`git diff origin/master...HEAD`). Produce a list of findings, each with file and line, severity (blocking, should fix, nit) and a concrete fix. Say "nothing blocking" explicitly when that is the result.
 
 Check, in this order:
 

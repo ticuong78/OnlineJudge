@@ -14,6 +14,6 @@ description: Scaffold a new bounded context in the OnlineJudge backend following
    - `<context>.events.ts`: event names and payload types.
    - `<context>.module.ts`: providers bound to abstract classes, exports the facade only.
 3. Add request and response types to `src/shared/src/api.ts` and build contracts.
-4. Register the module in `app.module.ts` and the ORM entity in the TypeORM config.
+4. Register the module in `app.module.ts` and the ORM entity in the TypeORM config, then generate the migration against a database built only by migrations (`pnpm --filter @oj/backend migration:generate src/migrations/<slug>`, `DB_SYNC=false`) and list it in `src/backend/src/migrations/index.ts` (CLAUDE.md architecture rule 10).
 5. Add `src/backend/test/<context>.test.ts` with in-memory repositories covering each invariant and each use case.
 6. Document the endpoints in `docs/API.md` and the context in `README.md` under "Bounded contexts".
