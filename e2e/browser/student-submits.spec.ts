@@ -16,7 +16,7 @@ test('a student reads the problem, writes code in the editor and submits it', as
   await page.getByRole('button', { name: 'Nộp bài' }).click();
   await expect(page.getByText('Đã nộp bài.', { exact: false })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Bài nộp của tôi' }).click();
+  await page.getByRole('tab', { name: 'Bài nộp của tôi' }).click();
   await expect(page.getByText('Bạn chưa nộp bài này trong phiên')).toHaveCount(0);
   await expect(page.getByRole('table').getByRole('row').filter({ hasText: 'Python 3' })).toHaveCount(1);
 });

@@ -6,7 +6,7 @@ test.describe('signing in shows each role its own home and menu', () => {
     const s = state();
     await page.goto('/login');
     await page.getByLabel('Email').fill(s.student.email);
-    await page.getByLabel('Mật khẩu').fill('sai-mat-khau');
+    await page.getByLabel('Mật khẩu', { exact: true }).fill('sai-mat-khau');
     await page.getByRole('button', { name: 'Đăng nhập' }).click();
     await expect(page.getByText('Email hoặc mật khẩu không đúng.')).toBeVisible();
     await expect(page).toHaveURL(/\/login/);

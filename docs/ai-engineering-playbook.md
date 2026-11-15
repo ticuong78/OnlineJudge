@@ -184,7 +184,7 @@ A change in any of these paths needs the `security-verifier` agent and a human r
 | Item | Spec | Owner |
 |---|---|---|
 | Protect `master`: no force push, required `verify` and `e2e`, one approval, squash only, CODEOWNERS for section 8 | needs spec (repo settings) | `<repo admin>` |
-| Pin the e2e runner (`ubuntu-24.04`) and add commitlint to CI | needs spec | `<owner>` |
+| Add commitlint to CI (the e2e runner is pinned to `ubuntu-24.04` since 2026-11-16) | needs spec | `<owner>` |
 | Versioned, delimited prompts in the exam reader, test suggester and reviewer, with injection fixtures | needs spec | `<owner>` |
 | Length limits and filtering on stored review output; a `max_tokens` check in the reviewer | needs spec | `<owner>` |
 | Strip comments from student code before the review | needs spec | `<owner>` |
