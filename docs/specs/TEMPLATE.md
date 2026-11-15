@@ -24,6 +24,8 @@ Contexts touched and the dependency direction check. New or changed types in `@o
 
 ## AI (delete if not applicable)
 
+Data sent to the model (fields; anything personal, especially about students, and why it is needed). Before-and-after check (playbook section 6): inputs used and results.
+
 Task, model variable, prompt location, zod schema, estimated cost per call, fallback when the key is missing or the output is invalid.
 
 ## Security

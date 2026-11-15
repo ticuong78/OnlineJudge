@@ -154,7 +154,7 @@ decimal checker), AI gateway with metering, parent consent for minors.
 
 | Topic | Document |
 |---|---|
-| Product behaviour (Vietnamese) | [README.md](../README.md) |
+| Product behaviour and setup (English) | [README.md](../README.md) |
 | User workflows per role | [guide/user-manual.md](guide/user-manual.md) |
 | Test strategy, UAT scripts, release checklist | [testing/test-plan.md](testing/test-plan.md) |
 | Local setup, accounts, sample files | [testing/local-setup.md](testing/local-setup.md) |
