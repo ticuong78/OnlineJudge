@@ -14,6 +14,8 @@ export class ClassroomOrmEntity {
   @Column({ type: 'varchar', length: 20 }) code: string;
   @Index()
   @Column('uuid') teacherId: string;
+  @Index()
+  @Column('uuid', { nullable: true }) organizationId: string | null;
   @Column({ type: 'varchar', length: 12, default: 'ACTIVE' }) status: string;
   @Column('timestamptz', { nullable: true }) archivedAt: Date | null;
   @Index()
@@ -58,6 +60,12 @@ export class TypeOrmClassroomRepository extends ClassroomRepository {
     return (await this.repo.find({ where: { teacherId }, order: { status: 'ASC', name: 'ASC' } })).map(toClassroom);
   }
 
+  async findByOrganizations(organizationIds: string[]) {
+    if (!organizationIds.length) return [];
+    const rows = await this.repo.find({ where: { organizationId: In([...new Set(organizationIds)]) }, order: { status: 'ASC', name: 'ASC' } });
+    return rows.map(toClassroom);
+  }
+
   async findDueForPurge(now: Date) {
     const rows = await this.repo.findBy({ status: 'ARCHIVED', purgeAt: LessThanOrEqual(now) });
     return rows.map(toClassroom);
@@ -69,6 +77,7 @@ export class TypeOrmClassroomRepository extends ClassroomRepository {
       name: c.name,
       code: c.code.value,
       teacherId: c.teacherId,
+      organizationId: c.organizationId,
       status: c.status,
       archivedAt: c.archivedAt,
       purgeAt: c.purgeAt,
@@ -86,6 +95,7 @@ function toClassroom(row: ClassroomOrmEntity): Classroom {
     name: row.name,
     code: ClassCode.of(row.code),
     teacherId: row.teacherId,
+    organizationId: row.organizationId ?? null,
     status: row.status as ClassStatus,
     archivedAt: row.archivedAt,
     purgeAt: row.purgeAt,

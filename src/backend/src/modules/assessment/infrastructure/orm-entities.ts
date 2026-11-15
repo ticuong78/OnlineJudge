@@ -44,6 +44,7 @@ export class SessionOrmEntity {
     feedback: FeedbackMode;
     checkPlagiarism?: boolean;
     checkAiUsage?: boolean;
+    hideTopics?: boolean;
   };
   @Column('uuid') createdById: string;
   @Column({ type: 'varchar', length: 80 }) createdByName: string;
@@ -80,7 +81,7 @@ export class LearningSessionOrmEntity {
   @Column({ type: 'varchar', length: 16 }) type: string;
   @Column('uuid', { nullable: true }) classId: string | null;
   @Column({ type: 'varchar', length: 100, nullable: true }) className: string | null;
-  @Column('jsonb') problems: { key: string; title: string; points: number }[];
+  @Column('jsonb') problems: { key: string; title: string; points: number; tags?: string[] }[];
   @Column('boolean', { default: true }) available: boolean;
   @Column('boolean', { default: false }) classDeleted: boolean;
 }
@@ -96,3 +97,21 @@ export class LearningProgressOrmEntity {
   @Column('timestamptz') lastSubmittedAt: Date;
   @Column('int', { default: 0 }) attempts: number;
 }
+
+/** Learning paths (OJ-24): the steps are part of the aggregate and always loaded with it, so jsonb. */
+@Entity('learning_paths')
+export class LearningPathOrmEntity {
+  @PrimaryColumn('uuid') id: string;
+  @Index()
+  @Column('uuid') ownerId: string;
+  @Column({ type: 'varchar', length: 80 }) ownerName: string;
+  @Column({ type: 'varchar', length: 200 }) title: string;
+  @Column('text', { default: '' }) description: string;
+  @Column({ type: 'varchar', length: 40, nullable: true }) topic: string | null;
+  @Index()
+  @Column('boolean', { default: false }) isPublic: boolean;
+  @Column('jsonb') steps: { sessionId: string; title: string; note: string }[];
+  @Column('timestamptz') createdAt: Date;
+  @Column('timestamptz') updatedAt: Date;
+}
+

@@ -38,7 +38,8 @@ export interface RecordSession {
   type: ProblemSetType;
   classId: string | null;
   className: string | null;
-  problems: { key: string; title: string; points: number }[];
+  /** `tags` (OJ-20) is missing on records written before topics were copied. */
+  problems: { key: string; title: string; points: number; tags?: string[] }[];
   /** false once the session was deleted or its class deleted for good. */
   available: boolean;
   classDeleted: boolean;

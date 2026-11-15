@@ -7,6 +7,7 @@ import { ClaudeClient } from '../../../shared/infrastructure/claude.js';
 import { SmartExamReader, type UploadedFile } from '../application/ports.js';
 import { documentText, type ExamDocument } from '../domain/exam-document.js';
 import { SAMPLE_POINTS } from '../domain/exam-parser.js';
+import { imageMediaType } from '../domain/document-file.js';
 
 const DraftsSchema = z.object({
   problems: z.array(
@@ -60,7 +61,11 @@ export class ClaudeExamReader extends SmartExamReader {
 
   async read(file: UploadedFile, extracted: ExamDocument | null): Promise<ProblemDraftDto[]> {
     const isPdf = file.originalName.toLowerCase().endsWith('.pdf');
-    const source: Anthropic.Beta.BetaContentBlockParam = isPdf
+    // A photo of a problem (OJ-23) is sent as an image; the system prompt's rules apply to what is in it.
+    const image = imageMediaType(file.originalName);
+    const source: Anthropic.Beta.BetaContentBlockParam = image
+      ? { type: 'image', source: { type: 'base64', media_type: image, data: file.buffer.toString('base64') } }
+      : isPdf
       ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: file.buffer.toString('base64') } }
       : { type: 'text', text: `Nội dung đề (trích từ file Word hoặc do giáo viên dán vào, bảng ghi dạng "ô | ô"; số mũ ghi dạng 10^6 hoặc 10^{18}, chỉ số dưới dạng a_i, công thức Word đã đổi sang dạng chữ như (a+b)/2, sqrt(n); đó là đúng nội dung gốc, không cần ghi chú kiểm tra):\n\n${extracted ? documentText(extracted) : ''}` };
 
@@ -69,7 +74,7 @@ export class ClaudeExamReader extends SmartExamReader {
       max_tokens: 16000,
       system: SYSTEM,
       output_config: { effort: 'medium', format: betaZodOutputFormat(DraftsSchema) },
-      messages: [{ role: 'user', content: [source, { type: 'text', text: 'Tách đề trên thành các bài tập.' }] }],
+      messages: [{ role: 'user', content: [source, { type: 'text', text: image ? 'Ảnh trên là ảnh chụp đề. Đọc kỹ chữ trong ảnh rồi tách thành các bài tập; chỗ nào mờ, không chắc thì ghi vào notes.' : 'Tách đề trên thành các bài tập.' }] }],
     });
 
     if (response.stop_reason === 'refusal') throw new Error('Claude declined to read this document');

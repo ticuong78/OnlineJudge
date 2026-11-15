@@ -1,22 +1,14 @@
 'use client';
 
-import { ProblemSetTypeLabels, ProblemSetTypes, type BankScope, type ProblemSetType } from '@oj/contracts';
+import { ProblemSetTypes, type BankScope, type ProblemSetType } from '@oj/contracts';
 import { Plus, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { BankTabs, CopiedFrom, ScopeSwitch, SharingBadge } from '@/components/bank';
 import { RequireRole, STAFF } from '@/components/guards';
-import {
-  Card,
-  EmptyState,
-  ErrorState,
-  inputClass,
-  LinkButton,
-  LoadingState,
-  PageHeader,
-  ProblemSetTypeBadge,
-} from '@/components/ui';
+import { Card, EmptyState, ErrorState, inputClass, LinkButton, PageHeader, ProblemSetTypeBadge, TableSkeleton } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useAsync } from '@/lib/use-async';
@@ -25,6 +17,8 @@ import { cn, storageGet, storageSet } from '@/lib/utils';
 const SCOPE_KEY = 'oj:bankScope';
 
 export default function BankSetsPage() {
+  const t = useTranslations('bank');
+  const tType = useTranslations('enums.problemSetType');
   const { user } = useAuth();
   const [scope, setScopeState] = useState<BankScope>('mine');
   const [type, setType] = useState<ProblemSetType | ''>('');
@@ -32,7 +26,9 @@ export default function BankSetsPage() {
   useEffect(() => {
     const s = storageGet(SCOPE_KEY) as BankScope | null;
     if (s === 'mine' || s === 'public' || s === 'all') setScopeState(s);
-  }, []);
+    // The administrator has no bank of their own: start on everything unless they chose otherwise.
+    else if (user?.role === 'ADMIN') setScopeState('all');
+  }, [user?.role]);
   const setScope = (s: BankScope) => {
     setScopeState(s);
     storageSet(SCOPE_KEY, s);
@@ -50,12 +46,12 @@ export default function BankSetsPage() {
     <RequireRole roles={STAFF}>
       <Container>
         <PageHeader
-          title="Ngân hàng"
-          subtitle="Đề là bộ khung gồm các bài và điểm. Giao đề cho lớp để tạo một phiên làm bài."
+          title={t('title')}
+          subtitle={t('sets.subtitle')}
           actions={
             <LinkButton href="/bank/sets/new">
-              <Plus className="h-4 w-4" />
-              Tạo đề
+              <Plus className="h-4 w-4 shrink-0" />
+              {t('sets.create')}
             </LinkButton>
           }
         />
@@ -65,18 +61,18 @@ export default function BankSetsPage() {
           <ScopeSwitch value={scope} onChange={setScope} />
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input className={cn(inputClass, 'pl-9')} placeholder="Tìm đề theo tên" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input className={cn(inputClass, 'pl-9')} placeholder={t('filters.searchSets')} aria-label={t('filters.searchSets')} value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
           <select
             className={cn(inputClass, 'lg:w-44')}
             value={type}
             onChange={(e) => setType(e.target.value as ProblemSetType | '')}
-            aria-label="Loại đề"
+            aria-label={t('filters.setType')}
           >
-            <option value="">Mọi loại đề</option>
-            {ProblemSetTypes.map((t) => (
-              <option key={t} value={t}>
-                {ProblemSetTypeLabels[t]}
+            <option value="">{t('filters.anySetType')}</option>
+            {ProblemSetTypes.map((pt) => (
+              <option key={pt} value={pt}>
+                {tType(pt)}
               </option>
             ))}
           </select>
@@ -84,16 +80,16 @@ export default function BankSetsPage() {
 
         <Card>
           {loading && !data ? (
-            <LoadingState />
+            <TableSkeleton />
           ) : error ? (
             <div className="p-4">
               <ErrorState message={error} onRetry={reload} />
             </div>
           ) : sets.length === 0 ? (
-            <EmptyState title={scope === 'mine' ? 'Bạn chưa có đề nào' : 'Không có đề phù hợp'}>
+            <EmptyState title={scope === 'mine' ? t('sets.emptyMine') : t('sets.emptyOther')}>
               {scope === 'mine' && (
                 <Link href="/bank/sets/new" className="text-ink-600 hover:underline">
-                  Tạo đề từ các bài trong ngân hàng
+                  {t('sets.createFromBank')}
                 </Link>
               )}
             </EmptyState>
@@ -106,10 +102,8 @@ export default function BankSetsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="font-semibold text-slate-900">{s.title}</div>
                       <div className="flex flex-wrap gap-x-4 text-sm text-slate-500">
-                        <span>
-                          {s.items.length} bài, {s.totalPoints} điểm
-                        </span>
-                        {s.ownerId !== user?.id && <span>Của {s.ownerName}</span>}
+                        <span>{t('countSummary', { count: s.items.length, points: s.totalPoints })}</span>
+                        {s.ownerId !== user?.id && <span>{t('ownedBy', { name: s.ownerName })}</span>}
                         <CopiedFrom src={s.copiedFrom} />
                       </div>
                     </div>

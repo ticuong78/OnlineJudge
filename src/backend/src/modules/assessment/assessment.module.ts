@@ -7,7 +7,7 @@ import { ClassAccess, LearningRecordStore, ProblemCatalog } from './application/
 import { ProblemSetService } from './application/problem-set.service.js';
 import { SessionFacade } from './application/session.facade.js';
 import { SessionService } from './application/session.service.js';
-import { AttemptRepository, ProblemSetRepository, SessionRepository } from './domain/repositories.js';
+import { AttemptRepository, ProblemSetRepository, SessionRepository, LearningPathRepository } from './domain/repositories.js';
 import { CatalogProblemCatalog, ClassroomClassAccess, PublicSetsKeepProblemsPublic } from './infrastructure/adapters.js';
 import { TypeOrmLearningRecordStore } from './infrastructure/learning-record.store.js';
 import {
@@ -17,13 +17,16 @@ import {
   SessionAttemptOrmEntity,
   SessionOrmEntity,
   SessionTestsOrmEntity,
+  LearningPathOrmEntity,
 } from './infrastructure/orm-entities.js';
 import {
   TypeOrmAttemptRepository,
+  TypeOrmLearningPathRepository,
   TypeOrmProblemSetRepository,
   TypeOrmSessionRepository,
 } from './infrastructure/repositories.js';
-import { ProblemSetsController, ProgressController, SessionsController } from './presentation/assessment.controllers.js';
+import { LearningPathsController, PracticeController, ProblemSetsController, ProgressController, SessionsController } from './presentation/assessment.controllers.js';
+import { LearningPathService } from './application/learning-path.service.js';
 
 @Module({
   imports: [
@@ -34,16 +37,19 @@ import { ProblemSetsController, ProgressController, SessionsController } from '.
       SessionAttemptOrmEntity,
       LearningSessionOrmEntity,
       LearningProgressOrmEntity,
+      LearningPathOrmEntity,
     ]),
     CatalogModule,
     ClassroomModule,
     IdentityModule,
   ],
-  controllers: [ProblemSetsController, SessionsController, ProgressController],
+  controllers: [ProblemSetsController, SessionsController, ProgressController, PracticeController, LearningPathsController],
   providers: [
     ProblemSetService,
     SessionService,
     SessionFacade,
+    LearningPathService,
+    { provide: LearningPathRepository, useClass: TypeOrmLearningPathRepository },
     { provide: ProblemSetRepository, useClass: TypeOrmProblemSetRepository },
     { provide: SessionRepository, useClass: TypeOrmSessionRepository },
     { provide: AttemptRepository, useClass: TypeOrmAttemptRepository },

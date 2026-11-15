@@ -8,7 +8,7 @@ export function normalizeClassCode(raw: string) {
   return raw
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
-    .replace(/[đĐ]/g, 'D')
+    .replace(/[\u0111\u0110]/g, 'D') // đ and Đ do not decompose under NFD (i18n-ignore: data)
     .toUpperCase()
     .replace(/[^A-Z0-9-]/g, '')
     .slice(0, 20);

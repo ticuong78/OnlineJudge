@@ -64,8 +64,139 @@
   --color-slate-800: #2c3242;
   --color-slate-900: #232838;
 
+  /* Theme roles (OJ-19): cards and panels, dimmed backdrops, and solid fills that carry white text. */
+  --color-surface: #ffffff;
+  --color-scrim: #232838;
+  --color-ink-solid: #4a2fa0;
+  --color-ink-solid-hover: #3d2687;
+  --color-chalk-solid: #1f6b4a;
+  --color-chalk-solid-hover: #19573d;
+  --color-mark-solid: #c8302a;
+  --color-mark-solid-hover: #a52722;
+
   --radius-control: 6px;
   --radius-panel: 10px;
+}
+
+/* ===================== Dark theme: "bảng đen" (OJ-19, see DESIGN.md "Dark theme") =====================
+ * Chalk-white text on a dark slate-green board. Every scale keeps its name and reverses its lightness: light tints
+ * (50-200, used for backgrounds) become dark tints, dark shades (600-900, used for text) become light. Solid fills
+ * with white text use the -solid tokens instead. Screens only: printing always uses the light theme.
+ */
+@media screen {
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+    --color-paper: #141d19;
+    --color-surface: #1b2621;
+    --color-rule: #34443c;
+    --color-graphite: #e4ebe7;
+    --color-ink: #a898ea;
+    --color-chalk: #79c29f;
+    --color-mark: #ec8f88;
+    --color-scrim: #000000;
+
+    --color-slate-50: #1f2b26;
+    --color-slate-100: #24322b;
+    --color-slate-200: #2e3d36;
+    --color-slate-300: #3d4e46;
+    --color-slate-400: #849690;
+    --color-slate-500: #9cada4;
+    --color-slate-600: #b5c2bb;
+    --color-slate-700: #cbd6d0;
+    --color-slate-800: #dde5e1;
+    --color-slate-900: #edf2ef;
+
+    --color-ink-50: #25213b;
+    --color-ink-100: #2d2650;
+    --color-ink-200: #3d3370;
+    --color-ink-300: #584a9b;
+    --color-ink-400: #7f6fcb;
+    --color-ink-500: #9a8bdf;
+    --color-ink-600: #b2a6ee;
+    --color-ink-700: #c6bdf4;
+    --color-ink-800: #dbd5f9;
+    --color-ink-900: #ebe8fc;
+
+    --color-chalk-50: #172b22;
+    --color-chalk-100: #1b3529;
+    --color-chalk-200: #24493a;
+    --color-chalk-300: #306650;
+    --color-chalk-400: #3f8a69;
+    --color-chalk-500: #58a883;
+    --color-chalk-600: #79c29f;
+    --color-chalk-700: #9bd4b8;
+    --color-chalk-800: #bfe5d1;
+    --color-chalk-900: #def3e8;
+
+    --color-mark-50: #331b1b;
+    --color-mark-100: #432123;
+    --color-mark-200: #5e2b2c;
+    --color-mark-300: #8a3b39;
+    --color-mark-400: #c0534c;
+    --color-mark-500: #e0716a;
+    --color-mark-600: #ec8f88;
+    --color-mark-700: #f3aca6;
+    --color-mark-800: #f8ccc8;
+    --color-mark-900: #fce6e4;
+
+    --color-amber-50: #2e2511;
+    --color-amber-100: #3b2f14;
+    --color-amber-200: #564318;
+    --color-amber-300: #7c5f1d;
+    --color-amber-400: #b38727;
+    --color-amber-500: #d9a53a;
+    --color-amber-600: #e8bb5c;
+    --color-amber-700: #f0cd80;
+    --color-amber-800: #f5dca6;
+    --color-amber-900: #fbefd2;
+
+    --color-sky-50: #13283a;
+    --color-sky-100: #163249;
+    --color-sky-200: #1d4564;
+    --color-sky-700: #a7d0ec;
+    --color-sky-800: #c9e2f4;
+
+    --color-orange-100: #432b13;
+    --color-orange-200: #5f3b17;
+    --color-orange-700: #f2be93;
+
+    --color-purple-100: #36244a;
+    --color-purple-700: #d4bdee;
+
+    --color-ink-solid: #6a50c9;
+    --color-ink-solid-hover: #5a42b0;
+    --color-chalk-solid: #237a52;
+    --color-chalk-solid-hover: #1c6b47;
+    --color-mark-solid: #c03a33;
+    --color-mark-solid-hover: #a8302a;
+  }
+
+  /* highlight.js: its stylesheet is the light GitHub theme; these are the GitHub dark colours. */
+  :root[data-theme='dark'] .hljs {
+    color: #c9d1d9;
+    background: transparent;
+  }
+  :root[data-theme='dark'] :is(.hljs-doctag, .hljs-keyword, .hljs-template-tag, .hljs-template-variable, .hljs-type, .hljs-variable.language_) {
+    color: #ff7b72;
+  }
+  :root[data-theme='dark'] :is(.hljs-title, .hljs-title.class_, .hljs-title.function_) {
+    color: #d2a8ff;
+  }
+  :root[data-theme='dark'] :is(.hljs-attr, .hljs-attribute, .hljs-literal, .hljs-meta, .hljs-number, .hljs-operator, .hljs-variable, .hljs-selector-attr, .hljs-selector-class, .hljs-selector-id) {
+    color: #79c0ff;
+  }
+  :root[data-theme='dark'] :is(.hljs-string, .hljs-regexp, .hljs-meta .hljs-string) {
+    color: #a5d6ff;
+  }
+  :root[data-theme='dark'] :is(.hljs-built_in, .hljs-symbol) {
+    color: #ffa657;
+  }
+  :root[data-theme='dark'] :is(.hljs-comment, .hljs-code, .hljs-formula) {
+    color: #8b949e;
+  }
+  :root[data-theme='dark'] :is(.hljs-name, .hljs-quote, .hljs-selector-tag, .hljs-selector-pseudo) {
+    color: #7ee787;
+  }
 }
 
 html,
@@ -76,11 +207,29 @@ body {
 
 /* The exercise-book grid (ô li): used on the auth page and behind the score mark only. */
 .grid-paper {
-  background-color: #fff;
+  background-color: var(--color-surface);
   background-image:
-    linear-gradient(to right, rgb(203 213 230 / 0.55) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(203 213 230 / 0.55) 1px, transparent 1px);
+    linear-gradient(to right, color-mix(in srgb, var(--color-rule) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--color-rule) 55%, transparent) 1px, transparent 1px);
   background-size: 16px 16px;
+}
+
+/*
+ * Drop-downs look the same in every browser: Safari otherwise draws its own glossy control (a gradient and stacked
+ * arrows) that ignores the theme. The arrow is drawn from the tokens, so it follows light and dark (Safari check, OJ-20).
+ */
+select:not([multiple]) {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--color-slate-500) 50%),
+    linear-gradient(135deg, var(--color-slate-500) 50%, transparent 50%);
+  background-position:
+    calc(100% - 15px) 50%,
+    calc(100% - 10px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 2rem;
 }
 
 /* Visible keyboard focus everywhere. */
@@ -114,6 +263,90 @@ body {
   }
 }
 
+/* ===================== Motion (OJ-17, see DESIGN.md "Motion") =====================
+ * Motion explains a change of state; it never decorates. Entry uses @starting-style (the first frame starts from the
+ * hidden values); exit uses data-state="closing" while usePresence keeps the element mounted. Browsers without
+ * @starting-style simply skip the entry. All of it is made instant by the reduced-motion rule below.
+ */
+:root {
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --duration-1: 120ms;
+  --duration-2: 180ms;
+  --duration-3: 240ms;
+}
+
+.motion-fade {
+  transition: opacity var(--duration-2) var(--ease-standard);
+}
+.motion-rise {
+  transition:
+    opacity var(--duration-2) var(--ease-standard),
+    transform var(--duration-2) var(--ease-standard);
+}
+.motion-drop {
+  transition:
+    opacity var(--duration-2) var(--ease-standard),
+    transform var(--duration-2) var(--ease-standard);
+}
+.motion-toast {
+  transition:
+    opacity var(--duration-2) var(--ease-standard),
+    transform var(--duration-2) var(--ease-standard);
+}
+@starting-style {
+  .motion-fade {
+    opacity: 0;
+  }
+  .motion-rise {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  .motion-drop {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  .motion-toast {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.motion-fade[data-state='closing'],
+.motion-rise[data-state='closing'],
+.motion-drop[data-state='closing'],
+.motion-toast[data-state='closing'] {
+  opacity: 0;
+  transition-duration: var(--duration-1);
+  pointer-events: none;
+}
+.motion-rise[data-state='closing'] {
+  transform: translateY(4px) scale(0.99);
+}
+.motion-toast[data-state='closing'] {
+  transform: translateY(4px);
+}
+/* On phones toasts come from the top (they sit there, clear of the sticky Submit and save bars). */
+@media (max-width: 639.98px) {
+  @starting-style {
+    .motion-toast {
+      transform: translateY(-8px);
+    }
+  }
+  .motion-toast[data-state='closing'] {
+    transform: translateY(-4px);
+  }
+}
+
+/* Navigation progress (OJ-16): grows quickly, then slows, and never reaches the end until the page arrives. */
+.nav-progress {
+  width: 0;
+  animation: nav-progress 8s cubic-bezier(0.08, 0.8, 0.2, 1) forwards;
+}
+@keyframes nav-progress {
+  to {
+    width: 90%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -127,6 +360,11 @@ body {
   .score-ring {
     stroke-dashoffset: 0;
   }
+  /* Still shown, as a static bar: the feedback matters more than the motion. */
+  .nav-progress {
+    animation: none;
+    width: 40%;
+  }
 }
 
 /* Markdown tweaks */
@@ -136,6 +374,17 @@ body {
   --tw-prose-links: var(--color-ink);
   --tw-prose-bold: var(--color-graphite);
   --tw-prose-code: var(--color-graphite);
+  /* The rest of the prose colours follow the tokens too, so Markdown follows the theme. */
+  --tw-prose-lead: var(--color-slate-600);
+  --tw-prose-counters: var(--color-slate-500);
+  --tw-prose-bullets: var(--color-slate-400);
+  --tw-prose-hr: var(--color-rule);
+  --tw-prose-quotes: var(--color-slate-700);
+  --tw-prose-quote-borders: var(--color-rule);
+  --tw-prose-captions: var(--color-slate-500);
+  --tw-prose-kbd: var(--color-graphite);
+  --tw-prose-th-borders: var(--color-rule);
+  --tw-prose-td-borders: var(--color-slate-200);
 }
 .markdown pre {
   background: var(--color-paper);

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import type { IntegrityFlagDetailDto, IntegrityFlagDto, IntegrityFlagStatus } from '@oj/contracts';
 import type { Actor } from '../../../shared/application/actor.js';
-import { AiAccess } from '../../../shared/application/ai-access.js';
+import { aiPeriod, AiQuota } from '../../../shared/application/ai-quota.js';
 import { DomainError } from '../../../shared/domain/domain-error.js';
 import { SUBMISSION_JUDGED, type SubmissionJudgedEvent } from '../../judging/judging.events.js';
 import { fingerprint, similarity } from '../domain/fingerprint.js';
@@ -19,6 +19,7 @@ const MAX_CONCURRENT_CHECKS = 2;
 @Injectable()
 export class IntegrityService {
   private readonly logger = new Logger(IntegrityService.name);
+  private readonly skippedNoted = new Set<string>();
   private running = 0;
   private readonly queue: (() => Promise<void>)[] = [];
 
@@ -27,7 +28,7 @@ export class IntegrityService {
     private readonly submissions: SubmissionSource,
     private readonly sessions: SessionAccess,
     private readonly reviewer: AiUsageReviewer,
-    private readonly ai: AiAccess,
+    private readonly quota: AiQuota,
   ) {}
 
   // ---------- Background checks ----------
@@ -53,30 +54,68 @@ export class IntegrityService {
     if (info.checkPlagiarism && (await this.flags.markChecked(submission.id, 'PLAGIARISM'))) {
       await this.checkPlagiarism(ctx, submission);
     }
-    // The AI review runs only for sessions of an administrator or a VIP teacher (checked now: a downgrade stops it).
-    if (info.checkAiUsage && this.reviewer.available && (await this.ai.allows(info.ownerId))
-      && (await this.flags.markChecked(submission.id, 'AI_USAGE'))) {
-      const review = await this.reviewer.review({ statement: info.statement, language: submission.language, code: submission.code });
-      const flag = IntegrityFlag.aiUsage(ctx, ref(submission), review);
-      if (flag) await this.flags.save(flag);
+    // The AI review counts against the session owner's monthly allowance (OJ-21): VIP, organization AI or admin only,
+    // checked now, so a downgrade stops it. At the limit the review is skipped; the teacher sees it on the usage card.
+    if (info.checkAiUsage && this.reviewer.available) await this.checkAiUsage(ctx, submission, info.ownerId, info.statement);
+  }
+
+  /**
+   * The AI-usage review (OJ-21): only a student's first accepted solution per problem, once, billed to the session
+   * owner's monthly allowance. The dedupe comes first (review C), so a rejudge or a redelivered event never takes a use,
+   * and a student resubmitting cannot spend the teacher's allowance (review A).
+   */
+  private async checkAiUsage(ctx: FlagContext, submission: SubmissionInfo, ownerId: string, statement: string) {
+    if (submission.verdict !== 'AC') return;
+    if (!(await this.flags.markChecked(submission.id, 'AI_USAGE'))) return;
+    const { sessionId, problemKey, userId } = submission;
+    if (!(await this.flags.claimFirstAiReview(sessionId, problemKey, userId))) return;
+    // OJ-28: when no review happens, the claim is given back, so the student's next accepted solution of this problem
+    // is reviewed once the allowance allows it, instead of never.
+    const release = () => this.flags.releaseFirstAiReview(sessionId, problemKey, userId);
+    const reserved = await this.quota.tryReserve(ownerId, 'AI_USAGE_CHECK', { rateLimit: false });
+    if (!('ticket' in reserved)) {
+      await release();
+      return this.noteSkipped(ownerId, reserved.refused, reserved.limit);
     }
+    let review: Awaited<ReturnType<AiUsageReviewer['review']>>;
+    try {
+      review = await this.reviewer.review({ statement, language: submission.language, code: submission.code });
+    } catch (error) {
+      // Only the AI call is refunded: once it answered, the use was spent even if saving the flag fails.
+      await this.quota.refund(reserved.ticket);
+      await release();
+      throw error;
+    }
+    const flag = IntegrityFlag.aiUsage(ctx, ref(submission), review);
+    if (flag) await this.flags.save(flag);
+  }
+
+  /** Logged once per owner, reason and month, not once per skipped submission. */
+  private noteSkipped(ownerId: string, reason: string, limit: number) {
+    const key = skipLogKey(ownerId, reason, new Date());
+    if (this.skippedNoted.has(key)) return;
+    this.skippedNoted.add(key);
+    this.logger.warn(reason === 'quota'
+      ? `AI-usage checks paused for owner ${ownerId}: monthly limit of ${limit} reached`
+      : `AI-usage checks skipped for owner ${ownerId}: the account has no AI-check allowance (${reason})`);
   }
 
   /** Compares with every other participant's submissions of the same problem; flags the closest match. */
   private async checkPlagiarism(ctx: FlagContext, submission: SubmissionInfo) {
-    const mine = fingerprint(submission.code);
+    const mine = fingerprint(submission.code, submission.language);
     if (!mine) return;
     let best: { other: SubmissionInfo; score: number } | null = null;
     for (const other of await this.submissions.ofProblem(submission.sessionId, submission.problemKey)) {
       if (other.userId === submission.userId || other.verdict === 'CE') continue;
-      const theirs = fingerprint(other.code);
+      const theirs = fingerprint(other.code, other.language);
       if (!theirs) continue;
       const score = similarity(mine, theirs);
       if (!best || score > best.score) best = { other, score };
     }
     if (!best) return;
     const flag = IntegrityFlag.plagiarism(ctx, ref(submission), ref(best.other), best.score);
-    if (flag) await this.flags.save(flag);
+    // One flag per pair: the other submission's check may already have flagged it, or be doing so right now (K-11).
+    if (flag) await this.flags.addIfNewPair(flag);
   }
 
   private enqueue(job: () => Promise<void>) {
@@ -176,4 +215,12 @@ function toDto(flag: IntegrityFlag): IntegrityFlagDto {
     acknowledgedAt: s.acknowledgedAt?.toISOString() ?? null,
     acknowledgedByName: s.acknowledgedByName,
   };
+}
+
+/**
+ * Skipped checks are logged once per owner, reason and allowance month. The month is the allowance's (Vietnam time,
+ * `aiPeriod`), not UTC's, so the log restarts exactly when the allowance does (OJ-26).
+ */
+export function skipLogKey(ownerId: string, reason: string, now: Date): string {
+  return `${ownerId}|${reason}|${aiPeriod(now).period}`;
 }

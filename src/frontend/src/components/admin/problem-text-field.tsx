@@ -2,25 +2,25 @@
 
 import {
   fileIoFields,
-  fileIoMessage,
   hasFileIo,
   ioSideOf,
   toStandardIo,
-  ProblemTextFieldLabels,
   type ProblemDraftContent,
   type ProblemTextField,
 } from '@oj/contracts';
 import { AlertTriangle, ArrowRightLeft, RotateCcw, Wand2 } from 'lucide-react';
 import { useRef, useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { api, errorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { useCanUseAi, VipOnly } from '../ai-access';
+import { useAiFeature } from '@/lib/ai-usage';
+import { AiUsesLeft, useAiBlockedReason, VipOnly } from '../ai-access';
 import { MarkdownField } from '../form-fields';
 import { useToast } from '../toast';
 import { Spinner } from '../ui';
 
-/** A section the AI can rewrite. */
-type Section = ProblemTextField;
+/** A section the AI can rewrite: the four text sections and the title (OJ-22). */
+type Section = ProblemTextField | 'title';
 
 /** What one "Dùng gợi ý" switch needs. */
 export interface SectionSuggestion {
@@ -45,6 +45,8 @@ export function useSectionSuggestions(
   sections: Section[],
 ) {
   const toast = useToast();
+  const t = useTranslations('authoring.suggestion');
+  const tf = useTranslations('enums.problemTextField');
   // The teacher's own value of each section while its suggestion is on.
   const [originals, setOriginals] = useState<Partial<Record<Section, string>>>({});
   const [loading, setLoading] = useState<Partial<Record<Section, boolean>>>({});
@@ -72,7 +74,7 @@ export function useSectionSuggestions(
       cache.current.set(key, { text: res.text, notes: res.notes });
       return { problem, ...res };
     } catch (e) {
-      toast.error(`${ProblemTextFieldLabels[s]}: ${errorMessage(e)}`);
+      toast.error(t('failed', { label: tf(s), error: errorMessage(e) }));
       return null;
     } finally {
       setLoading((l) => ({ ...l, [s]: false }));
@@ -125,9 +127,10 @@ export function useSectionSuggestions(
 export function SuggestionSwitch({
   label,
   suggestion,
-  text = 'Dùng gợi ý',
+  text,
   className,
   showLocked = false,
+  showUses = false,
 }: {
   label: string;
   suggestion: SectionSuggestion;
@@ -135,53 +138,72 @@ export function SuggestionSwitch({
   className?: string;
   /** For regular (non-VIP) accounts: show a "VIP only" hint instead of nothing. */
   showLocked?: boolean;
+  /** Show the "uses left" count (the whole-problem switch). Section switches show it only when the uses are gone. */
+  showUses?: boolean;
 }) {
-  const canUseAi = useCanUseAi();
+  const t = useTranslations('authoring.suggestion');
+  // A free teacher has a monthly allowance of rewrites (OJ-21); the switch shows what is left and stops at the limit.
+  const canUseAi = useAiFeature('SECTION').enabled;
+  const blocked = useAiBlockedReason('SECTION');
+  // Blocked only for turning AI on: a switch that is on can always be turned off, also after the last use.
+  const notConfigured = !!blocked && !suggestion.on;
   const { on, loading, toggle, regenerate } = suggestion;
-  if (!canUseAi) return showLocked ? <VipOnly label="Gợi ý AI" className={className} /> : null;
+  if (!canUseAi) return showLocked ? <VipOnly label={t('aiLabel')} className={className} /> : null;
   return (
-    <span className={cn('flex items-center gap-3', className)}>
-      <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-700">
+    <span className={cn('flex flex-wrap items-center gap-x-3 gap-y-1', className)}>
+      {/* The whole label is the tap target (at least 28px high); the switch itself stays small (UAT L2). */}
+      <label
+        className={cn(
+          'flex min-h-8 items-center gap-2 whitespace-nowrap text-xs font-medium text-slate-700',
+          notConfigured ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+        )}
+        title={blocked}
+      >
         <button
           type="button"
           role="switch"
           aria-label={label}
           aria-checked={on}
           aria-busy={loading}
-          disabled={loading}
+          aria-description={blocked}
+          disabled={loading || notConfigured}
           onClick={() => toggle(!on)}
           className={cn(
             'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:cursor-wait',
-            on ? 'bg-chalk-600' : 'bg-slate-300',
+            notConfigured && 'disabled:cursor-not-allowed',
+            on ? 'bg-chalk-solid' : 'bg-slate-300',
           )}
         >
           <span
             className={cn(
-              'inline-block h-4 w-4 rounded-full bg-white transition-transform',
+              'inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
               on ? 'translate-x-[18px]' : 'translate-x-0.5',
             )}
           />
         </button>
-        {loading ? <Spinner className="h-3.5 w-3.5" /> : <Wand2 className="h-3.5 w-3.5 text-ink-600" />}
-        {loading ? 'AI đang viết…' : text}
+        {loading ? <Spinner className="h-3.5 w-3.5 shrink-0" /> : <Wand2 className="h-3.5 w-3.5 shrink-0 text-ink-600" />}
+        {/* In an element, not a bare text node next to the icon: survives browser translation (see Button in ui.tsx). */}
+        <span>{loading ? t('writing') : (text ?? t('use'))}</span>
       </label>
-      {on && !loading && regenerate && (
+      {on && !loading && regenerate && !blocked && (
         <button
           type="button"
           onClick={regenerate}
-          className="flex items-center gap-1 text-xs text-ink-600 hover:underline"
-          title="Nhờ AI viết một phiên bản khác"
+          className="flex items-center gap-1 whitespace-nowrap text-xs text-ink-600 hover:underline"
+          title={t('rewriteTitle')}
         >
-          <RotateCcw className="h-3 w-3" />
-          Viết lại
+          <RotateCcw className="h-3 w-3 shrink-0" />
+          <span>{t('rewrite')}</span>
         </button>
       )}
+      {(showUses || blocked) && <AiUsesLeft feature="SECTION" />}
     </span>
   );
 }
 
 /** Notes from the AI, and how to go back, under a section that uses its suggestion. */
 export function SuggestionNotes({ suggestion }: { suggestion: SectionSuggestion }) {
+  const t = useTranslations('authoring.suggestion');
   if (!suggestion.on) return null;
   return (
     <div className="mt-1 space-y-0.5 text-xs">
@@ -191,7 +213,7 @@ export function SuggestionNotes({ suggestion }: { suggestion: SectionSuggestion 
           {n}
         </p>
       ))}
-      <p className="text-slate-500">Đang dùng gợi ý của AI. Tắt &quot;Dùng gợi ý&quot; để quay lại nội dung gốc.</p>
+      <p className="text-slate-500">{t('inUse')}</p>
     </div>
   );
 }
@@ -210,26 +232,27 @@ export function ProblemTextField({
   rows?: number;
   suggestion: SectionSuggestion;
 }) {
-  const label = ProblemTextFieldLabels[field];
+  const t = useTranslations('authoring');
+  const tf = useTranslations('enums.problemTextField');
+  const label = tf(field);
   const side = ioSideOf(field);
   const fileIo = hasFileIo(value, side);
-  const canUseAi = useCanUseAi();
+  // Without an AI use left, the manual "convert to standard I/O" button is offered, as for accounts without AI.
+  const section = useAiFeature('SECTION');
+  const canUseAi = section.enabled && !section.exhausted;
   return (
     <MarkdownField
       label={label}
       value={value}
       onChange={onChange}
       rows={rows}
-      labelExtra={<SuggestionSwitch label={`Dùng gợi ý cho mục ${label}`} suggestion={suggestion} />}
+      labelExtra={<SuggestionSwitch label={t('suggestion.useFor', { label })} suggestion={suggestion} />}
       below={
         <>
           {fileIo && (
             <p className="mt-2 flex items-start gap-2 rounded-lg border border-mark-200 bg-mark-50 px-3 py-2 text-sm text-mark-700">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>
-                Mục này còn yêu cầu đọc/ghi file nên chưa lưu được: hệ thống chấm đưa dữ liệu qua bàn phím (đầu vào chuẩn) và
-                chấm theo những gì in ra màn hình. Hãy sửa lại, hoặc {canUseAi ? <>bật &quot;Dùng gợi ý&quot;</> : 'bấm "Chuyển sang nhập/xuất chuẩn"'}.
-              </span>
+              <span>{canUseAi ? t('fileIo.fieldAi') : t('fileIo.fieldManual')}</span>
             </p>
           )}
           {fileIo && !canUseAi && (
@@ -238,8 +261,8 @@ export function ProblemTextField({
               onClick={() => onChange(toStandardIo(value, side))}
               className="mt-1 flex items-center gap-1 text-xs font-medium text-ink-600 hover:underline"
             >
-              <ArrowRightLeft className="h-3 w-3" />
-              Chuyển sang nhập/xuất chuẩn
+              <ArrowRightLeft className="h-3 w-3 shrink-0" />
+              <span>{t('fileIo.toStandardIo')}</span>
             </button>
           )}
           <SuggestionNotes suggestion={suggestion} />
@@ -251,6 +274,8 @@ export function ProblemTextField({
 
 /** Explains why the form cannot be submitted, or nothing when it can. */
 export function FileIoBlocker({ problems }: { problems: { label?: string; content: Parameters<typeof fileIoFields>[0] }[] }) {
+  const t = useTranslations('authoring.fileIo');
+  const tf = useTranslations('enums.problemTextField');
   const blocked = problems
     .map((p) => ({ label: p.label, fields: fileIoFields(p.content) }))
     .filter((p) => p.fields.length > 0);
@@ -259,15 +284,14 @@ export function FileIoBlocker({ problems }: { problems: { label?: string; conten
     <div role="alert" className="rounded-lg border border-mark-200 bg-mark-50 px-4 py-3 text-sm text-mark-700">
       <p className="flex items-center gap-2 font-medium">
         <AlertTriangle className="h-4 w-4 shrink-0" />
-        Chưa lưu được vì đề còn yêu cầu đọc/ghi file
+        {t('blockerTitle')}
       </p>
       <ul className="mt-1 max-h-28 list-disc space-y-0.5 overflow-auto pl-10">
-        {blocked.map((b, i) => (
-          <li key={i}>
-            {b.label ? `${b.label}: ` : ''}
-            {fileIoMessage(b.fields)}
-          </li>
-        ))}
+        {blocked.map((b, i) => {
+          // Built here rather than with fileIoMessage from @oj/contracts, which is Vietnamese only (the backend uses it).
+          const message = t('message', { fields: b.fields.map((f) => tf(f)).join(', ') });
+          return <li key={i}>{b.label ? t('labeled', { label: b.label, message }) : message}</li>;
+        })}
       </ul>
     </div>
   );

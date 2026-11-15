@@ -1,4 +1,4 @@
-export type DomainErrorKind = 'validation' | 'not_found' | 'forbidden' | 'conflict' | 'unauthorized';
+export type DomainErrorKind = 'validation' | 'not_found' | 'forbidden' | 'conflict' | 'unauthorized' | 'rate_limited';
 
 /**
  * Errors raised by domain/application code. They carry no HTTP knowledge;
@@ -15,8 +15,8 @@ export class DomainError extends Error {
     super(message);
   }
 
-  static validation(code: string, message: string) {
-    return new DomainError('validation', code, message);
+  static validation(code: string, message: string, details?: Record<string, string>) {
+    return new DomainError('validation', code, message, details);
   }
   static notFound(code: string, message: string) {
     return new DomainError('not_found', code, message);
@@ -29,6 +29,10 @@ export class DomainError extends Error {
   }
   static unauthorized(code: string, message: string) {
     return new DomainError('unauthorized', code, message);
+  }
+  /** Too many attempts; the client may try again after `retryAfterSeconds` (sent as `Retry-After`). */
+  static rateLimited(code: string, message: string, retryAfterSeconds: number, details?: Record<string, string>) {
+    return new DomainError('rate_limited', code, message, { ...details, retryAfterSeconds: String(Math.max(1, Math.ceil(retryAfterSeconds))) });
   }
 }
 

@@ -1,4 +1,15 @@
+import { vi } from '@/i18n/messages/vi';
+import { activeLocale, tr } from '@/i18n/runtime';
 import type {
+  FeaturesDto,
+  AddOrganizationMemberRequest,
+  CreateOrganizationRequest,
+  InviteToOrganizationRequest,
+  OrganizationDetailDto,
+  OrganizationDto,
+  OrganizationInvitationDto,
+  OrganizationRole,
+  UpsertOrganizationRequest,
   CreateProblemRequest,
   AcceptInvitationRequest,
   AddStudentRequest,
@@ -48,6 +59,8 @@ import type {
   SubmissionDetailDto,
   SubmissionDto,
   SubmitRequest,
+  CreateTrialRunRequest,
+  TrialRunDto,
   ProblemSectionSuggestionDto,
   SuggestDraftTestsRequest,
   SuggestProblemSectionRequest,
@@ -64,9 +77,21 @@ import type {
   UpsertSolutionRequest,
   UpsertTestCaseRequest,
   UserDto,
+  AiUsageDto,
+  LearningPathDto,
+  LearningPathPageDto,
+  ListPathsQuery,
+  UpsertLearningPathRequest,
+  PracticeProblemDto,
+  ProblemTagDto,
   VerificationTicketDto,
   VerifyCodeRequest,
 } from '@oj/contracts';
+
+/** Tells the "AI uses left" labels to refresh (lib/ai-usage.ts listens; kept here so the client has no import cycle). */
+function aiUsed() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('oj:ai-used'));
+}
 
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api').replace(/\/+$/, '');
 
@@ -105,7 +130,7 @@ export class ApiError extends Error {
   }
 }
 
-type Query = Record<string, string | number | boolean | null | undefined>;
+type Query = Record<string, string | number | boolean | null | undefined | readonly string[]>;
 
 function buildUrl(path: string, query?: Query) {
   const url = `${API_URL}${path}`;
@@ -113,7 +138,9 @@ function buildUrl(path: string, query?: Query) {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(query)) {
     if (v === undefined || v === null || v === '') continue;
-    params.set(k, String(v));
+    // A list repeats the key (?tag=a&tag=b).
+    if (Array.isArray(v)) v.forEach((item: string) => params.append(k, item));
+    else params.set(k, String(v));
   }
   const qs = params.toString();
   return qs ? `${url}?${qs}` : url;
@@ -140,7 +167,7 @@ async function request<T>(
   try {
     res = await fetch(buildUrl(path, opts.query), { method, headers, body });
   } catch {
-    throw new ApiError('Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại; nếu vẫn lỗi, báo giáo viên.', 0);
+    throw new ApiError(tr()('common.network.offline'), 0, 'network.offline');
   }
 
   if (res.status === 204) return undefined as T;
@@ -158,7 +185,7 @@ async function request<T>(
   if (!res.ok) {
     const err = (data && typeof data === 'object' ? data : {}) as Partial<ApiErrorBody>;
     let message = Array.isArray(err.message) ? err.message.join('; ') : err.message;
-    if (!message) message = typeof data === 'string' && data ? data : `Lỗi ${res.status}`;
+    if (!message) message = typeof data === 'string' && data ? data : tr()('common.network.httpError', { status: res.status });
     if (res.status === 401 && token && typeof window !== 'undefined') {
       setToken(null);
       window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
@@ -172,7 +199,10 @@ export interface ProblemQuery {
   scope?: BankScope;
   search?: string;
   difficulty?: Difficulty | '';
-  tag?: string;
+  /** Topics (OJ-20): problems carrying all of them. */
+  tags?: string[];
+  /** `organization` scope: one of the viewer's organizations (all of them when absent). */
+  organizationId?: string;
   page?: number;
   pageSize?: number;
 }
@@ -194,6 +224,7 @@ export const api = {
   // Auth
   login: (body: LoginRequest) => request<AuthResponse>('POST', '/auth/login', { body }),
   me: () => request<UserDto>('GET', '/auth/me'),
+  features: () => request<FeaturesDto>('GET', '/features'),
   register: (body: RegisterRequest) => request<VerificationTicketDto>('POST', '/auth/register', { body }),
   verifyRegistration: (body: VerifyCodeRequest) => request<AuthResponse>('POST', '/auth/register/verify', { body }),
   resendCode: (body: ResendCodeRequest) =>
@@ -214,8 +245,33 @@ export const api = {
   resendInvitation: (id: string) => request<InvitationDto>('POST', `/users/invitations/${id}/resend`),
   cancelInvitation: (id: string) => request<void>('DELETE', `/users/invitations/${id}`),
 
+  // Organizations (OJ-8)
+  listOrganizations: () => request<OrganizationDto[]>('GET', '/organizations'),
+  getOrganization: (id: string) => request<OrganizationDetailDto>('GET', `/organizations/${id}`),
+  createOrganization: (body: CreateOrganizationRequest) => request<OrganizationDetailDto>('POST', '/organizations', { body }),
+  updateOrganization: (id: string, body: UpsertOrganizationRequest) =>
+    request<OrganizationDetailDto>('PUT', `/organizations/${id}`, { body }),
+  addOrganizationMember: (id: string, body: AddOrganizationMemberRequest) =>
+    request<OrganizationDetailDto>('POST', `/organizations/${id}/members`, { body }),
+  setOrganizationRole: (id: string, userId: string, role: OrganizationRole) =>
+    request<OrganizationDetailDto>('PUT', `/organizations/${id}/members/${userId}/role`, { body: { role } }),
+  /** Removes a teacher; with the caller's own id it means leaving the organization. */
+  removeOrganizationMember: (id: string, userId: string) => request<void>('DELETE', `/organizations/${id}/members/${userId}`),
+  inviteToOrganization: (id: string, body: InviteToOrganizationRequest) =>
+    request<OrganizationInvitationDto>('POST', `/organizations/${id}/invitations`, { body }),
+  cancelOrganizationInvitation: (id: string, invitationId: string) =>
+    request<void>('DELETE', `/organizations/${id}/invitations/${invitationId}`),
+  organizationClasses: (id: string) => request<ClassroomDto[]>('GET', `/organizations/${id}/classes`),
+  myOrganizationInvitations: () => request<OrganizationInvitationDto[]>('GET', '/organization-invitations/mine'),
+  acceptOrganizationInvitation: (id: string) =>
+    request<OrganizationDto>('POST', `/organization-invitations/${id}/accept`),
+  declineOrganizationInvitation: (id: string) => request<void>('POST', `/organization-invitations/${id}/decline`),
+
   // Classes
   listClasses: () => request<ClassroomDto[]>('GET', '/classes'),
+  /** A personal class joins one of the teacher's organizations (one way). */
+  moveClassToOrganization: (id: string, organizationId: string) =>
+    request<ClassroomDto>('PUT', `/classes/${id}/organization`, { body: { organizationId } }),
   getClass: (id: string) => request<ClassroomDto>('GET', `/classes/${id}`),
   createClass: (body: UpsertClassroomRequest) => request<ClassroomDto>('POST', '/classes', { body }),
   updateClass: (id: string, body: UpsertClassroomRequest) => request<ClassroomDto>('PUT', `/classes/${id}`, { body }),
@@ -252,8 +308,11 @@ export const api = {
     request<{ approved: number }>('POST', `/classes/${classId}/requests/approve-all`),
 
   // Problem bank
-  listProblems: (q: ProblemQuery = {}) =>
-    request<Paginated<ProblemSummaryDto>>('GET', '/problems', { query: { ...q } }),
+  listProblems: ({ tags, ...q }: ProblemQuery = {}) =>
+    request<Paginated<ProblemSummaryDto>>('GET', '/problems', { query: { ...q, tag: tags } }),
+  /** Topics and tags in a bank scope with their problem counts (OJ-20). */
+  problemTags: (scope: BankScope = 'mine', organizationId?: string) =>
+    request<ProblemTagDto[]>('GET', '/problems/tags', { query: { scope, organizationId } }),
   getProblem: (id: string) => request<ProblemDetailDto>('GET', `/problems/${id}`),
   createProblem: (body: CreateProblemRequest) => request<ProblemDetailDto>('POST', '/problems', { body }),
   updateProblem: (id: string, body: UpsertProblemRequest) =>
@@ -266,12 +325,15 @@ export const api = {
     request<TestCaseDto>('POST', `/problems/${problemId}/test-cases`, { body }),
   updateTestCase: (problemId: string, testCaseId: string, body: UpsertTestCaseRequest) =>
     request<TestCaseDto>('PUT', `/problems/${problemId}/test-cases/${testCaseId}`, { body }),
+  // AI requests (OJ-21): each one may use a monthly allowance, so the "uses left" labels refresh afterwards.
   suggestDraftTests: (body: SuggestDraftTestsRequest) =>
-    request<TestCaseSuggestionsDto>('POST', '/problems/suggest-tests', { body }),
+    request<TestCaseSuggestionsDto>('POST', '/problems/suggest-tests', { body }).finally(aiUsed),
   suggestProblemSection: (body: SuggestProblemSectionRequest) =>
-    request<ProblemSectionSuggestionDto>('POST', '/problems/suggest-section', { body }),
+    request<ProblemSectionSuggestionDto>('POST', '/problems/suggest-section', { body }).finally(aiUsed),
   suggestTestCases: (problemId: string, body: SuggestTestCasesRequest) =>
-    request<TestCaseSuggestionsDto>('POST', `/problems/${problemId}/test-cases/suggest`, { body }),
+    request<TestCaseSuggestionsDto>('POST', `/problems/${problemId}/test-cases/suggest`, { body }).finally(aiUsed),
+  /** The signed-in teacher's monthly AI allowances (OJ-21). */
+  aiUsage: () => request<AiUsageDto>('GET', '/ai/usage'),
   deleteTestCase: (problemId: string, testCaseId: string) =>
     request<void>('DELETE', `/problems/${problemId}/test-cases/${testCaseId}`),
   saveSolution: (problemId: string, body: UpsertSolutionRequest) =>
@@ -282,9 +344,9 @@ export const api = {
   parseExam: (file: File) => {
     const fd = new FormData();
     fd.append('file', file);
-    return request<ParsedExamDto>('POST', '/imports/parse', { body: fd });
+    return request<ParsedExamDto>('POST', '/imports/parse', { body: fd }).finally(aiUsed);
   },
-  parseExamText: (text: string) => request<ParsedExamDto>('POST', '/imports/parse-text', { body: { text } }),
+  parseExamText: (text: string) => request<ParsedExamDto>('POST', '/imports/parse-text', { body: { text } }).finally(aiUsed),
   confirmImport: (body: ImportProblemsRequest) =>
     request<ImportProblemsResponse>('POST', '/imports/confirm', { body }),
 
@@ -324,6 +386,11 @@ export const api = {
     }),
   getSubmission: (id: string) => request<SubmissionDetailDto>('GET', `/submissions/${id}`),
 
+  // Trial runs on the sample tests (OJ-18): nothing is recorded
+  startTrialRun: (sessionId: string, problemKey: string, body: CreateTrialRunRequest) =>
+    request<TrialRunDto>('POST', `/sessions/${sessionId}/problems/${encodeURIComponent(problemKey)}/trial-runs`, { body }),
+  getTrialRun: (id: string) => request<TrialRunDto>('GET', `/trial-runs/${id}`),
+
   // Integrity checks (staff only)
   listIntegrityFlags: (q: { status?: IntegrityFlagStatus; sessionId?: string } = {}) =>
     request<IntegrityFlagDto[]>('GET', '/integrity-flags', { query: { ...q } }),
@@ -331,6 +398,7 @@ export const api = {
   acknowledgeIntegrityFlag: (id: string) => request<IntegrityFlagDto>('POST', `/integrity-flags/${id}/acknowledge`),
 
   // Class community
+  awaitingThreads: () => request<ThreadSummaryDto[]>('GET', '/threads/awaiting'),
   listThreads: (classId: string, q: { sessionId?: string; problemKey?: string } = {}) =>
     request<ThreadSummaryDto[]>('GET', `/classes/${classId}/threads`, { query: { ...q } }),
   createThread: (classId: string, body: CreateThreadRequest) =>
@@ -343,9 +411,65 @@ export const api = {
 
   // Learning record
   myProgress: () => request<LearningRecordDto>('GET', '/progress/me'),
+  /** Problems of open public sessions, optionally of one topic: practice by topic (OJ-20). */
+  practiceProblems: (topic?: string) => request<PracticeProblemDto[]>('GET', '/practice/problems', { query: { topic } }),
+  // Learning paths (OJ-24)
+  listPaths: (query: ListPathsQuery = {}) => request<LearningPathPageDto>('GET', '/paths', { query: { ...query } }),
+  getPath: (id: string) => request<LearningPathDto>('GET', `/paths/${id}`),
+  createPath: (body: UpsertLearningPathRequest) => request<LearningPathDto>('POST', '/paths', { body }),
+  updatePath: (id: string, body: UpsertLearningPathRequest) => request<LearningPathDto>('PUT', `/paths/${id}`, { body }),
+  deletePath: (id: string) => request<void>('DELETE', `/paths/${id}`),
+  /** Topics of the open practice problems with their counts (OJ-20). */
+  practiceTopics: () => request<ProblemTagDto[]>('GET', '/practice/topics'),
 };
 
+/**
+ * Text to show for a failed call. In Vietnamese the server's own message is used: it is written for users and may name
+ * the exact item. In other languages the stable `code` (K-13) picks a translation from the `errors` dictionary, filled
+ * with the error's `details` (e.g. tries left); field checks (`request.invalid`) are translated message by message. A
+ * code without a translation falls back to the server's message rather than to a vague generic line.
+ */
 export function errorMessage(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  return 'Đã có lỗi xảy ra';
+  if (e instanceof ApiError && activeLocale() !== 'vi') {
+    const translated = translateApiError(e);
+    if (translated) return translated;
+  }
+  if (e instanceof Error && e.message) return e.message;
+  return tr()('common.network.generic');
+}
+
+type ErrorKey = Parameters<ReturnType<typeof tr>>[0];
+const VIETNAMESE = /[\u00C0-\u1EF9]/; // i18n-ignore: detects Vietnamese server text
+
+function translateApiError(e: ApiError): string | null {
+  if (e.code === 'request.invalid' && e.message) {
+    const fields = translateFieldMessages(e.message);
+    if (fields) return fields;
+  }
+  if (!e.code) return null;
+  const key = `errors.${e.code}` as ErrorKey;
+  if (!tr().has(key)) return null;
+  // Numeric details become numbers so ICU plurals work ("1 try left" / "3 tries left").
+  const values = Object.fromEntries(
+    Object.entries(e.details ?? {}).map(([k, v]) => [k, /^\d+$/.test(v) ? Number(v) : v]),
+  );
+  try {
+    const out = tr()(key, values as never);
+    // A message that needs a value the server did not send comes back as its key: use the server text instead.
+    return out === key ? null : out;
+  } catch {
+    return null;
+  }
+}
+
+/** "msg1; msg2" from the validation pipe, each matched against the Vietnamese field messages; null if one is unknown. */
+function translateFieldMessages(message: string): string | null {
+  const known = Object.entries(vi.errors.fields);
+  const parts = message.split('; ').map((part) => {
+    const hit = known.find(([, text]) => text === part);
+    if (hit) return tr()(`errors.fields.${hit[0]}` as ErrorKey);
+    // class-validator's own defaults are English already ("email must be an email"); keep those.
+    return VIETNAMESE.test(part) ? null : part;
+  });
+  return parts.every((p) => p !== null) ? parts.join(' ') : null;
 }

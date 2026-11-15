@@ -40,6 +40,7 @@ export class VerificationOrmEntity {
   @Column({ type: 'varchar', length: 254 }) email: string;
   @Column('jsonb', { default: {} }) payload: VerificationPayload;
   @Column({ type: 'varchar', length: 255 }) codeHash: string;
+  @Column({ type: 'varchar', length: 255, nullable: true }) linkHash: string | null;
   @Column('int', { default: 0 }) attempts: number;
   @Column('timestamptz') expiresAt: Date;
   @Column('timestamptz') lastSentAt: Date;

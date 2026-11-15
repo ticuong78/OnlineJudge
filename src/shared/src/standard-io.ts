@@ -54,11 +54,17 @@ function rules(side: IoSide): [RegExp, string | ((match: string) => string)][] {
     // "Dòng đầu tiên của tệp chứa n" -> "của dữ liệu vào" (or "của kết quả" in the output section)
     [re(`${B}(của|trên)\\s+${FILE}${E}(?:${NAME})?`), (m) => `${m.trim().split(/\s+/)[0]} ${theData}`],
     // A sentence that starts with the file: "File BAUOC.INP gồm một dòng" -> "Dữ liệu vào gồm một dòng"
-    [re(`(?<=^|[.!?]\\s+)${FILE}${NAME}`, 'gimu'), (m) => keepCase(m, isOutputName(m) || side === 'output' ? 'kết quả' : 'dữ liệu vào')],
+    // The lookahead first: the lookbehind scans back over whitespace, and run at every position of a long space run it
+    // was quadratic (OJ-15 F4). Now it only runs where a file word starts.
+    [re(`(?=${FILE})(?<=^|[.!?]\\s+)${FILE}${NAME}`, 'gimu'), (m) => keepCase(m, isOutputName(m) || side === 'output' ? 'kết quả' : 'dữ liệu vào')],
     // Anything left: "file BAI1.INP", "tệp SUM.OUT"
     [re(`${B}${FILE}${NAME}`), ''],
     // Bare file names: "Dữ liệu vào (BAI1.INP):", "Input: input.txt"
-    [re(`\\s*["“(]?${B}(?:[\\p{L}\\d_-]+\\.(?:inp|out|ans)|input\\.txt|output\\.txt)${E}["”)]?`), ''],
+    // Starts only where a whitespace run starts (or at a non-space): from every position inside a long run the leading
+    // \s* rescanned the rest of it, quadratic on a statement of spaces (OJ-15 F4). The leftmost match is the same.
+    // The name is bounded too: a match may also start after each "-" or "_", and an unbounded name then rescanned a
+    // long run of them from every position. Names over 100 characters are no longer read as file names.
+    [re(`(?<!\\s)\\s*["“(]?${B}(?:[\\p{L}\\d_-]{1,100}\\.(?:inp|out|ans)|input\\.txt|output\\.txt)${E}["”)]?`), ''],
   ];
 }
 
@@ -68,8 +74,10 @@ export function toStandardIo(text: string, side: IoSide = 'input'): string {
   for (const [pattern, replacement] of rules(side)) {
     out = out.replace(pattern, replacement as string);
   }
+  // Each space run is matched once, whole, with the punctuation that may follow it (OJ-15 F4: `/[ \t]+([:.,;])/`
+  // restarted at every position of a long run). Same result: " :" becomes ":", other runs are kept, then collapsed.
   return out
-    .replace(/[ \t]+([:.,;])/g, '$1')
+    .replace(/[ \t]+([:.,;])?/g, (run, punctuation?: string) => punctuation ?? run)
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();

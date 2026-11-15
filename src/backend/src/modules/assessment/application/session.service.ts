@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
+import { normalizeTag } from '@oj/contracts';
 import type {
   CreateSessionRequest,
   Language,
   LearningRecordDto,
   MySessionProgressDto,
+  PracticeProblemDto,
+  ProblemSetType,
+  ProblemTagDto,
   SessionAudience,
   SessionDto,
   SessionProblemDto,
@@ -37,7 +41,7 @@ import {
   type SessionSyncPlan,
   type SetItemSnapshot,
 } from '../domain/session.js';
-import { ClassAccess, LearningRecordStore, ProblemCatalog, type ClassInfo, type RecordProgress } from './ports.js';
+import { ClassAccess, LearningRecordStore, ProblemCatalog, type ClassInfo, type RecordProgress, type RecordSession } from './ports.js';
 import { ProblemSetService } from './problem-set.service.js';
 
 export interface ListSessionsQuery {
@@ -61,7 +65,7 @@ export interface JudgeTarget {
   problemTitle: string;
   timeLimitMs: number;
   memoryLimitMb: number;
-  testCases: { id: string; input: string; expectedOutput: string; points: number }[];
+  testCases: { id: string; input: string; expectedOutput: string; points: number; isSample: boolean }[];
   allowedLanguages: Language[];
   maxSubmissions: number | null;
 }
@@ -75,6 +79,11 @@ export interface IntegrityContext {
   problemTitle: string;
   statement: string;
 }
+
+/** The practice-by-topic list is a browsing aid, not an export. */
+export const PRACTICE_PROBLEMS_MAX = 300;
+/** Session types listed by practice by topic: self-study, whose topics are never hidden. */
+const PRACTICE_TYPES: ProblemSetType[] = ['PRACTICE', 'HOMEWORK'];
 
 @Injectable()
 export class SessionService {
@@ -128,6 +137,7 @@ export class SessionService {
       difficulty: p.difficulty,
       points: p.points,
       order: session.snapshot.problems.indexOf(p) + 1,
+      tags: session.topicsVisibleTo(access.canManage, access.state) ? p.tags : [],
       statement: p.statement,
       inputFormat: p.inputFormat,
       outputFormat: p.outputFormat,
@@ -188,6 +198,8 @@ export class SessionService {
       [...sessions.values()].map((s) => s.classId).filter((c): c is string => !!c),
     );
     const hidden = await this.hiddenSessions(actor, [...sessions.values()].filter((s) => s.available).map((s) => s.sessionId));
+    const topicsHidden = await this.topicsHiddenIn(actor, [...sessions.values()]);
+    const topics = new Map<string, { attempted: number; solved: number }>();
 
     type Group = LearningRecordDto['groups'][number];
     const groups = new Map<string, Group>();
@@ -203,6 +215,18 @@ export class SessionService {
       });
       const solved = problems.filter((p) => p.solved).length;
       const completed = solved === problems.length && problems.length > 0;
+      if (!isHidden && !topicsHidden.has(s.sessionId)) {
+        for (const p of s.problems) {
+          const r = mine.find((x) => x.problemKey === p.key);
+          if (!r) continue;
+          for (const tag of p.tags ?? []) {
+            const t = topics.get(tag) ?? { attempted: 0, solved: 0 };
+            t.attempted++;
+            if (r.solvedAt) t.solved++;
+            topics.set(tag, t);
+          }
+        }
+      }
       solvedProblems += solved;
       if (completed) completedSessions++;
 
@@ -234,9 +258,55 @@ export class SessionService {
     const order = { ACTIVE: 0, ARCHIVED: 1, DELETED: 2 } as const;
     return {
       totals: { solvedProblems, completedSessions, startedSessions: sessions.size },
+      topics: [...topics].map(([tag, t]) => ({ tag, ...t })).sort((a, b) => b.attempted - a.attempted || a.tag.localeCompare(b.tag)),
       groups: [...groups.values()].sort((a, b) =>
         (a.classStatus ? order[a.classStatus] : 3) - (b.classStatus ? order[b.classStatus] : 3)),
     };
+  }
+
+  /**
+   * Problems of open public practice sessions (types PRACTICE and HOMEWORK, whose topics are always shown), optionally of
+   * one topic (OJ-20): "practice by topic". Newest sessions first, at most PRACTICE_PROBLEMS_MAX. Tests and exams are
+   * never listed, also not for their manager or an administrator.
+   */
+  async practiceProblems(actor: Actor, topic?: string): Promise<PracticeProblemDto[]> {
+    const wanted = topic ? normalizeTag(topic) : null;
+    const { sessions, solved } = await this.openPractice(actor);
+    const result: PracticeProblemDto[] = [];
+    for (const session of sessions) {
+      for (const p of session.snapshot.problems) {
+        if (wanted && !p.tags.includes(wanted)) continue;
+        result.push({
+          sessionId: session.id, sessionTitle: session.snapshot.title, key: p.key, code: p.code, title: p.title,
+          difficulty: p.difficulty, points: p.points, tags: p.tags, solved: solved.has(`${session.id}/${p.key}`),
+        });
+        if (result.length >= PRACTICE_PROBLEMS_MAX) return result;
+      }
+    }
+    return result;
+  }
+
+  /** Every topic of the open practice problems with how many carry it, uncapped (the list above is capped). */
+  async practiceTopics(actor: Actor): Promise<ProblemTagDto[]> {
+    const counts = new Map<string, number>();
+    for (const session of (await this.openPractice(actor)).sessions) {
+      for (const p of session.snapshot.problems) for (const tag of p.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+    return [...counts].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+  }
+
+  /** Open public practice sessions (the window is filtered in SQL) and the problems the actor solved in them. */
+  private async openPractice(actor: Actor): Promise<{ sessions: Session[]; solved: Set<string> }> {
+    // A session that hides its topics (a mixed review, OJ-24) is never found by topic: that would give the topics away.
+    const sessions = (await this.sessions.list({
+      classIds: [], includeClass: false, includePublic: true, types: PRACTICE_TYPES, openAt: new Date(),
+    })).filter((s) => !s.snapshot.settings.hideTopics);
+    const solved = new Set(
+      (await this.record.progressOfUser(actor.id, sessions.map((s) => s.id)))
+        .filter((r) => r.solvedAt)
+        .map((r) => `${r.sessionId}/${r.problemKey}`),
+    );
+    return { sessions, solved };
   }
 
   // ---------- Commands ----------
@@ -441,6 +511,20 @@ export class SessionService {
   }
 
   /**
+   * What a trial run on the sample tests needs (OJ-18). Allowed exactly when the actor may read the statement (the
+   * samples are in it); only sample tests are returned, so a trial can never reach the hidden tests.
+   */
+  async trialTarget(actor: Actor, sessionId: string, key: string): Promise<JudgeTarget> {
+    const session = await this.load(sessionId);
+    const access = await this.ensureView(actor, session);
+    if (await this.mustStartFirst(actor, session, access)) {
+      throw DomainError.forbidden('assessment.not_started', 'Đây là bài thi có tính giờ. Hãy bấm "Bắt đầu làm bài" để xem đề.');
+    }
+    const target = this.judgeData(session, key, access.canManage);
+    return { ...target, testCases: target.testCases.filter((t) => t.isSample), maxSubmissions: null };
+  }
+
+  /**
    * Current test data of a session problem, without permission checks (used for rejudging).
    * null when the session no longer has that problem (removed by a sync): its submissions are not rejudged.
    */
@@ -482,15 +566,14 @@ export class SessionService {
 
   /** What the actor may see of their own results in these sessions. Deleted sessions: everything. */
   async visibility(actor: Actor, sessionIds: string[]): Promise<Map<string, ResultVisibility>> {
-    const result = new Map<string, ResultVisibility>();
-    for (const id of new Set(sessionIds)) {
-      const session = await this.sessions.findById(id);
-      if (!session) {
-        result.set(id, 'FULL');
-        continue;
-      }
-      const access = await this.access(actor, session);
-      result.set(id, session.visibilityFor(access.canManage, access.state));
+    const ids = [...new Set(sessionIds)];
+    // One listing query and one class lookup per class, not a full load (with every hidden test) per session.
+    const sessions = await this.sessions.findListing(ids);
+    const accesses = await this.accessMany(actor, sessions);
+    const result = new Map<string, ResultVisibility>(ids.map((id) => [id, 'FULL']));
+    for (const session of sessions) {
+      const access = accesses.get(session.id)!;
+      result.set(session.id, session.visibilityFor(access.canManage, access.state));
     }
     return result;
   }
@@ -537,7 +620,7 @@ export class SessionService {
       problemTitle: `${p.key}. ${p.title}`,
       timeLimitMs: p.timeLimitMs,
       memoryLimitMb: p.memoryLimitMb,
-      testCases: p.testCases.map((t, i) => ({ id: `${p.key}-${i + 1}`, input: t.input, expectedOutput: t.expectedOutput, points: t.points })),
+      testCases: p.testCases.map((t, i) => ({ id: `${p.key}-${i + 1}`, input: t.input, expectedOutput: t.expectedOutput, points: t.points, isSample: t.isSample })),
       allowedLanguages: settings.allowedLanguages,
       maxSubmissions: isManager ? null : settings.maxSubmissionsPerProblem,
     };
@@ -557,24 +640,40 @@ export class SessionService {
   }
 
   private async access(actor: Actor, session: Session): Promise<Access> {
-    const { classId, createdBy } = session.snapshot;
+    return (await this.accessMany(actor, [session])).get(session.id)!;
+  }
+
+  /** Access to many sessions at once: one class lookup for all, and the actor's role checked once per class. */
+  private async accessMany(actor: Actor, sessions: Session[]): Promise<Map<string, Access>> {
     const now = new Date();
-    if (!classId) {
-      const canManage = actor.role === 'ADMIN' || actor.id === createdBy.id;
-      const state = session.stateAt(now, true);
-      return { canView: true, canManage, isParticipantNow: state === 'OPEN', state, classInfo: null };
+    const classIds = [...new Set(sessions.map((s) => s.snapshot.classId).filter((id): id is string => !!id))];
+    const classes = classIds.length ? await this.classes.getClasses(classIds) : new Map<string, ClassInfo>();
+    const roles = new Map<string, { canManage: boolean; membership: Awaited<ReturnType<ClassAccess['membership']>> }>();
+    for (const classId of classIds) {
+      const canManage = classes.has(classId) && (await this.classes.canManage(actor, classId));
+      roles.set(classId, { canManage, membership: canManage ? null : await this.classes.membership(actor.id, classId) });
     }
-    const classInfo = (await this.classes.getClasses([classId])).get(classId) ?? null;
-    const canManage = !!classInfo && (await this.classes.canManage(actor, classId));
-    const membership = canManage ? null : await this.classes.membership(actor.id, classId);
-    const state = session.stateAt(now, classInfo?.status === 'ACTIVE');
-    return {
-      canView: canManage || membership !== null,
-      canManage,
-      isParticipantNow: state === 'OPEN' && (canManage || membership === 'current'),
-      state,
-      classInfo,
-    };
+    const result = new Map<string, Access>();
+    for (const session of sessions) {
+      const { classId, createdBy } = session.snapshot;
+      if (!classId) {
+        const canManage = actor.role === 'ADMIN' || actor.id === createdBy.id;
+        const state = session.stateAt(now, true);
+        result.set(session.id, { canView: true, canManage, isParticipantNow: state === 'OPEN', state, classInfo: null });
+        continue;
+      }
+      const classInfo = classes.get(classId) ?? null;
+      const { canManage, membership } = roles.get(classId)!;
+      const state = session.stateAt(now, classInfo?.status === 'ACTIVE');
+      result.set(session.id, {
+        canView: canManage || membership !== null,
+        canManage,
+        isParticipantNow: state === 'OPEN' && (canManage || membership === 'current'),
+        state,
+        classInfo,
+      });
+    }
+    return result;
   }
 
   private async ensureView(actor: Actor, session: Session): Promise<Access> {
@@ -588,6 +687,19 @@ export class SessionService {
     if (!access.canManage) {
       throw DomainError.forbidden('assessment.not_session_manager', 'Chỉ giáo viên phụ trách hoặc người tạo phiên được thao tác với phiên này.');
     }
+  }
+
+  /**
+   * Learning-record sessions whose topics the actor may not see yet: running tests and exams (OJ-20), and practice that
+   * hides its topics (a mixed review, OJ-24). One listing query for all of them.
+   */
+  private async topicsHiddenIn(actor: Actor, records: RecordSession[]): Promise<Set<string>> {
+    const ids = records.filter((r) => r.available).map((r) => r.sessionId);
+    const sessions = await this.sessions.findListing(ids);
+    const accesses = await this.accessMany(actor, sessions);
+    return new Set(
+      sessions.filter((s) => !s.topicsVisibleTo(accesses.get(s.id)!.canManage, accesses.get(s.id)!.state)).map((s) => s.id),
+    );
   }
 
   private async hiddenSessions(actor: Actor, sessionIds: string[]): Promise<Set<string>> {
@@ -610,7 +722,7 @@ export class SessionService {
       type: s.type,
       classId: s.classId,
       className: cls?.name ?? null,
-      problems: s.problems.map((p) => ({ key: p.key, title: p.title, points: p.points })),
+      problems: s.problems.map((p) => ({ key: p.key, title: p.title, points: p.points, tags: p.tags })),
       available: true,
       classDeleted: false,
     });
@@ -623,10 +735,11 @@ export class SessionService {
       this.attempts.findForUser(actor.id, ids),
     ]);
     const now = new Date();
+    const accesses = await this.accessMany(actor, sessions);
     const result: SessionDto[] = [];
     for (const session of sessions) {
       const s = session.snapshot;
-      const access = await this.access(actor, session);
+      const access = accesses.get(session.id)!;
       const attempt = attempts.find((a) => a.sessionId === session.id) ?? null;
       const timed = s.settings.isTimed && !access.canManage;
       const needsStart = timed && !attempt && access.state !== 'CLOSED';
@@ -646,7 +759,10 @@ export class SessionService {
         createdById: s.createdBy.id,
         createdByName: s.createdBy.name,
         totalPoints: session.totalPoints,
-        problems: s.problems.map((p, i) => ({ key: p.key, code: p.code, title: p.title, difficulty: p.difficulty, points: p.points, order: i + 1 })),
+        problems: s.problems.map((p, i) => ({
+          key: p.key, code: p.code, title: p.title, difficulty: p.difficulty, points: p.points, order: i + 1,
+          tags: session.topicsVisibleTo(access.canManage, access.state) ? p.tags : [],
+        })),
         canManage: access.canManage,
         canSubmit: access.isParticipantNow && (!timed || (!!attempt && attempt.isRunning(now))),
         myProgress: myProgress(session, progress.filter((r) => r.sessionId === session.id), session.visibilityFor(access.canManage, access.state)),
@@ -693,6 +809,7 @@ function toSettingsDto(s: SessionSettings): SessionSettingsDto {
     feedback: s.feedback,
     checkPlagiarism: s.checkPlagiarism,
     checkAiUsage: s.checkAiUsage,
+    hideTopics: s.hideTopics,
   };
 }
 

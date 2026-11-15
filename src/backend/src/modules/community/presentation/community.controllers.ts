@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Qu
 import type { ThreadKind } from '@oj/contracts';
 import { IsBoolean, IsIn, IsOptional, IsString, IsUUID, Length, Matches, ValidateIf } from 'class-validator';
 import type { Actor } from '../../../shared/application/actor.js';
-import { CurrentActor } from '../../../shared/presentation/decorators.js';
+import { CurrentActor, Roles } from '../../../shared/presentation/decorators.js';
 import { CommunityService } from '../application/community.service.js';
 
 class CreateThreadBody {
@@ -44,6 +44,13 @@ export class ClassThreadsController {
 @Controller('threads')
 export class ThreadsController {
   constructor(private readonly community: CommunityService) {}
+
+  // Declared before ':id', which would otherwise take "awaiting" as a thread id.
+  @Get('awaiting')
+  @Roles('ADMIN', 'TEACHER')
+  awaiting(@CurrentActor() actor: Actor) {
+    return this.community.awaiting(actor);
+  }
 
   @Get(':id')
   get(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string) {

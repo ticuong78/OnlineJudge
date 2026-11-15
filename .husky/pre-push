@@ -1,0 +1,12 @@
+#!/bin/sh
+# Verification gate: build contracts, then typecheck and test the packages changed since origin/master
+# (all packages when origin/master is not available). Same gate as CI.
+git fetch -q origin master 2>/dev/null || true
+pnpm build:shared || exit 1
+if git rev-parse --verify origin/master >/dev/null 2>&1; then
+  pnpm --filter "...[origin/master]" typecheck || exit 1
+  pnpm --filter "...[origin/master]" test || exit 1
+else
+  pnpm typecheck || exit 1
+  pnpm test || exit 1
+fi

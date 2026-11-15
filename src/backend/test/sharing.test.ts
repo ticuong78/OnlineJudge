@@ -38,12 +38,12 @@ test('a problem used by a public set cannot be made private', async () => {
   checks.register(async (id) => (id === p.id ? 'Bài này đang nằm trong đề công khai "Đề 1".' : null));
   const { service, saved } = setup([p], checks);
 
-  await assert.rejects(service.share(lan, p.id, { isPublic: false, publicTests: false, publicSolution: false }), /đề công khai "Đề 1"/);
+  await assert.rejects(service.share(lan, p.id, { isPublic: false, publicTests: false, publicSolution: false, organizationIds: [] }), /đề công khai "Đề 1"/);
   assert.equal(p.sharing.isPublic, true);
   assert.equal(saved.length, 0);
 
   // Sharing more (or less) of a problem that stays public is fine.
-  await service.share(lan, p.id, { isPublic: true, publicTests: true, publicSolution: false });
+  await service.share(lan, p.id, { isPublic: true, publicTests: true, publicSolution: false, organizationIds: [] });
   assert.equal(p.sharing.publicTests, true);
 });
 
@@ -52,7 +52,7 @@ test('a problem no public set uses can be made private', async () => {
   const checks = new UnshareChecks();
   checks.register(async () => null);
   const { service } = setup([p], checks);
-  await service.share(lan, p.id, { isPublic: false, publicTests: false, publicSolution: false });
+  await service.share(lan, p.id, { isPublic: false, publicTests: false, publicSolution: false, organizationIds: [] });
   assert.equal(p.sharing.isPublic, false);
 });
 

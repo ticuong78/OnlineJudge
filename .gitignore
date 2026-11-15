@@ -8,3 +8,10 @@ coverage/
 .turbo/
 .vercel/
 backups/
+# End-to-end test output
+.next-e2e/
+test-results/
+playwright-report/
+e2e/.state/
+# macOS Finder metadata
+.DS_Store

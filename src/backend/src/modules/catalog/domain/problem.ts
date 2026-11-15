@@ -1,7 +1,7 @@
-import { Difficulties, fileIoFields, fileIoMessage, Languages, type Difficulty, type Language } from '@oj/contracts';
+import { clipTag, Difficulties, fileIoFields, fileIoMessage, Languages, MAX_TAG_LENGTH, normalizeTag, type Difficulty, type Language } from '@oj/contracts';
 import { AggregateRoot, newId, type DomainEvent } from '../../../shared/domain/aggregate-root.js';
 import { assert, DomainError } from '../../../shared/domain/domain-error.js';
-import type { Actor } from '../../../shared/application/actor.js';
+import { isOrgMember, type Actor } from '../../../shared/application/actor.js';
 import { PROBLEM_DELETED, type ProblemDeletedEvent } from '../catalog.events.js';
 
 const MAX_TEST_CASES = 200;
@@ -40,8 +40,10 @@ function validContent(content: ProblemContent): ProblemContent {
   const title = content.title.trim();
   assert(title.length >= 1 && title.length <= 200, 'catalog.invalid_title', 'Tên bài phải từ 1 đến 200 ký tự.');
   assert(Difficulties.includes(content.difficulty), 'catalog.invalid_difficulty', 'Mức độ khó không hợp lệ.');
-  const tags = [...new Set(content.tags.map((t) => t.trim().toLowerCase()).filter(Boolean))];
+  // Standard topics in any spelling become their id ("Quy hoạch động" -> "dp"); other tags stay as written (OJ-20).
+  const tags = [...new Set(content.tags.map(normalizeTag).filter(Boolean))];
   assert(tags.length <= 20, 'catalog.too_many_tags', 'Tối đa 20 thẻ.');
+  assert(tags.every((t) => t.length <= MAX_TAG_LENGTH), 'catalog.tag_too_long', `Mỗi thẻ tối đa ${MAX_TAG_LENGTH} ký tự.`);
   // Programs are judged on standard input/output only.
   const fileFields = fileIoFields(content);
   assert(!fileFields.length, 'catalog.file_io', fileIoMessage(fileFields));
@@ -91,20 +93,34 @@ export class TestCase {
  * How much of a blueprint is visible outside its owner's bank.
  * Hidden tests and the solution can only be shared together with the statement.
  */
+export const MAX_SHARED_ORGANIZATIONS = 20;
+
+/**
+ * Public sharing (statement, then optionally hidden tests and the solution) and sharing with organizations (OJ-8):
+ * teachers of `organizationIds` see the whole problem. The two are independent.
+ */
 export class Sharing {
   private constructor(
     readonly isPublic: boolean,
     readonly publicTests: boolean,
     readonly publicSolution: boolean,
+    readonly organizationIds: readonly string[],
   ) {}
 
-  static of(isPublic: boolean, publicTests: boolean, publicSolution: boolean): Sharing {
+  static of(isPublic: boolean, publicTests: boolean, publicSolution: boolean, organizationIds: readonly string[] = []): Sharing {
     assert(isPublic || (!publicTests && !publicSolution), 'catalog.invalid_sharing',
       'Chỉ có thể chia sẻ test hoặc lời giải khi đề bài đã công khai.');
-    return new Sharing(isPublic, publicTests, publicSolution);
+    const orgs = [...new Set(organizationIds)];
+    assert(orgs.length <= MAX_SHARED_ORGANIZATIONS, 'catalog.too_many_organizations',
+      `Chỉ chia sẻ được với tối đa ${MAX_SHARED_ORGANIZATIONS} tổ chức.`);
+    return new Sharing(isPublic, publicTests, publicSolution, orgs);
   }
 
-  static readonly private = new Sharing(false, false, false);
+  static readonly private = new Sharing(false, false, false, []);
+
+  withoutOrganization(organizationId: string): Sharing {
+    return new Sharing(this.isPublic, this.publicTests, this.publicSolution, this.organizationIds.filter((id) => id !== organizationId));
+  }
 }
 
 export interface Owner {
@@ -202,17 +218,23 @@ export class Problem extends AggregateRoot {
     return this.isOwnedBy(actor) || actor.role === 'ADMIN';
   }
 
-  /** Staff can browse public blueprints; students never see blueprints directly. */
-  canView(actor: Actor): boolean {
-    return this.canEdit(actor) || (this.state.sharing.isPublic && actor.role !== 'STUDENT');
+  /** Teachers of an organization the problem is shared with (OJ-8). Students are never members. */
+  isSharedWith(actor: Actor): boolean {
+    return actor.role === 'TEACHER' && this.state.sharing.organizationIds.some((id) => isOrgMember(actor, id));
   }
 
+  /** Staff can browse public blueprints and those shared with their organizations; students never see blueprints. */
+  canView(actor: Actor): boolean {
+    return this.canEdit(actor) || (this.state.sharing.isPublic && actor.role !== 'STUDENT') || this.isSharedWith(actor);
+  }
+
+  /** Organization colleagues see the whole problem; others only what is shared publicly. */
   canSeeHiddenTests(actor: Actor): boolean {
-    return this.canEdit(actor) || (this.canView(actor) && this.state.sharing.publicTests);
+    return this.canEdit(actor) || this.isSharedWith(actor) || (this.canView(actor) && this.state.sharing.publicTests);
   }
 
   canSeeSolution(actor: Actor): boolean {
-    return this.canEdit(actor) || (this.canView(actor) && this.state.sharing.publicSolution);
+    return this.canEdit(actor) || this.isSharedWith(actor) || (this.canView(actor) && this.state.sharing.publicSolution);
   }
 
   ensureEditableBy(actor: Actor): void {
@@ -239,7 +261,10 @@ export class Problem extends AggregateRoot {
   copyFor(actor: Actor, seq: number): Problem {
     if (!this.canView(actor)) throw DomainError.notFound('catalog.problem_not_found', 'Không tìm thấy bài tập.');
     const withTests = this.canSeeHiddenTests(actor);
-    const copy = Problem.create(seq, { id: actor.id, name: actor.name }, { ...this.state.content }, this.state.limits);
+    // Tags saved before the 40-character limit are cut rather than refused: copying (also of a whole set, and when a
+    // teacher leaves an organization) must never fail on a tag the copier did not write (OJ-20 review).
+    const content = { ...this.state.content, tags: this.state.content.tags.map(clipTag) };
+    const copy = Problem.create(seq, { id: actor.id, name: actor.name }, content, this.state.limits);
     copy.state.copiedFrom = { id: this.id, code: this.code, ownerName: this.state.owner.name };
     for (const t of this.state.testCases) {
       if (withTests || t.data.isSample) copy.addTestCase({ ...t.data });

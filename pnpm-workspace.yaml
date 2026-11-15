@@ -3,3 +3,6 @@ packages:
 allowBuilds:
   esbuild: true
   msgpackr-extract: true
+overrides:
+  # monaco-editor pins dompurify 3.4.15 (GHSA-c6gr-qvv4-5v3f critical, plus high/low advisories); 3.4.17 has the fixes.
+  dompurify: ">=3.4.17 <4"

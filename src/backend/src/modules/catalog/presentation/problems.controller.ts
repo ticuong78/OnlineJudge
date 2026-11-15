@@ -5,6 +5,7 @@ import { ProblemService } from '../application/problem.service.js';
 import {
   CreateProblemBody,
   ProblemListQuery,
+  ProblemTagsQuery,
   SharingBody,
   SuggestDraftTestsBody,
   SuggestSectionBody,
@@ -22,7 +23,14 @@ export class ProblemsController {
 
   @Get()
   list(@CurrentActor() actor: Actor, @Query() query: ProblemListQuery) {
-    return this.problems.list(actor, { ...query, scope: query.scope ?? 'mine' });
+    const { tag, ...rest } = query;
+    return this.problems.list(actor, { ...rest, tags: tag, scope: query.scope ?? 'mine' });
+  }
+
+  /** Topics and other tags in a bank scope, with how many problems carry each (OJ-20). Before ':id'. */
+  @Get('tags')
+  tags(@CurrentActor() actor: Actor, @Query() query: ProblemTagsQuery) {
+    return this.problems.tagCounts(actor, query.scope ?? 'mine', query.organizationId);
   }
 
   /** AI rewrite of one section of the problem being written (saved or not); nothing is saved. */

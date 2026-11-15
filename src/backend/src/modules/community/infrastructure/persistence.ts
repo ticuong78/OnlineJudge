@@ -50,6 +50,19 @@ export class TypeOrmThreadRepository extends ThreadRepository {
     return rows.map(toDomain);
   }
 
+  async listAwaitingQuestions(classIds: string[], limit: number) {
+    if (classIds.length === 0) return [];
+    const q = this.repo
+      .createQueryBuilder('t')
+      .where('t.kind = :kind', { kind: 'QUESTION' })
+      .andWhere("t.author ->> 'role' = :role", { role: 'STUDENT' })
+      // Same rule as Thread.awaitsAnswer: no reply yet from anyone who is not a student.
+      .andWhere(`NOT jsonb_path_exists(t.replies, '$[*] ? (@.author.role != "STUDENT")')`)
+      .andWhere('t.classId IN (:...classIds)', { classIds });
+    const rows = await q.orderBy('t.createdAt', 'DESC').addOrderBy('t.id', 'ASC').take(limit).getMany();
+    return rows.map(toDomain);
+  }
+
   async save(thread: Thread) {
     const s = thread.snapshot;
     await this.repo.save({

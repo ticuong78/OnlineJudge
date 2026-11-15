@@ -1,10 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import type { Role } from '@oj/contracts';
-import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
-import type { Actor } from '../../../shared/application/actor.js';
-import { PasswordHasher, TokenService } from '../application/ports.js';
+import { PasswordHasher, TokenService, type TokenClaims } from '../application/ports.js';
+import type { User } from '../domain/user.js';
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 
@@ -32,16 +31,23 @@ export class JwtTokenService extends TokenService {
     super();
   }
 
-  issue(actor: Actor) {
-    return this.jwt.signAsync({ sub: actor.id, role: actor.role, name: actor.name });
+  issue(user: User) {
+    return this.jwt.signAsync({ sub: user.id, role: user.role, name: user.displayName, cv: this.credentialOf(user) });
   }
 
-  async verify(token: string): Promise<Actor | null> {
+  async verify(token: string): Promise<TokenClaims | null> {
     try {
-      const payload = await this.jwt.verifyAsync<{ sub: string; role: Role; name: string }>(token);
-      return { id: payload.sub, role: payload.role, name: payload.name };
+      const payload = await this.jwt.verifyAsync<{ sub?: string; cv?: string }>(token);
+      if (!payload.sub || !payload.cv) return null;
+      return { userId: payload.sub, credential: payload.cv };
     } catch {
       return null;
     }
+  }
+
+  credentialOf(user: User): string {
+    // Derived from the password hash, so no extra column is needed and nothing secret is exposed:
+    // 64 bits of a SHA-256 of the hash tell nothing about the password.
+    return createHash('sha256').update(user.passwordHash).digest('hex').slice(0, 16);
   }
 }

@@ -2,7 +2,6 @@
 
 import {
   Difficulties,
-  DifficultyLabels,
   fileIoFields,
   type Difficulty,
   type ParsedExamDto,
@@ -21,6 +20,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState, type DragEvent } from 'react';
+import { useTranslations } from 'use-intl';
+import { useAiFeature } from '@/lib/ai-usage';
 import { Container } from '@/components/app-shell';
 import {
   FileIoBlocker,
@@ -29,12 +30,13 @@ import {
   useSectionSuggestions,
 } from '@/components/admin/problem-text-field';
 import { TestListEditor } from '@/components/admin/test-list-editor';
-import { useCanUseAi } from '@/components/ai-access';
+import { AiUsesLeft, useAiNotConfigured } from '@/components/ai-access';
 import { RequireRole, STAFF } from '@/components/guards';
 import { useToast } from '@/components/toast';
 import { Badge, Button, Card, Field, InlineAlert, inputClass, LinkButton, PageHeader, Spinner } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { intlTag } from '@/i18n/runtime';
 
 const MAX_SIZE = 10 * 1024 * 1024;
 const MAX_TEXT = 100_000;
@@ -46,27 +48,26 @@ interface DraftState extends ProblemDraftDto {
 
 /** Calm progress while the server reads the file (AI reading can take 20–60 seconds). */
 function ParsingProgress() {
+  const t = useTranslations('authoring.import.progress');
   const [secs, setSecs] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setSecs((s) => s + 1), 1000);
     return () => clearInterval(t);
   }, []);
-  const hint =
-    secs < 8
-      ? 'Đang tải file lên và đọc nội dung.'
-      : secs < 30
-        ? 'Đang tách từng bài, ví dụ và giới hạn. Đọc bằng AI thường mất 20 đến 60 giây.'
-        : 'Đề dài nên cần thêm chút thời gian. Bạn cứ để trang mở.';
+  const hint = secs < 8 ? t('uploading') : secs < 30 ? t('splitting') : t('long');
   return (
     <div role="status" aria-live="polite">
-      <p className="font-medium text-slate-700">Đang đọc đề…</p>
+      <p className="font-medium text-slate-700">{t('title')}</p>
       <p className="mt-1 text-sm text-slate-500">{hint}</p>
-      <p className="mt-1 text-xs text-slate-400 tabular-nums">{secs} giây</p>
+      <p className="mt-1 text-xs text-slate-500 tabular-nums">{t('seconds', { secs })}</p>
     </div>
   );
 }
 
 function Dropzone({ onFile, busy }: { onFile: (f: File) => void; busy: boolean }) {
+  const t = useTranslations('authoring.import');
+  // Photos of a problem (OJ-23) are read by AI only: VIP and organizations, while a use is left this month.
+  const photos = useAiFeature('IMAGE_IMPORT');
   const [over, setOver] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   const onDrop = (e: DragEvent) => {
@@ -86,14 +87,14 @@ function Dropzone({ onFile, busy }: { onFile: (f: File) => void; busy: boolean }
       onClick={() => !busy && ref.current?.click()}
       className={cn(
         'flex cursor-pointer flex-col items-center justify-center gap-3 rounded-panel border-2 border-dashed px-6 py-16 text-center transition',
-        over ? 'border-ink-500 bg-ink-50' : 'border-slate-300 bg-white hover:border-ink-400 hover:bg-slate-50',
+        over ? 'border-ink-500 bg-ink-50' : 'border-slate-300 bg-surface hover:border-ink-400 hover:bg-slate-50',
         busy && 'pointer-events-none opacity-70',
       )}
     >
       <input
         ref={ref}
         type="file"
-        accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        accept=".docx,.pdf,.png,.jpg,.jpeg,.webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg,image/webp"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -112,8 +113,12 @@ function Dropzone({ onFile, busy }: { onFile: (f: File) => void; busy: boolean }
             <Upload className="h-6 w-6" />
           </span>
           <div>
-            <p className="font-medium text-slate-800">Kéo thả file đề vào đây hoặc bấm để chọn</p>
-            <p className="text-sm text-slate-500">Hỗ trợ .docx và .pdf, tối đa 10MB</p>
+            <p className="font-medium text-slate-800">{t('drop')}</p>
+            <p className="text-sm text-slate-500">{t('dropHint')}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {photos.enabled ? t('photoHint') : t('photoVip')}
+              {photos.enabled && <AiUsesLeft feature="IMAGE_IMPORT" className="ml-2" />}
+            </p>
           </div>
         </>
       )}
@@ -122,12 +127,14 @@ function Dropzone({ onFile, busy }: { onFile: (f: File) => void; busy: boolean }
 }
 
 /** Exam text pasted instead of a file; read the same way as an uploaded document. */
-function PasteBox({ onSubmit, busy }: { onSubmit: (text: string) => void; busy: boolean }) {
+/** `ai`: whether this reading will use AI (a use left this month); otherwise the button says it splits by template. */
+function PasteBox({ onSubmit, busy, ai }: { onSubmit: (text: string) => void; busy: boolean; ai: boolean }) {
+  const t = useTranslations('authoring.import.paste');
   const [text, setText] = useState('');
   const tooLong = text.length > MAX_TEXT;
   if (busy) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 rounded-panel border border-slate-200 bg-white px-6 py-16 text-center">
+      <div className="flex flex-col items-center justify-center gap-3 rounded-panel border border-slate-200 bg-surface px-6 py-16 text-center">
         <Spinner className="h-8 w-8" />
         <ParsingProgress />
       </div>
@@ -135,26 +142,23 @@ function PasteBox({ onSubmit, busy }: { onSubmit: (text: string) => void; busy: 
   }
   return (
     <Card className="space-y-3 p-4">
-      <p className="text-sm text-slate-600">
-        Dán nội dung đề (một hoặc nhiều bài) từ Word, trang web hay tin nhắn. AI sẽ tách từng bài và sắp xếp lại thành đề bài,
-        dữ liệu vào, kết quả, ràng buộc và ví dụ, giống như khi tải file lên.
-      </p>
+      <p className="text-sm text-slate-600">{t('intro')}</p>
       <textarea
         className={cn(inputClass, 'h-auto min-h-[16rem] py-2 font-mono text-sm')}
         rows={14}
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder={'Bài 1. Tổng hai số\nCho hai số nguyên a, b. Tính a + b.\nDữ liệu vào: một dòng chứa a, b.\nKết quả: in ra a + b.\nVí dụ: ...'}
-        aria-label="Nội dung đề"
+        placeholder={t('placeholder')}
+        aria-label={t('label')}
       />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className={cn('text-xs tabular-nums', tooLong ? 'text-mark-600' : 'text-slate-500')}>
-          {text.length.toLocaleString('vi-VN')} / {MAX_TEXT.toLocaleString('vi-VN')} ký tự
-          {tooLong && ' (quá dài, hãy chia thành nhiều lần)'}
+          {t('counter', { count: text.length.toLocaleString(intlTag()), max: MAX_TEXT.toLocaleString(intlTag()) })}
+          {tooLong && t('tooLong')}
         </span>
         <Button onClick={() => onSubmit(text)} disabled={!text.trim() || tooLong}>
-          <Sparkles className="h-4 w-4" />
-          Tái cấu trúc bằng AI
+          {ai && <Sparkles className="h-4 w-4" />}
+          {ai ? t('submit') : t('submitBasic')}
         </Button>
       </div>
     </Card>
@@ -170,67 +174,74 @@ function DraftCard({
   d: DraftState;
   update: (patch: Partial<DraftState>) => void;
 }) {
-  const samples = d.tests.filter((t) => t.isSample);
+  const t = useTranslations('authoring.import.draft');
+  const td = useTranslations('enums.difficulty');
+  const samples = d.tests.filter((test) => test.isSample);
   const suggestions = useSectionSuggestions({ ...d, samples }, (patch) => update(patch), [
     'statement',
     'inputFormat',
     'outputFormat',
     'constraints',
   ]);
+  // The title's own switch (OJ-22), outside the whole-problem one.
+  const titleSuggestion = useSectionSuggestions({ ...d, samples }, (patch) => update(patch), ['title']);
+  const ta = useTranslations('authoring');
   return (
     <Card className={cn('overflow-hidden', !d.include && 'opacity-60')}>
       <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3">
-        <label className="flex items-center gap-2">
+        <label className="flex shrink-0 items-center gap-2 whitespace-nowrap">
           <input
             type="checkbox"
             className="h-4 w-4"
             checked={d.include}
             onChange={(e) => update({ include: e.target.checked })}
           />
-          <span className="text-sm font-semibold text-slate-500">Bài {index + 1}</span>
+          <span className="text-sm font-semibold text-slate-500">{t('problemN', { n: index + 1 })}</span>
         </label>
         <input
           className={cn(inputClass, 'min-w-48 flex-1 font-medium')}
           value={d.title}
           onChange={(e) => update({ title: e.target.value })}
-          placeholder="Tên bài"
+          placeholder={t('titlePlaceholder')}
         />
+        <SuggestionSwitch label={ta('suggestion.useFor', { label: t('titlePlaceholder') })} suggestion={titleSuggestion.of('title')} text={ta('suggestion.titleShort')} />
         <select
           className={cn(inputClass, 'w-36')}
           value={d.difficulty}
           onChange={(e) => update({ difficulty: e.target.value as Difficulty })}
-          aria-label="Độ khó"
+          aria-label={t('difficulty')}
         >
           {Difficulties.map((x) => (
             <option key={x} value={x}>
-              {DifficultyLabels[x]}
+              {td(x)}
             </option>
           ))}
         </select>
         <button
           type="button"
           onClick={() => update({ open: !d.open })}
-          className="flex items-center gap-1 text-sm text-slate-600 hover:text-ink-600"
+          className="flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-slate-600 hover:text-ink-600"
         >
-          {d.open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          {d.open ? 'Thu gọn' : 'Chỉnh sửa chi tiết'}
+          {d.open ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+          <span key={d.open ? 'open' : 'closed'}>{d.open ? t('collapse') : t('expand')}</span>
         </button>
         <SuggestionSwitch
-          label={`Dùng gợi ý của AI cho tất cả các mục của bài ${index + 1}`}
-          text="Dùng gợi ý cho cả bài"
+          label={t('suggestAllLabel', { n: index + 1 })}
+          text={t('suggestAllText')}
           suggestion={suggestions.all}
           className="ml-auto"
           showLocked
+          showUses
         />
       </div>
 
       {d.include && fileIoFields(d).length > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-b border-mark-200 bg-mark-50 px-4 py-2 text-sm text-mark-700">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          Đề còn yêu cầu đọc/ghi file nên chưa nhập được.
+          <span className="min-w-0">{t('fileIo')}</span>
           {!d.open && (
             <button type="button" className="font-medium underline" onClick={() => update({ open: true })}>
-              Mở để sửa hoặc dùng gợi ý
+              {t('openToFix')}
             </button>
           )}
         </div>
@@ -248,15 +259,15 @@ function DraftCard({
 
       {!d.open ? (
         <div className="px-4 py-3 text-sm text-slate-600">
-          <p className="line-clamp-2">{d.statement || <i className="text-slate-400">(chưa có nội dung đề)</i>}</p>
+          <p className="line-clamp-2">{d.statement || <i className="text-slate-500">{t('noStatement')}</i>}</p>
           <p className="mt-1 text-xs text-slate-500">
-            {d.timeLimitMs} ms, {d.memoryLimitMb} MB, {d.tests.length} test ({samples.length} ví dụ)
+            {t('summary', { time: d.timeLimitMs, memory: d.memoryLimitMb, tests: d.tests.length, samples: samples.length })}
           </p>
         </div>
       ) : (
         <div className="space-y-4 p-4">
           <div className="grid grid-cols-2 gap-3 md:w-80">
-            <Field label="Thời gian (ms)">
+            <Field label={t('timeLimit')}>
               <input
                 type="number"
                 className={inputClass}
@@ -264,7 +275,7 @@ function DraftCard({
                 onChange={(e) => update({ timeLimitMs: Number(e.target.value) })}
               />
             </Field>
-            <Field label="Bộ nhớ (MB)">
+            <Field label={t('memoryLimit')}>
               <input
                 type="number"
                 className={inputClass}
@@ -304,7 +315,12 @@ function DraftCard({
 }
 
 export default function ImportPage() {
-  const canUseAi = useCanUseAi();
+  const t = useTranslations('authoring.import');
+  const tCommon = useTranslations('common');
+  // AI reading has a monthly allowance for free teachers (OJ-21); without a use left the basic reader is used.
+  const importAi = useAiFeature('IMPORT');
+  const canUseAi = importAi.enabled && !importAi.exhausted;
+  const aiNotConfigured = useAiNotConfigured();
   const toast = useToast();
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -318,8 +334,8 @@ export default function ImportPage() {
   const onFile = async (f: File) => {
     setError(null);
     const ext = f.name.split('.').pop()?.toLowerCase();
-    if (ext !== 'docx' && ext !== 'pdf') return setError('File này không đọc được. Hãy chọn file .docx hoặc .pdf.');
-    if (f.size > MAX_SIZE) return setError('File lớn hơn 10MB. Hãy tách đề thành file nhỏ hơn rồi tải lại.');
+    if (ext !== 'docx' && ext !== 'pdf') return setError(t('badFile'));
+    if (f.size > MAX_SIZE) return setError(t('tooLarge'));
     await read(() => api.parseExam(f));
   };
 
@@ -335,7 +351,7 @@ export default function ImportPage() {
       setParsed(res);
       setDrafts(res.drafts.map((d, i) => ({ ...d, include: true, open: i === 0 })));
       setCreated(null);
-      if (res.drafts.length === 0) toast.info('Chưa tách được bài nào. Xem văn bản trích xuất ở cuối trang, hoặc thêm bài thủ công.');
+      if (res.drafts.length === 0) toast.info(t('nothingFound'));
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -348,7 +364,7 @@ export default function ImportPage() {
 
   const confirm = async () => {
     const bad = included.find((d) => !d.title.trim());
-    if (bad) return toast.error('Có bài chưa có tên. Điền tên cho các bài đã chọn rồi nhập lại.');
+    if (bad) return toast.error(t('missingTitle'));
     if (blocked) return;
     setImporting(true);
     try {
@@ -358,7 +374,7 @@ export default function ImportPage() {
       }));
       const res = await api.confirmImport({ drafts: payload });
       setCreated(res.problemIds.map((id, i) => ({ id, title: payload[i]?.title ?? id })));
-      toast.success(`Đã nhập ${res.problemIds.length} bài`);
+      toast.success(t('imported', { count: res.problemIds.length }));
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
@@ -377,51 +393,57 @@ export default function ImportPage() {
     <RequireRole roles={STAFF}>
       <Container>
         <PageHeader
-          title="Nhập đề"
-          subtitle="Tải lên file đề (.docx/.pdf) hoặc dán nội dung đề, kiểm tra các bài được tách tự động rồi xác nhận để thêm vào ngân hàng của bạn (ở chế độ riêng tư)."
+          title={t('title')}
+          subtitle={t('subtitle')}
           actions={
-            parsed && (
-              <Button variant="secondary" onClick={reset}>
-                <FileUp className="h-4 w-4" />
-                Nhập đề khác
-              </Button>
-            )
+            <>
+              <AiUsesLeft feature="IMPORT" className="self-center" />
+              {parsed && (
+                <Button variant="secondary" onClick={reset}>
+                  <FileUp className="h-4 w-4" />
+                  {t('another')}
+                </Button>
+              )}
+            </>
           }
         />
 
         {created ? (
           <Card className="p-6">
             <div className="mb-4 flex items-center gap-2 text-chalk-700">
-              <CheckCircle2 className="h-6 w-6" />
-              <h2 className="text-lg font-semibold">Đã nhập {created.length} bài vào ngân hàng của bạn</h2>
+              <CheckCircle2 className="h-6 w-6 shrink-0" />
+              <h2 className="text-lg font-semibold">{t('done.title', { count: created.length })}</h2>
             </div>
-            <p className="mb-3 text-sm text-slate-600">Bộ test đã được lưu cùng từng bài. Bạn có thể thêm lời giải cho từng bài:</p>
+            <p className="mb-3 text-sm text-slate-600">{t('done.body')}</p>
             <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
               {created.map((c) => (
                 <li key={c.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <Link href={`/bank/problems/${c.id}`} className="font-medium text-slate-800 hover:text-ink-600">
+                  <Link href={`/bank/problems/${c.id}`} className="min-w-0 truncate font-medium text-slate-800 hover:text-ink-600">
                     {c.title}
                   </Link>
-                  <Link href={`/bank/problems/${c.id}?tab=solution`} className="text-sm text-ink-600 hover:underline">
-                    Thêm lời giải
+                  <Link
+                    href={`/bank/problems/${c.id}?tab=solution`}
+                    className="shrink-0 whitespace-nowrap text-sm text-ink-600 hover:underline"
+                  >
+                    {t('done.addSolution')}
                   </Link>
                 </li>
               ))}
             </ul>
-            <div className="mt-5 flex gap-2">
-              <Button onClick={reset}>Nhập file khác</Button>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Button onClick={reset}>{t('done.anotherFile')}</Button>
               <LinkButton href="/bank/sets/new" variant="secondary">
-                Tạo đề từ các bài này
+                {t('done.createSet')}
               </LinkButton>
             </div>
           </Card>
         ) : !parsed ? (
           <div className="space-y-3">
-            <div role="tablist" aria-label="Cách nhập đề" className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+            <div role="tablist" aria-label={t('source.label')} className="inline-flex rounded-lg border border-slate-200 bg-surface p-1">
               {(
                 [
-                  ['file', 'Tải file lên', FileUp],
-                  ['text', 'Dán nội dung', ClipboardPaste],
+                  ['file', t('source.file'), FileUp],
+                  ['text', t('source.text'), ClipboardPaste],
                 ] as const
               ).map(([key, label, Icon]) => (
                 <button
@@ -432,49 +454,48 @@ export default function ImportPage() {
                   disabled={parsing}
                   onClick={() => setSource(key)}
                   className={cn(
-                    'flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition',
-                    source === key ? 'bg-ink-600 text-white' : 'text-slate-600 hover:bg-slate-100',
+                    'flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition',
+                    source === key ? 'bg-ink-solid text-white' : 'text-slate-600 hover:bg-slate-100',
                   )}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="h-4 w-4 shrink-0" />
                   {label}
                 </button>
               ))}
             </div>
-            {source === 'file' ? <Dropzone onFile={onFile} busy={parsing} /> : <PasteBox onSubmit={onText} busy={parsing} />}
+            {source === 'file' ? <Dropzone onFile={onFile} busy={parsing} /> : <PasteBox onSubmit={onText} busy={parsing} ai={canUseAi && !aiNotConfigured} />}
             {error && <InlineAlert>{error}</InlineAlert>}
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3 rounded-panel border border-slate-200 bg-white px-4 py-3">
-              <FileText className="h-5 w-5 text-ink-600" />
-              <span className="font-medium">{parsed.fileName}</span>
+            <div className="flex flex-wrap items-center gap-3 rounded-panel border border-slate-200 bg-surface px-4 py-3">
+              <FileText className="h-5 w-5 shrink-0 text-ink-600" />
+              <span className="min-w-0 truncate font-medium">{parsed.fileName}</span>
               {parsed.parser === 'AI' ? (
-                <Badge className="bg-ink-50 text-ink-700 ring-1 ring-ink-200">Đọc bằng AI</Badge>
+                <Badge className="bg-ink-50 text-ink-700 ring-1 ring-ink-200">{t('readByAi')}</Badge>
               ) : (
-                <Badge className="bg-slate-100 text-slate-600">Đọc theo mẫu</Badge>
+                <Badge className="bg-slate-100 text-slate-600">{t('readByTemplate')}</Badge>
               )}
               <span className="text-sm text-slate-500">
-                tách được {drafts.length} bài, đã chọn {included.length}
+                {t('found', { count: drafts.length, picked: included.length })}
               </span>
-              <div className="ml-auto flex gap-2 text-sm">
+              <div className="ml-auto flex gap-2 whitespace-nowrap text-sm">
                 <button type="button" className="text-ink-600 hover:underline" onClick={() => setDrafts((ds) => ds.map((d) => ({ ...d, include: true })))}>
-                  Chọn tất cả
+                  {t('selectAll')}
                 </button>
                 <span className="text-slate-300">|</span>
                 <button type="button" className="text-ink-600 hover:underline" onClick={() => setDrafts((ds) => ds.map((d) => ({ ...d, include: false })))}>
-                  Bỏ chọn
+                  {t('deselectAll')}
                 </button>
               </div>
             </div>
             {parsed.parser === 'BASIC' && (
               <p className="text-sm text-slate-600">
-                Đề được đọc theo mẫu có sẵn. File PDF lộn xộn hoặc bản scan sẽ đọc tốt hơn bằng AI
-                {canUseAi ? ', khi máy chủ có khóa API của Claude.' : ' (chỉ dành cho tài khoản giáo viên VIP).'}
+                {parsed.aiQuotaExhausted ? t('basicQuota') : canUseAi ? t('basicAi') : t('basicVip')}
               </p>
             )}
             <InlineAlert kind="info">
-              Hãy kiểm tra tên bài, <b>chọn độ khó</b>, giới hạn và bộ test (test nào <b>là ví dụ</b>) trước khi nhập. Những cảnh báo màu vàng cần được xem lại.
+              {t.rich('review', { b: (c) => <b>{c}</b> })}
             </InlineAlert>
 
             {drafts.map((d, i) => (
@@ -492,28 +513,32 @@ export default function ImportPage() {
                 onClick={() => setShowRaw((s) => !s)}
                 className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-medium text-slate-700"
               >
-                {showRaw ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                Văn bản trích xuất gốc (tham khảo)
+                {showRaw ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                {t('rawText')}
               </button>
               {showRaw && (
                 <pre className="io-block max-h-[60vh] overflow-auto border-t border-slate-100 bg-slate-50 px-4 py-3">
-                  {parsed.rawText || '(trống)'}
+                  {parsed.rawText || tCommon('empty')}
                 </pre>
               )}
             </Card>
 
-            <div className="sticky bottom-0 z-10 -mx-4 space-y-3 border-t border-slate-200 bg-white/90 px-4 py-3 backdrop-blur">
+            <div className="sticky bottom-0 z-10 -mx-4 space-y-3 border-t border-slate-200 bg-surface/90 px-4 py-3 backdrop-blur">
               <FileIoBlocker
                 problems={drafts
-                  .map((d, i) => ({ label: `Bài ${i + 1} (${d.title.trim() || 'chưa đặt tên'})`, content: d, include: d.include }))
+                  .map((d, i) => ({
+                    label: t('draft.blockerLabel', { n: i + 1, title: d.title.trim() || t('draft.untitled') }),
+                    content: d,
+                    include: d.include,
+                  }))
                   .filter((p) => p.include)}
               />
-              <div className="flex items-center justify-end gap-3">
-                <span className="text-sm text-slate-500">
-                  {included.length} bài, {included.reduce((n, d) => n + d.tests.length, 0)} test sẽ được thêm vào ngân hàng của bạn
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <span className="min-w-0 text-sm text-slate-500">
+                  {t('footer', { problems: included.length, tests: included.reduce((n, d) => n + d.tests.length, 0) })}
                 </span>
                 <Button onClick={confirm} loading={importing} disabled={included.length === 0 || blocked}>
-                  Nhập {included.length} bài
+                  {t('confirm', { count: included.length })}
                 </Button>
               </div>
             </div>

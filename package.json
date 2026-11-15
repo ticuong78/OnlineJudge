@@ -12,10 +12,21 @@
     "infra:down": "docker compose down",
     "runner:build": "docker build -t oj-runner:latest src/engine/runner",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "prepare": "husky",
+    "infra:test:up": "docker compose -f docker-compose.test.yml up -d --wait",
+    "infra:test:down": "docker compose -f docker-compose.test.yml down",
+    "test:integration": "TEST_DATABASE_URL=postgres://oj:oj@127.0.0.1:55432/online_judge_test TEST_REDIS_URL=redis://127.0.0.1:56379/2 pnpm --filter @oj/backend test:integration",
+    "test:e2e:api": "pnpm build:shared && pnpm --filter @oj/backend test:e2e",
+    "test:e2e:browser": "pnpm build:shared && pnpm --filter @oj/backend exec tsc -p tsconfig.build.json && playwright test",
+    "test:e2e": "pnpm test:e2e:api && pnpm test:e2e:browser"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "@playwright/test": "1.56.1",
     "@types/node": "^22.20.5",
+    "husky": "^9.1.7",
     "typescript": "^5.9.3"
   }
 }

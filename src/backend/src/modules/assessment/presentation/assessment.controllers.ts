@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
 import {
   Languages,
+  PATHS_MAX_PAGE,
+  type ListPathsQuery,
   ProblemSetTypes,
   type BankScope,
   type FeedbackMode,
@@ -11,6 +13,7 @@ import {
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsDateString,
@@ -30,6 +33,7 @@ import type { Actor } from '../../../shared/application/actor.js';
 import { CurrentActor, Roles } from '../../../shared/presentation/decorators.js';
 import { ProblemSetService } from '../application/problem-set.service.js';
 import { SessionService } from '../application/session.service.js';
+import { LearningPathService } from '../application/learning-path.service.js';
 
 // ---------- Problem set bank ----------
 
@@ -114,6 +118,7 @@ class SettingsBody {
   @IsIn(['FULL', 'SCORE_ONLY', 'HIDDEN_UNTIL_CLOSED']) feedback: FeedbackMode;
   @IsOptional() @IsBoolean() checkPlagiarism = false;
   @IsOptional() @IsBoolean() checkAiUsage = false;
+  @IsOptional() @IsBoolean() hideTopics = false;
 }
 
 class CreateSessionBody {
@@ -208,6 +213,28 @@ export class SessionsController {
   }
 }
 
+class PracticeProblemsQuery {
+  @IsOptional() @IsString() @MaxLength(50) topic?: string;
+}
+
+/** Practice by topic (OJ-20): every role; only open public practice sessions. */
+@Controller('practice')
+@Roles('ADMIN', 'TEACHER', 'STUDENT')
+export class PracticeController {
+  constructor(private readonly sessions: SessionService) {}
+
+  @Get('problems')
+  problems(@CurrentActor() actor: Actor, @Query() query: PracticeProblemsQuery) {
+    return this.sessions.practiceProblems(actor, query.topic);
+  }
+
+  /** Topics of the open practice problems with their counts (uncapped). */
+  @Get('topics')
+  topics(@CurrentActor() actor: Actor) {
+    return this.sessions.practiceTopics(actor);
+  }
+}
+
 @Controller('progress')
 export class ProgressController {
   constructor(private readonly sessions: SessionService) {}
@@ -215,6 +242,58 @@ export class ProgressController {
   @Get('me')
   me(@CurrentActor() actor: Actor) {
     return this.sessions.learningRecord(actor);
+  }
+}
+
+class PathStepBody {
+  @IsUUID() sessionId: string;
+  @IsString() @MaxLength(200) title: string;
+  @IsString() @MaxLength(2000) note: string;
+}
+
+class UpsertPathBody {
+  @IsString() @MaxLength(200) title: string;
+  @IsString() @MaxLength(5000) description: string;
+  @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(40) topic: string | null;
+  @IsBoolean() isPublic: boolean;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(30) @ValidateNested({ each: true }) @Type(() => PathStepBody) steps: PathStepBody[];
+}
+
+export class PathListQuery implements ListPathsQuery {
+  @IsOptional() @IsIn(['public', 'mine']) scope?: 'public' | 'mine';
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(PATHS_MAX_PAGE) limit?: number;
+  /** The `next` cursor of the previous page; checked when decoded (`assessment.invalid_cursor`). */
+  @IsOptional() @IsString() @MaxLength(200) before?: string;
+}
+
+/** Learning paths (OJ-24). Reading: every role (private paths: owner and admin only); writing: teachers and admins. */
+@Controller('paths')
+export class LearningPathsController {
+  constructor(private readonly paths: LearningPathService) {}
+
+  @Get() @Roles('ADMIN', 'TEACHER', 'STUDENT')
+  list(@CurrentActor() actor: Actor, @Query() query: PathListQuery) {
+    return this.paths.list(actor, { scope: query.scope ?? 'public', limit: query.limit, before: query.before });
+  }
+
+  @Get(':id') @Roles('ADMIN', 'TEACHER', 'STUDENT')
+  get(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string) {
+    return this.paths.get(actor, id);
+  }
+
+  @Post() @Roles('ADMIN', 'TEACHER')
+  create(@CurrentActor() actor: Actor, @Body() body: UpsertPathBody) {
+    return this.paths.create(actor, body);
+  }
+
+  @Put(':id') @Roles('ADMIN', 'TEACHER')
+  update(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() body: UpsertPathBody) {
+    return this.paths.update(actor, id, body);
+  }
+
+  @Delete(':id') @Roles('ADMIN', 'TEACHER') @HttpCode(204)
+  remove(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string) {
+    return this.paths.delete(actor, id);
   }
 }
 

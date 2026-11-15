@@ -21,3 +21,19 @@ export interface UserDeletedEvent {
   userId: string;
   role: Role;
 }
+
+export const MEMBER_LEFT_ORGANIZATION = 'identity.member-left-organization';
+
+/**
+ * A teacher left an organization (removed, or left on their own). The organization keeps what was its own:
+ * Classroom hands the organization's classes taught by the teacher to `successorId` (an org admin), and Catalog
+ * gives `successorId` copies of the problems the teacher had shared with the organization (OJ-8).
+ */
+export interface MemberLeftOrganizationEvent {
+  name: typeof MEMBER_LEFT_ORGANIZATION;
+  occurredAt: Date;
+  userId: string;
+  organizationId: string;
+  successorId: string;
+  successorName: string;
+}

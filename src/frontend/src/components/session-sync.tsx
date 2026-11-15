@@ -3,6 +3,7 @@
 import type { SessionDto, SessionSyncPreviewDto } from '@oj/contracts';
 import { ArrowDownUp, GitCompare, Minus, PenLine, Plus } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
+import { useTranslations } from 'use-intl';
 import { api, errorMessage } from '@/lib/api';
 import { useToast } from './toast';
 import { Button, ErrorState, InlineAlert, LoadingState, Modal } from './ui';
@@ -10,7 +11,7 @@ import { Button, ErrorState, InlineAlert, LoadingState, Modal } from './ui';
 function Section({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
   return (
     <div>
-      <h3 className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-slate-800">
+      <h3 className="mb-1 flex items-start gap-1.5 text-sm font-semibold text-slate-800">
         {icon}
         {title}
       </h3>
@@ -21,57 +22,57 @@ function Section({ icon, title, children }: { icon: ReactNode; title: string; ch
 
 function Changes({ p }: { p: SessionSyncPreviewDto }) {
   const affected = p.removed.reduce((n, r) => n + r.studentsWithSubmissions, 0);
+  const t = useTranslations('student.sessionSync');
   return (
     <div className="space-y-4">
       {p.added.length > 0 && (
-        <Section icon={<Plus className="h-4 w-4 text-chalk-700" />} title={`Thêm ${p.added.length} bài`}>
+        <Section icon={<Plus className="mt-0.5 h-4 w-4 shrink-0 text-chalk-700" />} title={t('added', { count: p.added.length })}>
           {p.added.map((a) => (
             <li key={a.code}>
-              {a.code} · {a.title} <span className="text-slate-500">({a.points} điểm)</span>
+              {a.code} · {a.title} <span className="text-slate-500">{t('points', { points: a.points })}</span>
             </li>
           ))}
         </Section>
       )}
       {p.removed.length > 0 && (
-        <Section icon={<Minus className="h-4 w-4 text-mark-600" />} title={`Bỏ ${p.removed.length} bài khỏi phiên`}>
+        <Section icon={<Minus className="mt-0.5 h-4 w-4 shrink-0 text-mark-600" />} title={t('removed', { count: p.removed.length })}>
           {p.removed.map((r) => (
             <li key={r.key}>
-              Bài {r.key}. {r.title}
+              {t('problem', { key: r.key, title: r.title })}
               {r.studentsWithSubmissions > 0 && (
-                <span className="text-mark-700"> — {r.studentsWithSubmissions} học sinh đã nộp</span>
+                <span className="text-mark-700"> {t('removedSubmitted', { count: r.studentsWithSubmissions })}</span>
               )}
             </li>
           ))}
         </Section>
       )}
       {p.pointsChanged.length > 0 && (
-        <Section icon={<PenLine className="h-4 w-4 text-ink-600" />} title="Đổi điểm">
+        <Section icon={<PenLine className="mt-0.5 h-4 w-4 shrink-0 text-ink-600" />} title={t('pointsChanged')}>
           {p.pointsChanged.map((c) => (
             <li key={c.key}>
-              Bài {c.key}. {c.title}: {c.from} → {c.to} điểm
+              {t('pointsChange', { key: c.key, title: c.title, from: c.from, to: c.to })}
             </li>
           ))}
         </Section>
       )}
       {p.contentChanged.length > 0 && (
-        <Section icon={<GitCompare className="h-4 w-4 text-ink-600" />} title="Cập nhật nội dung (đề, giới hạn hoặc test) và chấm lại">
+        <Section icon={<GitCompare className="mt-0.5 h-4 w-4 shrink-0 text-ink-600" />} title={t('contentChanged')}>
           {p.contentChanged.map((c) => (
-            <li key={c.key}>
-              Bài {c.key}. {c.title}
-            </li>
+            <li key={c.key}>{t('problem', { key: c.key, title: c.title })}</li>
           ))}
         </Section>
       )}
       {p.reordered && (
-        <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
-          <ArrowDownUp className="h-4 w-4 text-ink-600" />
-          Sắp xếp lại thứ tự bài theo đề gốc
-          <span className="font-normal text-slate-500">(mỗi bài giữ nguyên chữ cái A, B, C…)</span>
+        <p className="flex items-start gap-1.5 text-sm font-semibold text-slate-800">
+          <ArrowDownUp className="mt-0.5 h-4 w-4 shrink-0 text-ink-600" />
+          <span>
+            {t('reordered')} <span className="font-normal text-slate-500">{t('reorderedHint')}</span>
+          </span>
         </p>
       )}
       {affected > 0 && (
         <InlineAlert kind="warning">
-          Bài nộp của các bài bị bỏ vẫn còn trong lịch sử của học sinh nhưng không còn được tính điểm trong phiên và học bạ.
+          {t('removedNote')}
         </InlineAlert>
       )}
     </div>
@@ -81,6 +82,8 @@ function Changes({ p }: { p: SessionSyncPreviewDto }) {
 /** "Đồng bộ với đề gốc": preview what changed in the source set since it was given, then apply and rejudge. */
 export function SessionSyncButton({ session, onSession }: { session: SessionDto; onSession: (s: SessionDto) => void }) {
   const toast = useToast();
+  const t = useTranslations('student.sessionSync');
+  const tc = useTranslations('common');
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<SessionSyncPreviewDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +115,7 @@ export function SessionSyncButton({ session, onSession }: { session: SessionDto;
       onSession(updated);
       let queued = 0;
       for (const c of changes.contentChanged) queued += (await api.rejudgeSession(session.id, { problemKey: c.key })).queued;
-      toast.success(queued ? `Đã đồng bộ với đề gốc và đưa ${queued} bài nộp vào hàng chờ chấm lại` : 'Đã đồng bộ với đề gốc');
+      toast.success(queued ? t('toastQueued', { count: queued }) : t('toastDone'));
       setOpen(false);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -124,21 +127,21 @@ export function SessionSyncButton({ session, onSession }: { session: SessionDto;
   return (
     <>
       <Button variant="secondary" size="sm" onClick={show}>
-        <GitCompare className="h-4 w-4" />
-        Đồng bộ với đề gốc
+        <GitCompare className="h-4 w-4 shrink-0" />
+        {t('button')}
       </Button>
       <Modal
         open={open}
         onClose={() => !applying && setOpen(false)}
-        title={preview ? `Đồng bộ với đề “${preview.setTitle}”` : 'Đồng bộ với đề gốc'}
+        title={preview ? t('titleWithSet', { title: preview.setTitle }) : t('button')}
         footer={
           <>
             <Button variant="secondary" onClick={() => setOpen(false)} disabled={applying}>
-              {preview && !preview.hasChanges ? 'Đóng' : 'Hủy'}
+              {preview && !preview.hasChanges ? tc('close') : tc('cancel')}
             </Button>
             {preview?.hasChanges && (
               <Button onClick={apply} loading={applying}>
-                Đồng bộ
+                {t('apply')}
               </Button>
             )}
           </>
@@ -149,15 +152,13 @@ export function SessionSyncButton({ session, onSession }: { session: SessionDto;
         ) : error ? (
           <ErrorState message={error} onRetry={load} />
         ) : preview && !preview.hasChanges ? (
-          <p className="text-sm text-slate-600">Phiên đã giống đề gốc trong ngân hàng, không có gì để đồng bộ.</p>
+          <p className="text-sm text-slate-600">{t('noChanges')}</p>
         ) : preview ? (
           <div className="space-y-4">
-            <p className="text-sm text-slate-600">
-              Đề gốc đã thay đổi kể từ khi giao. Đồng bộ sẽ làm phiên giống đề hiện tại trong ngân hàng:
-            </p>
+            <p className="text-sm text-slate-600">{t('intro')}</p>
             <Changes p={preview} />
             {session.state === 'OPEN' && (
-              <InlineAlert kind="info">Phiên đang mở: học sinh đang làm bài sẽ thấy thay đổi ngay sau khi đồng bộ.</InlineAlert>
+              <InlineAlert kind="info">{t('openNote')}</InlineAlert>
             )}
           </div>
         ) : null}

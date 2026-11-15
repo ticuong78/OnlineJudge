@@ -84,6 +84,57 @@ Import review page (admin):
 +-----------------------------------------------------------------------------------+
 ```
 
+## Motion (OJ-17)
+
+Motion explains a change of state; it never decorates. The verdict (the score ring) stays the only expressive
+animation.
+
+- **Tokens:** `--ease-standard` (`cubic-bezier(0.2, 0, 0, 1)`) and `--duration-1/2/3` (120 / 180 / 240 ms) in
+  `globals.css`. Nothing longer than 240 ms, except the navigation bar and skeletons.
+- **Entering:** a fade, and for panels a 6 px rise.
+- **Leaving:** the reverse, faster (120 ms). `usePresence` keeps the element mounted for its exit.
+- **Where it is used:**
+  - dialogs (backdrop fade, panel rise);
+  - the phone menu (drops in);
+  - toasts (slide from the screen edge they sit on);
+  - the tab underline (slides);
+  - the result panel (rises);
+  - buttons (1 px press).
+- **Never:** hover lifts on panels, parallax, bouncing, or motion on page load.
+- **Accessibility:** the reduced-motion rule makes all of it instant. The progress bar stays as a static bar,
+  because the feedback matters more than the movement.
+- **Implementation:** CSS first, with `@starting-style` for entry. No animation library.
+
+## Dark theme: "bảng đen" (OJ-19)
+
+The dark theme is a blackboard: chalk-white text (`graphite` #e4ebe7) on a dark slate-green board (`paper` #141d19,
+`surface` #1b2621), with violet ink, green chalk and red pen as accents.
+
+- **Choosing it.** The default follows the system. The header switch (and the one on the sign-in pages) cycles system
+  → light → dark and is remembered on this computer (`oj:theme`). A boot script in `<head>` sets `<html data-theme>`
+  before the first paint.
+- **Tokens, not `dark:` classes.** Under `:root[data-theme='dark']` every colour scale keeps its name and reverses its
+  lightness:
+  - light tints (50–200, used for backgrounds) become dark tints;
+  - dark shades (600–900, used for text) become light;
+  - so `bg-amber-50 text-amber-800` stays a readable pair in both themes.
+
+  Write components with the scales as before. Do not add `dark:` variants.
+- **Three roles that do not reverse:**
+  - `bg-surface` for cards and panels (not `bg-white`);
+  - `bg-scrim/…` for backdrops;
+  - `bg-ink-solid`, `bg-chalk-solid`, `bg-mark-solid` (and `-hover`) for solid fills that carry white text.
+
+  The hover shade is darker in both themes.
+- **Contrast.** Text pairs and white-on-solid are checked at 4.5:1 or more by `test/theme.test.ts`, which reads the
+  dark tokens from `globals.css`. Add a pair there when a new combination appears.
+- **Other parts of the page:**
+  - Monaco uses `oj-board` (vs-dark on the board's colours).
+  - highlight.js gets the GitHub-dark colours.
+  - The prose colours come from the tokens.
+- **Paper stays paper.** The dark tokens apply on screens only, and the printed set and answer key always use light,
+  also when reached by an in-app link (`LightThemeOnly`).
+
 ## Principles
 
 1. The book, not the dashboard: paper, ruled lines, ink. Decoration only where it carries meaning (the grid

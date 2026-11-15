@@ -2,10 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Language, SubmissionStatus, Verdict } from '@oj/contracts';
 import { In, Repository } from 'typeorm';
-import { SourceCode, Submission } from '../domain/submission.js';
+import { FREE_PROGRAM_ERRORS, SourceCode, Submission, type FaultSource } from '../domain/submission.js';
 import {
   SubmissionQueries,
   SubmissionRepository,
+  type Admission,
+  type AdmissionLimits,
+  type StaleCursor,
   type SubmissionListFilter,
 } from '../domain/submission.repository.js';
 import { SubmissionOrmEntity } from './submission.orm-entity.js';
@@ -22,40 +25,124 @@ export class TypeOrmSubmissionRepository extends SubmissionRepository {
   }
 
   async save(submission: Submission) {
+    await this.repo.save(toRow(submission));
+  }
+
+  async admit(submission: Submission, limits: AdmissionLimits): Promise<Admission> {
     const s = submission.snapshot;
-    await this.repo.save({
-      id: submission.id,
-      userId: s.userId,
-      userDisplayName: s.userDisplayName,
-      sessionId: s.sessionId,
-      sessionTitle: s.sessionTitle,
-      problemKey: s.problemKey,
-      problemTitle: s.problemTitle,
-      language: s.source.language,
-      sourceCode: s.source.text,
-      totalPoints: s.totalPoints,
-      judgeRun: s.judgeRun,
-      status: s.status,
-      verdict: s.verdict,
-      score: s.score,
-      compileOutput: s.compileOutput,
-      testResults: s.testResults,
-      createdAt: s.createdAt,
-      judgedAt: s.judgedAt,
+    return this.repo.manager.transaction(async (tx) => {
+      // Submissions of one user are admitted one at a time: the counts below cannot change until this commits.
+      // (The lock is per transaction and held for milliseconds; other users are not held up.)
+      await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`submit:${s.userId}`]);
+
+      const pending = await tx.countBy(SubmissionOrmEntity, { userId: s.userId, status: In(['PENDING', 'JUDGING']) });
+      if (pending >= limits.maxPending) return 'TOO_MANY_PENDING';
+
+      if (limits.maxForProblem !== null) {
+        // Real attempts (pending ones included), plus system errors attributed to the program beyond the free ones
+        // (FREE_PROGRAM_ERRORS). Infrastructure errors never count.
+        const counts = await tx
+          .createQueryBuilder(SubmissionOrmEntity, 'x')
+          .select(`COUNT(*) FILTER (WHERE "x"."verdict" IS DISTINCT FROM 'IE')`, 'attempts')
+          .addSelect(`COUNT(*) FILTER (WHERE "x"."verdict" = 'IE' AND "x"."faultSource" = 'program')`, 'programErrors')
+          .where('x.userId = :userId AND x.sessionId = :sessionId AND x.problemKey = :key', {
+            userId: s.userId,
+            sessionId: s.sessionId,
+            key: s.problemKey,
+          })
+          .getRawOne<{ attempts: string; programErrors: string }>();
+        const attempts = Number(counts?.attempts ?? 0) + Math.max(0, Number(counts?.programErrors ?? 0) - FREE_PROGRAM_ERRORS);
+        if (attempts >= limits.maxForProblem) return 'PROBLEM_LIMIT_REACHED';
+      }
+
+      await tx.save(SubmissionOrmEntity, toRow(submission));
+      return 'ADMITTED';
     });
-  }
-
-  countUnfinishedByUser(userId: string) {
-    return this.repo.countBy({ userId, status: In(['PENDING', 'JUDGING']) });
-  }
-
-  countForProblem(userId: string, sessionId: string, problemKey: string) {
-    return this.repo.countBy({ userId, sessionId, problemKey });
   }
 
   async findBySession(sessionId: string, problemKey: string | null) {
     const rows = await this.repo.find({ where: problemKey ? { sessionId, problemKey } : { sessionId }, order: { createdAt: 'ASC' } });
     return rows.map(toDomain);
+  }
+
+  async findStale(queuedBefore: Date, limit: number, after?: StaleCursor) {
+    const query = this.repo
+      .createQueryBuilder('x')
+      .where('x.status IN (:...open)', { open: ['PENDING', 'JUDGING'] })
+      .andWhere('COALESCE(x.queuedAt, x.createdAt) < :queuedBefore', { queuedBefore });
+    if (after) {
+      query.andWhere('(COALESCE(x.queuedAt, x.createdAt), x.id) > (:afterAt, :afterId)', { afterAt: after.queuedAt, afterId: after.id });
+    }
+    const rows = await query
+      .orderBy('COALESCE(x.queuedAt, x.createdAt)', 'ASC')
+      .addOrderBy('x.id', 'ASC')
+      .limit(limit)
+      .getMany();
+    return rows.map(toDomain);
+  }
+
+  async failIfUnfinished(id: string, judgeRun: number, reason: string, now = new Date()) {
+    // One conditional UPDATE: if a result was stored in the meantime it matches no row and is left alone.
+    const result = await this.repo
+      .createQueryBuilder()
+      .update(SubmissionOrmEntity)
+      .set({ status: 'DONE', verdict: 'IE', score: 0, testResults: [], compileOutput: reason, faultSource: 'infrastructure', judgedAt: now })
+      .where('"id" = :id AND "judgeRun" = :judgeRun AND "status" <> :done', { id, judgeRun, done: 'DONE' })
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
+  async markJudging(id: string, judgeRun: number) {
+    const result = await this.repo
+      .createQueryBuilder()
+      .update(SubmissionOrmEntity)
+      .set({ status: 'JUDGING' })
+      .where('"id" = :id AND "judgeRun" = :judgeRun AND "status" = :pending', { id, judgeRun, pending: 'PENDING' })
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
+  async storeResult(submission: Submission) {
+    const s = submission.snapshot;
+    // Only the result columns: one conditional UPDATE, so a late "started", a rejudge or the watchdog that wrote in
+    // the meantime is never overwritten by a full-row save of a copy loaded before it.
+    const result = await this.repo
+      .createQueryBuilder()
+      .update(SubmissionOrmEntity)
+      .set({
+        status: s.status,
+        verdict: s.verdict,
+        score: s.score,
+        compileOutput: s.compileOutput,
+        faultSource: s.faultSource,
+        testResults: s.testResults,
+        judgedAt: s.judgedAt,
+      })
+      .where('"id" = :id AND "judgeRun" = :judgeRun AND "status" <> :done', { id: submission.id, judgeRun: s.judgeRun, done: 'DONE' })
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
+  async requeue(submission: Submission, fromRun: number) {
+    const s = submission.snapshot;
+    const result = await this.repo
+      .createQueryBuilder()
+      .update(SubmissionOrmEntity)
+      .set({
+        totalPoints: s.totalPoints,
+        judgeRun: s.judgeRun,
+        status: s.status,
+        verdict: s.verdict,
+        score: s.score,
+        compileOutput: s.compileOutput,
+        faultSource: s.faultSource,
+        testResults: s.testResults,
+        queuedAt: s.queuedAt,
+        judgedAt: s.judgedAt,
+      })
+      .where('"id" = :id AND "judgeRun" = :fromRun', { id: submission.id, fromRun })
+      .execute();
+    return (result.affected ?? 0) > 0;
   }
 }
 
@@ -81,6 +168,32 @@ export class TypeOrmSubmissionQueries extends SubmissionQueries {
   }
 }
 
+function toRow(submission: Submission): SubmissionOrmEntity {
+  const s = submission.snapshot;
+  return {
+    id: submission.id,
+    userId: s.userId,
+    userDisplayName: s.userDisplayName,
+    sessionId: s.sessionId,
+    sessionTitle: s.sessionTitle,
+    problemKey: s.problemKey,
+    problemTitle: s.problemTitle,
+    language: s.source.language,
+    sourceCode: s.source.text,
+    totalPoints: s.totalPoints,
+    judgeRun: s.judgeRun,
+    status: s.status,
+    verdict: s.verdict,
+    score: s.score,
+    compileOutput: s.compileOutput,
+    faultSource: s.faultSource,
+    testResults: s.testResults,
+    createdAt: s.createdAt,
+    queuedAt: s.queuedAt,
+    judgedAt: s.judgedAt,
+  };
+}
+
 function toDomain(row: SubmissionOrmEntity): Submission {
   return Submission.rehydrate(row.id, {
     userId: row.userId,
@@ -96,8 +209,10 @@ function toDomain(row: SubmissionOrmEntity): Submission {
     verdict: row.verdict as Verdict | null,
     score: row.score,
     compileOutput: row.compileOutput,
+    faultSource: (row.faultSource as FaultSource | null) ?? null,
     testResults: row.testResults,
     createdAt: row.createdAt,
+    queuedAt: row.queuedAt ?? row.createdAt,
     judgedAt: row.judgedAt,
   });
 }

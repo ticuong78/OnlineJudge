@@ -10,6 +10,7 @@ import { AssessmentSessionAccess, JudgingSubmissionSource } from './infrastructu
 import { ClaudeAiUsageReviewer } from './infrastructure/claude-ai-usage-reviewer.js';
 import {
   IntegrityCheckOrmEntity,
+  IntegrityFirstReviewOrmEntity,
   IntegrityFlagOrmEntity,
   TypeOrmIntegrityFlagRepository,
 } from './infrastructure/persistence.js';
@@ -17,7 +18,7 @@ import { IntegrityController } from './presentation/integrity.controller.js';
 
 /** Academic integrity: background plagiarism / AI-usage checks and their teacher-only review. */
 @Module({
-  imports: [TypeOrmModule.forFeature([IntegrityFlagOrmEntity, IntegrityCheckOrmEntity]), JudgingModule, AssessmentModule, IdentityModule],
+  imports: [TypeOrmModule.forFeature([IntegrityFlagOrmEntity, IntegrityCheckOrmEntity, IntegrityFirstReviewOrmEntity]), JudgingModule, AssessmentModule, IdentityModule],
   controllers: [IntegrityController],
   providers: [
     IntegrityService,

@@ -25,11 +25,23 @@ export class ClassroomFacade {
     return new Map(classes.map((c) => [c.id, { id: c.id, name: c.name, teacherId: c.teacherId, status: c.status }]));
   }
 
-  /** Ids of classes the actor manages: all for the admin, taught classes for a teacher, none for students. */
+  /**
+   * Ids of classes the actor manages: all for the admin; for a teacher, taught classes plus the classes of the
+   * organizations where they are org admin (OJ-8); none for students.
+   */
   async managedClassIds(actor: Actor): Promise<string[] | 'ALL'> {
     if (actor.role === 'ADMIN') return 'ALL';
-    if (actor.role === 'TEACHER') return (await this.classes.findByTeacher(actor.id)).map((c) => c.id);
-    return [];
+    if (actor.role !== 'TEACHER') return [];
+    const adminOf = (actor.organizations ?? []).filter((o) => o.role === 'ADMIN').map((o) => o.id);
+    const [taught, ofOrgs] = await Promise.all([this.classes.findByTeacher(actor.id), this.classes.findByOrganizations(adminOf)]);
+    return [...new Set([...taught, ...ofOrgs].map((c) => c.id))];
+  }
+
+  /** The managed classes (`managedClassIds`) that are still active, as ids: archived ones are left out (OJ-28). */
+  async activeManagedClassIds(actor: Actor): Promise<string[]> {
+    const managed = await this.managedClassIds(actor);
+    const classes = managed === 'ALL' ? await this.classes.findAll() : await this.classes.findByIds(managed);
+    return classes.filter((c) => c.isActive).map((c) => c.id);
   }
 
   async canManage(actor: Actor, classId: string): Promise<boolean> {

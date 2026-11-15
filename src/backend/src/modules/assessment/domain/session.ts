@@ -41,6 +41,8 @@ export class SessionSettings {
     readonly feedback: FeedbackMode,
     readonly checkPlagiarism: boolean,
     readonly checkAiUsage: boolean,
+    /** Students do not see the problems' topics while the session runs (a mixed review step, OJ-24). */
+    readonly hideTopics: boolean = false,
   ) {}
 
   static of(input: {
@@ -50,6 +52,7 @@ export class SessionSettings {
     feedback: FeedbackMode;
     checkPlagiarism?: boolean;
     checkAiUsage?: boolean;
+    hideTopics?: boolean;
   }): SessionSettings {
     const { durationMinutes: d, maxSubmissionsPerProblem: m } = input;
     assert(d === null || (Number.isInteger(d) && d >= 1 && d <= 24 * 60),
@@ -59,10 +62,10 @@ export class SessionSettings {
     assert(input.allowedLanguages.every((l) => Languages.includes(l)), 'assessment.invalid_language', 'Ngôn ngữ không hợp lệ.');
     assert(FEEDBACK_MODES.includes(input.feedback), 'assessment.invalid_feedback', 'Chế độ hiển thị kết quả không hợp lệ.');
     return new SessionSettings(d, [...new Set(input.allowedLanguages)], m, input.feedback,
-      input.checkPlagiarism ?? false, input.checkAiUsage ?? false);
+      input.checkPlagiarism ?? false, input.checkAiUsage ?? false, input.hideTopics ?? false);
   }
 
-  static readonly defaults = new SessionSettings(null, [], null, 'FULL', false, false);
+  static readonly defaults = new SessionSettings(null, [], null, 'FULL', false, false, false);
 
   get isTimed(): boolean {
     return this.durationMinutes !== null;
@@ -84,6 +87,8 @@ export interface SessionProblem {
   code: string;
   title: string;
   difficulty: Difficulty;
+  /** Topics copied from the bank (OJ-20); empty for sessions created before they were copied. */
+  tags: string[];
   points: number;
   statement: string;
   inputFormat: string;
@@ -187,6 +192,17 @@ export class Session extends AggregateRoot {
   stateAt(now: Date, classActive: boolean): SessionState {
     const state = this.state.window.stateAt(now);
     return state === 'OPEN' && !classActive ? 'CLOSED' : state;
+  }
+
+  /**
+   * Topics give away the method, so students see them in a test or exam only once it is closed (OJ-20). Managers always
+   * see them; practice and homework show them throughout.
+   */
+  topicsVisibleTo(isManager: boolean, state: SessionState): boolean {
+    if (isManager || state === 'CLOSED') return true;
+    // A practice session can hide them too: a mixed review step, where recognising the technique is the exercise (OJ-24).
+    if (this.state.settings.hideTopics) return false;
+    return this.state.type !== 'TEST' && this.state.type !== 'EXAM';
   }
 
   /** Managers and everyone after closing see everything; otherwise the feedback setting decides. */

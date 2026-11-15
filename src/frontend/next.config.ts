@@ -3,6 +3,8 @@ import path from 'node:path';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // End-to-end tests build into their own folder, so they never disturb a running `next dev` (default: .next).
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   // The shared contracts package lives in the monorepo (src/shared).
   transpilePackages: ['@oj/contracts'],
   // Monorepo root, so file tracing / turbopack resolve workspace packages correctly.

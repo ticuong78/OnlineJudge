@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { isEmptySync, Session, SessionSettings, TimeWindow, type SetItemSnapshot } from '../src/modules/assessment/domain/session.js';
 
 const content = (id: string, title: string, statement = 'Đề') => ({
-  sourceProblemId: id, code: `P-${id}`, title, difficulty: 'EASY' as const,
+  sourceProblemId: id, code: `P-${id}`, title, difficulty: 'EASY' as const, tags: [] as string[],
   statement, inputFormat: '', outputFormat: '', constraints: '', timeLimitMs: 1000, memoryLimitMb: 256,
   testCases: [{ input: '1', expectedOutput: '1', isSample: true, points: 1 }],
 });

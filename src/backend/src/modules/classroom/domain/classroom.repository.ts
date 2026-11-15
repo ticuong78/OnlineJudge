@@ -8,6 +8,8 @@ export abstract class ClassroomRepository {
   abstract findByCode(code: ClassCode): Promise<Classroom | null>;
   abstract findAll(): Promise<Classroom[]>;
   abstract findByTeacher(teacherId: string): Promise<Classroom[]>;
+  /** Classes belonging to any of these organizations. */
+  abstract findByOrganizations(organizationIds: string[]): Promise<Classroom[]>;
   abstract findDueForPurge(now: Date): Promise<Classroom[]>;
   abstract save(classroom: Classroom): Promise<void>;
   abstract delete(id: string): Promise<void>;

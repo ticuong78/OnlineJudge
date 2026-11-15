@@ -5,6 +5,12 @@ import type { DocumentBlock } from '../src/modules/importing/domain/exam-documen
 import { htmlToBlocks } from '../src/modules/importing/infrastructure/document-reader.js';
 import { inlineEquations } from '../src/modules/importing/infrastructure/omml.js';
 
+/**
+ * Upper bound for the OJ-15 speed tests. Generous on purpose: the suites run in parallel and timings vary under load,
+ * while the quadratic versions these guard against took 4 to 34 seconds on the same inputs.
+ */
+const LIMIT_MS = 1_000;
+
 const p = (text: string): DocumentBlock => ({ kind: 'paragraph', text });
 const parse = (blocks: DocumentBlock[]) => new ExamParser().parse({ fileName: 'de.docx', blocks });
 
@@ -110,4 +116,51 @@ test('pasted exam text is split into problems like an uploaded file', async () =
   assert.deepEqual(parsed.drafts.map((d) => d.title), ['TỔNG HAI SỐ', 'HIỆU']);
   assert.deepEqual(parsed.drafts[0].tests, [{ input: '1 2\n', expectedOutput: '3\n', isSample: true, points: 10 }]);
   await assert.rejects(service.parseText(lan, '  \n '), /Hãy dán nội dung đề/);
+});
+
+// ---------------------------------------------------------------- OJ-15 F4: untrusted text cannot stall the server
+
+const timed = (fn: () => unknown) => {
+  const start = performance.now();
+  fn();
+  return performance.now() - start;
+};
+
+test('F4 regression: hostile paragraphs are parsed in linear time', () => {
+  // Measured before the fix: 2,000 spaces blocked the event loop for about 8 s, 4,000 for over a minute.
+  const header = `Bài 1${' '.repeat(4000)}x y`;
+  assert.ok(timed(() => parse([p(header), p('Dữ liệu vào: hai số')])) < LIMIT_MS, 'problem header with a Unicode line separator');
+  const longHeader = `Bài 1${' '.repeat(100_000)}z`;
+  assert.ok(timed(() => parse([p(longHeader)])) < LIMIT_MS, 'a paste-limit-sized line');
+  const section = `Input${' '.repeat(40_000)}x`;
+  assert.ok(timed(() => parse([p('Bài 1. Tổng'), p(section)])) < LIMIT_MS, 'section header followed by a long run of spaces');
+});
+
+test('F4: headers and section colons are recognised exactly as before', () => {
+  const [d] = parse([p('Bài 2 - Dãy con'), p('Dữ liệu vào (input.txt) : một số n'), p('Kết quả: in n')]);
+  assert.equal(d.title, 'Dãy con');
+  assert.match(d.inputFormat, /một số n/);
+  // As with the original single pattern: a line break may sit in the whitespace before the title (the reported
+  // "Bài 1\u2028Tổng hai số" case), never inside the title itself.
+  const before = parse([p('Bài 1\u2028Tổng hai số'), p('Bài 3\nĐếm')]);
+  assert.deepEqual(before.map((x) => x.title), ['Tổng hai số', 'Đếm']);
+  const inside = parse([p('Bài 5. Hai\u2028dòng'), p('Bài 6. Thật')]);
+  assert.deepEqual(inside.map((x) => x.title), ['Thật'], 'a title holding a line break is content, not a header');
+});
+
+test('F4 regression: a difficulty line with a long run of spaces is read in linear time, and still read', () => {
+  assert.ok(timed(() => parse([p(`Độ khó${' '.repeat(50_000)}x`), p('Bài 1. T')])) < LIMIT_MS);
+  const [d] = parse([p('Mức độ :  Khó'), p('Bài 1. T')]);
+  assert.equal(d.difficulty, 'HARD');
+});
+
+test('F4 follow-up: blank lines in a table cell and unclosed Word equations are handled in linear time', () => {
+  assert.ok(timed(() => parse([p('Bài 1. T'), { kind: 'table', rows: [['Input', 'Output'], [`${'\n'.repeat(200_000)}1 2`, '3']] }])) < LIMIT_MS);
+  assert.ok(timed(() => inlineEquations('<m:oMath>'.repeat(20_000))) < LIMIT_MS);
+  assert.ok(timed(() => inlineEquations('<m:oMathPara '.repeat(20_000))) < LIMIT_MS);
+  assert.equal(
+    inlineEquations('<w:t>n ≤ </w:t><m:oMath><m:sSup><m:e><m:r><m:t>10</m:t></m:r></m:e><m:sup><m:r><m:t>5</m:t></m:r></m:sup></m:sSup></m:oMath>'),
+    '<w:t>n ≤ </w:t><w:r><w:t xml:space="preserve">10^5</w:t></w:r>',
+    'a well-formed equation is still converted',
+  );
 });
