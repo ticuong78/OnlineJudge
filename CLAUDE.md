@@ -13,7 +13,7 @@ A classroom online judge. pnpm monorepo, Node 24, TypeScript (backend NodeNext, 
 | `@oj/engine` | `src/engine` | Judge worker: takes jobs from Redis, runs code in a Docker sandbox (`oj-runner` image) |
 | `@oj/frontend` | `src/frontend` | Next.js app router, Vercel |
 
-Documentation: `README.md` (Vietnamese, product behaviour), `docs/API.md` (every endpoint, roles, DTO names), `docs/specs/` (one spec per change), `docs/adr/` (decisions).
+Documentation: `README.md` (English, product behaviour and setup), `docs/API.md` (every endpoint, roles, DTO names), `docs/specs/` (one spec per change), `docs/adr/` (decisions).
 
 ## Commands
 
