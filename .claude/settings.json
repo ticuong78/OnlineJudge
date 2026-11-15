@@ -11,7 +11,10 @@
       "Bash(git status)",
       "Bash(git diff *)",
       "Bash(git log *)",
-      "Bash(git branch *)"
+      "Bash(git branch --list*)",
+      "Bash(git branch --show-current)",
+      "Bash(git branch -a)",
+      "Bash(git branch -vv)"
     ],
     "deny": [
       "Read(./src/backend/.env)",
@@ -19,9 +22,10 @@
       "Read(**/.env.local)",
       "Bash(git push --force*)",
       "Bash(git push -f*)",
-      "Bash(git push --no-verify*)",
-      "Bash(git commit --no-verify*)",
+      "Bash(*--no-verify*)",
+      "Bash(git commit -n*)",
       "Read(~/.ssh/**)",
+      "Bash(*.ssh/*)",
       "Bash(git reset --hard*)",
       "Bash(docker rm *)",
       "Bash(docker system prune*)"

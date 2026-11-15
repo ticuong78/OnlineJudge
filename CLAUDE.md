@@ -76,7 +76,7 @@ Verification gate before any push: `pnpm build:shared && pnpm typecheck && pnpm 
 
 1. Start from a spec in `docs/specs/`. If there is none, write one with `/spec` and get it approved before editing code.
 2. Present a plan (files per context, contract changes, tests) before the first edit on anything larger than a one-file fix.
-3. Work on a branch `feat/<spec-id>-<slug>` or `fix/<spec-id>-<slug>`; commit with Conventional Commits (`feat(scope): subject`), scope = package or context.
+3. Work on a branch `feat/<spec-id>-<slug>`, `fix/<spec-id>-<slug>`, or `chore/<slug>` for docs and tooling with no spec; commit with Conventional Commits (`feat(scope): subject`), scope = package or context.
 4. Run the verification gate before saying a task is done. Report what was run and what the result was; do not claim tests passed without running them.
 5. Do not run `git push --force`, do not rewrite history on `master`, do not delete branches, do not change CI or hooks without saying so in the PR.
 6. When unsure about a rule here, ask rather than guess. When a rule is wrong, propose a change to this file in the same PR.
