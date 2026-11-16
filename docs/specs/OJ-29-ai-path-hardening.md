@@ -192,5 +192,10 @@ shorter).
 **After merge, watch for a week:** `import.ai_*` and `catalog.ai_failed` rates, and AI-use flags per week (a moderate
 drop is the expected effect of masking).
 
+**Before-and-after check deferred** (owner, 2026-11-16): the product is in testing with no real student data and no
+public users, and no API key is available yet. PR A may merge without the results table. The check
+(`src/backend/test/eval/ai-usage-review/run.ts`) must be run and its table filled **before the AI-use review is switched
+on for real students**; until then item 6 stays open.
+
 Risks: fewer AI-use flags (accepted with Option A); an over-eager tag strip changing a problem that really contains the
 text `<de_bai>` (harmless: only the tag is removed, as in the section writer).
