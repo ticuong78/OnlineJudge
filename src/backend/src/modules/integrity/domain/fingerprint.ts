@@ -1,4 +1,5 @@
 import type { Language } from '@oj/contracts';
+import { scanCode } from './code-scanner.js';
 
 /**
  * Code similarity by fingerprinting (the idea behind MOSS):
@@ -31,91 +32,19 @@ const KEYWORDS = new Set([
   'yield', 'global', 'range', 'len', 'print', 'input', 'list', 'dict', 'sorted', 'sum', 'min', 'max', 'split',
 ]);
 
-const OPERATORS = ['==', '!=', '<=', '>=', '&&', '||', '<<', '>>', '++', '--'];
-const PUNCTUATION = new Set('+-*/%=<>!&|^~?:;,.(){}[]');
-/** Preprocessor lines with no bearing on what the program does; `#define` is kept because macros are code. */
-const DROPPED_DIRECTIVES = /^#\s*(include|pragma|if|ifdef|ifndef|else|elif|endif|error|warning|undef|line)\b/;
-
-const isSpace = (c: string) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f' || c === '\v';
-const isWordStart = (c: string) => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c === '_' || c === '$';
-const isDigit = (c: string) => c >= '0' && c <= '9';
-const isWordPart = (c: string) => isWordStart(c) || isDigit(c);
-
 /**
- * Tokens with identifiers/literals abstracted. One pass over the source, so a `#` or `//` inside a string
- * is text, not a comment, and a comment hides nothing that follows it. `language` picks the comment syntax
- * (hash comments for Python; line and block comments for the others); without it the C family is assumed.
+ * Tokens with identifiers/literals abstracted, read by the shared scanner (`code-scanner.ts`): comments, whitespace and
+ * dropped preprocessor lines vanish, identifiers become `I`, numbers `N` and strings `S`.
  */
 export function normalizedTokens(code: string, language?: Language): string[] {
-  const python = language === 'python';
-  const cFamily = language === 'c' || language === 'cpp' || language === undefined;
   const tokens: string[] = [];
-  const n = code.length;
-  let i = 0;
-
-  const skipLine = () => {
-    // A directive may continue on the next line with a trailing backslash.
-    while (i < n && code[i] !== '\n') i += code[i] === '\\' && code[i + 1] === '\n' ? 2 : 1;
-  };
-  const skipPast = (end: string) => {
-    const at = code.indexOf(end, i);
-    i = at < 0 ? n : at + end.length;
-  };
-  const skipQuoted = (quote: string, multiline: boolean) => {
-    i++;
-    while (i < n && code[i] !== quote) {
-      if (code[i] === '\\') i++;
-      else if (code[i] === '\n' && !multiline) return; // an unterminated string ends at the line
-      i++;
-    }
-    i++;
-  };
-  const lineStart = (at: number) => {
-    for (let j = at - 1; j >= 0 && code[j] !== '\n'; j--) if (!isSpace(code[j])) return false;
-    return true;
-  };
-
-  while (i < n) {
-    const c = code[i];
-    if (isSpace(c)) { i++; continue; }
-
-    // comments
-    if (python ? c === '#' : c === '/' && code[i + 1] === '/') { skipLine(); continue; }
-    if (!python && c === '/' && code[i + 1] === '*') { i += 2; skipPast('*/'); continue; }
-
-    // C preprocessor
-    if (cFamily && c === '#' && lineStart(i)) {
-      if (DROPPED_DIRECTIVES.test(code.slice(i, i + 16))) { skipLine(); continue; }
-      i++; // `#define ...`: the rest of the line is scanned like code
-      continue;
-    }
-
-    // strings and character literals
-    if (c === '"' || c === "'") {
-      if ((python || language === 'java') && code.startsWith(c.repeat(3), i)) { i += 3; skipPast(c.repeat(3)); }
-      else skipQuoted(c, false);
-      tokens.push('S');
-      continue;
-    }
-    if (c === '`' && !python && language !== 'java' && !cFamily) { skipQuoted('`', true); tokens.push('S'); continue; }
-
-    if (isWordStart(c)) {
-      const start = i;
-      while (i < n && isWordPart(code[i])) i++;
-      const word = code.slice(start, i);
-      tokens.push(KEYWORDS.has(word) ? word : 'I');
-      continue;
-    }
-    if (isDigit(c)) {
-      while (i < n && (isWordPart(code[i]) || code[i] === '.')) i++;
-      tokens.push('N');
-      continue;
-    }
-
-    const two = code.slice(i, i + 2);
-    if (OPERATORS.includes(two)) { tokens.push(two); i += 2; continue; }
-    if (PUNCTUATION.has(c)) tokens.push(c);
-    i++; // anything else (`@`, `\`, stray `#`) carries no meaning for the comparison
+  for (const { kind, start, end } of scanCode(code, language)) {
+    const text = code.slice(start, end);
+    if (kind === 'string') tokens.push('S');
+    else if (kind === 'word') tokens.push(KEYWORDS.has(text) ? text : 'I');
+    else if (kind === 'number') tokens.push('N');
+    else if (kind === 'operator' || kind === 'punctuation') tokens.push(text);
+    // comments, dropped directives, the `#` of `#define` and anything else carry no meaning for the comparison
   }
   return tokens;
 }
