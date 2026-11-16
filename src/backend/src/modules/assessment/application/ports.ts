@@ -77,6 +77,8 @@ export abstract class LearningRecordStore {
   }): Promise<void>;
   abstract progressOfUser(userId: string, sessionIds?: string[]): Promise<RecordProgress[]>;
   abstract progressOfSession(sessionId: string): Promise<RecordProgress[]>;
+  /** Progress in several sessions at once (a class gradebook, OJ-31). */
+  abstract progressOfSessions(sessionIds: string[]): Promise<RecordProgress[]>;
   /** Forget progress of a session (or one of its problems) before a rejudge rebuilds it. */
   abstract resetProgress(sessionId: string, problemKey: string | null): Promise<void>;
 }

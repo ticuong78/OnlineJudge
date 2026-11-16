@@ -54,6 +54,7 @@ import type {
   SessionDto,
   SessionProblemDto,
   SessionResultsDto,
+  ClassGradebookDto,
   SharingDto,
   SolutionDto,
   SubmissionDetailDto,
@@ -266,6 +267,7 @@ export const api = {
   moveClassToOrganization: (id: string, organizationId: string) =>
     request<ClassroomDto>('PUT', `/classes/${id}/organization`, { body: { organizationId } }),
   getClass: (id: string) => request<ClassroomDto>('GET', `/classes/${id}`),
+  getClassGradebook: (id: string) => request<ClassGradebookDto>('GET', `/classes/${id}/gradebook`),
   createClass: (body: UpsertClassroomRequest) => request<ClassroomDto>('POST', '/classes', { body }),
   updateClass: (id: string, body: UpsertClassroomRequest) => request<ClassroomDto>('PUT', `/classes/${id}`, { body }),
   archiveClass: (id: string) => request<ClassroomDto>('POST', `/classes/${id}/archive`),

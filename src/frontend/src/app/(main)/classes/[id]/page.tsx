@@ -1,7 +1,7 @@
 'use client';
 
 import type { ClassroomDto } from '@oj/contracts';
-import { Archive, ArchiveRestore, Pencil, Send, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Pencil, Send, Table2, Trash2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { useTranslations } from 'use-intl';
@@ -12,7 +12,7 @@ import { RequireRole, STAFF } from '@/components/guards';
 import { AssignFromBankDialog, SessionList } from '@/components/sessions';
 import { ClassBoard } from '@/components/threads';
 import { useToast } from '@/components/toast';
-import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, Field, InlineAlert, inputClass, ListSkeleton, Modal, PageHeader, PageSkeleton } from '@/components/ui';
+import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, Field, InlineAlert, inputClass, LinkButton, ListSkeleton, Modal, PageHeader, PageSkeleton } from '@/components/ui';
 import { useNow } from '@/components/verification';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -538,6 +538,7 @@ export default function ClassDetailPage() {
   const { data: cls, error, loading, reload, setData } = useAsync(() => api.getClass(id), [id]);
   const [rosterKey, setRosterKey] = useState(0);
   const t = useTranslations('classes.detail');
+  const tg = useTranslations('classes.gradebook');
 
   return (
     <RequireRole roles={STAFF}>
@@ -548,7 +549,16 @@ export default function ClassDetailPage() {
           <ErrorState message={error ?? t('notFound')} onRetry={reload} />
         ) : (
           <>
-            <PageHeader back={{ href: '/classes', label: t('back') }} title={cls.name} />
+            <PageHeader
+              back={{ href: '/classes', label: t('back') }}
+              title={cls.name}
+              actions={
+                <LinkButton href={`/classes/${cls.id}/gradebook`} variant="secondary">
+                  <Table2 className="h-4 w-4 shrink-0" />
+                  {tg('open')}
+                </LinkButton>
+              }
+            />
             <LifecycleBar cls={cls} onChange={(c) => setData(c)} />
             <ClassHeader key={cls.id + cls.code + cls.teacherId + cls.status} cls={cls} onSaved={(c) => setData(c)} />
             <ClassRequestsPanel

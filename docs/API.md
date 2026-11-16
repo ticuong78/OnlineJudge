@@ -120,6 +120,7 @@ except that deleting a class for good (`schedule-deletion`, `delete-now`) is for
 | POST | /classes | staff | UpsertClassroomRequest | ClassroomDto. Teachers always create for themselves; admin may pass `teacherId`. Optional `organizationId`: one of the creator's organizations (403 `classroom.not_in_organization`) |
 | PUT | /classes/:id/organization | class teacher or admin | MoveClassToOrganizationRequest | ClassroomDto — a personal class joins one of the teacher's organizations; one way (409 `classroom.already_in_organization`) |
 | GET | /classes/:id | manager or (former) member | – | ClassroomDto |
+| GET | /classes/:id/gradebook | manager | – | ClassGradebookDto (OJ-31) — the class's opened sessions (oldest first) and every current student, plus former students with a score (`left`); a cell is the session total by the results rule, `null` = never submitted. 403 `assessment.not_class_teacher`, 404 `classroom.not_found` |
 | PUT | /classes/:id | manager | UpsertClassroomRequest | ClassroomDto (changing `teacherId`: admin, or an org admin to a member of the class's organization; not allowed while archived) |
 | POST | /classes/:id/archive | manager | – | ClassroomDto (status ARCHIVED) |
 | POST | /classes/:id/restore | manager | – | ClassroomDto (ACTIVE again, cancels scheduled deletion) |

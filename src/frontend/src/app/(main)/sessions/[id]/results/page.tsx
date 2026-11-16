@@ -10,6 +10,7 @@ import { RequireRole, STAFF } from '@/components/guards';
 import { StudentWorkPanel, type StudentWorkTarget } from '@/components/student-work';
 import { Button, Card, EmptyState, ErrorState, PageHeader, TableSkeleton } from '@/components/ui';
 import { api } from '@/lib/api';
+import { csvFile } from '@/lib/csv';
 import { useAsync } from '@/lib/use-async';
 import { solvedByProblem, sortResults, type ResultSort, type SortDirection } from '@/lib/results';
 import { studentSubmissionsHref } from '@/lib/results-links';
@@ -58,7 +59,6 @@ export default function SessionResultsPage() {
 
   const exportCsv = () => {
     if (!data) return;
-    const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
     const header = [
       t('results.csv.index'),
       t('results.student'),
@@ -77,7 +77,7 @@ export default function SessionResultsPage() {
       r.completed ? t('results.csv.yes') : t('results.csv.no'),
       r.lastSubmissionAt ? formatDateTime(r.lastSubmissionAt) : '',
     ]);
-    const csv = '﻿' + [header, ...lines].map((l) => l.map(esc).join(',')).join('\r\n');
+    const csv = csvFile([header, ...lines]);
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const a = document.createElement('a');
     a.href = url;

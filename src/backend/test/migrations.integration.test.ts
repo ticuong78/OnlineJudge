@@ -118,6 +118,9 @@ describe('migrations', { skip }, () => {
   test('migration:revert undoes the last migrations, and running them again restores the schema', async () => {
     const ds = await open(migratedOptions(url!, await newSchema(), ALL_ENTITIES));
     try {
+      await ds.undoLastMigration(); // progress index by session (OJ-31)
+      const index = await ds.query(`SELECT to_regclass('"IDX_9446184cb740ba66f1c6b3d9c7"') AS i`);
+      assert.equal(index[0].i, null, 'the OJ-31 index is dropped');
       await ds.undoLastMigration(); // first reviews (OJ-26)
       await ds.undoLastMigration(); // topics: data only, nothing to undo
       await ds.undoLastMigration(); // OJ-1 to OJ-24

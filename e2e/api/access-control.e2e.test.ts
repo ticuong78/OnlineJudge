@@ -76,6 +76,27 @@ describe('E2E access control', () => {
     assert.equal((await teacher.api.status('GET', path('not-a-uuid'))).status, 400, 'userId must be a UUID');
   });
 
+  test("a class gradebook: only the class's teacher, never another teacher or a student (OJ-31)", async () => {
+    const admin = await signInAdmin(stack);
+    const other = await createTeacher(stack, admin, 'Giáo Viên Bảng Điểm Khác');
+    await teacher.api.post('/classes', { name: 'Lớp OJ-31', code: 'E2E-OJ31' });
+    const member = await registerStudent(stack, 'Học Sinh Bảng Điểm', 'E2E-OJ31');
+    const cls = (await teacher.api.get<{ id: string; code: string }[]>('/classes')).find((c) => c.code === 'E2E-OJ31')!;
+    for (const r of await teacher.api.get<{ id: string }[]>(`/classes/${cls.id}/requests`)) {
+      await teacher.api.post(`/membership-requests/${r.id}/approve`);
+    }
+    const book = await teacher.api.get<{ classId: string; rows: { userId: string }[] }>(`/classes/${cls.id}/gradebook`);
+    assert.deepEqual(book.rows.map((r) => r.userId), [member.id], 'the roster, even before any session');
+    assert.equal((await admin.api.status('GET', `/classes/${cls.id}/gradebook`)).status, 200);
+    for (const [who, expected] of [[other, 'assessment.not_class_teacher'], [member, undefined]] as const) {
+      const res = await who.api.status('GET', `/classes/${cls.id}/gradebook`);
+      assert.equal(res.status, 403, who.displayName);
+      if (expected) assert.equal(res.code, expected);
+    }
+    const unknown = await teacher.api.status('GET', '/classes/00000000-0000-4000-8000-000000000031/gradebook');
+    assert.deepEqual([unknown.status, unknown.code], [404, 'classroom.not_found']);
+  });
+
   test('unknown fields are stripped, invalid bodies are refused with the reasons in Vietnamese', async () => {
     const res = await fetch(`${stack.apiUrl}/classes`, {
       method: 'POST', headers: { authorization: `Bearer ${teacher.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ name: '', code: 'x' }),

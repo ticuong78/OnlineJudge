@@ -43,6 +43,7 @@ import {
 } from '../domain/session.js';
 import { ClassAccess, LearningRecordStore, ProblemCatalog, type ClassInfo, type RecordProgress, type RecordSession } from './ports.js';
 import { ProblemSetService } from './problem-set.service.js';
+import { addPoints, earnedPoints } from './scoring.js';
 
 export interface ListSessionsQuery {
   classId?: string;
@@ -173,9 +174,9 @@ export class SessionService {
       const problem = problems.find((x) => x.key === p.problemKey);
       if (!problem) continue;
       const r = row(p.userId, p.userDisplayName);
-      const earned = Math.round(problem.points * p.bestScore) / 100;
+      const earned = earnedPoints(problem.points, p.bestScore);
       r.scores[p.problemKey] = earned;
-      r.total = Math.round((r.total + earned) * 100) / 100;
+      r.total = addPoints(r.total, earned);
       if (p.solvedAt) r.solvedCount++;
       const last = p.lastSubmittedAt.toISOString();
       if (!r.lastSubmissionAt || last > r.lastSubmissionAt) r.lastSubmissionAt = last;

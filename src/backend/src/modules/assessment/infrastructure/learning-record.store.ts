@@ -67,6 +67,11 @@ export class TypeOrmLearningRecordStore extends LearningRecordStore {
     return (await this.progress.findBy({ sessionId })).map(toProgress);
   }
 
+  async progressOfSessions(sessionIds: string[]) {
+    if (!sessionIds.length) return [];
+    return (await this.progress.findBy({ sessionId: In(sessionIds) })).map(toProgress);
+  }
+
   async resetProgress(sessionId: string, problemKey: string | null) {
     await this.progress.delete(problemKey ? { sessionId, problemKey } : { sessionId });
   }
