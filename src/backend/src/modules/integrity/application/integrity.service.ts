@@ -5,6 +5,7 @@ import type { Actor } from '../../../shared/application/actor.js';
 import { aiPeriod, AiQuota } from '../../../shared/application/ai-quota.js';
 import { DomainError } from '../../../shared/domain/domain-error.js';
 import { SUBMISSION_JUDGED, type SubmissionJudgedEvent } from '../../judging/judging.events.js';
+import { maskComments } from '../domain/code-comments.js';
 import { fingerprint, similarity } from '../domain/fingerprint.js';
 import { IntegrityFlag, type FlagContext, type SubmissionRef } from '../domain/integrity-flag.js';
 import { IntegrityFlagRepository } from '../domain/integrity-flag.repository.js';
@@ -79,7 +80,9 @@ export class IntegrityService {
     }
     let review: Awaited<ReturnType<AiUsageReviewer['review']>>;
     try {
-      review = await this.reviewer.review({ statement, language: submission.language, code: submission.code });
+      // Comments are free text where a student may write their name or class: the model gets only where they are (OJ-29).
+      const code = maskComments(submission.code, submission.language);
+      review = await this.reviewer.review({ statement, language: submission.language, code });
     } catch (error) {
       // Only the AI call is refunded: once it answered, the use was spent even if saving the flag fails.
       await this.quota.refund(reserved.ticket);

@@ -58,7 +58,7 @@ Verification gate before any push: `pnpm build:shared && pnpm typecheck && pnpm 
 ## AI feature rules (Claude calls in the product)
 
 1. Adapters live in `*/infrastructure/claude-*.ts` and use `shared/infrastructure/claude.ts`; the model per task comes from `.env` (`CLAUDE_MODEL`, `CLAUDE_TESTGEN_MODEL`, `CLAUDE_REVIEW_MODEL`). No hard-coded model names elsewhere.
-2. Prompts are versioned constants next to the adapter; user content is placed in clearly delimited sections and never concatenated into instructions (the pattern: `claude-section-writer.ts`, `SECTION_PROMPT_VERSION` and `<de_bai>` tags). Every new or changed prompt follows it. The exam reader, test suggester and AI-usage reviewer do not yet (playbook section 12).
+2. Prompts are versioned constants next to the adapter; user content is placed in clearly delimited sections and never concatenated into instructions (the pattern: `claude-section-writer.ts`, `SECTION_PROMPT_VERSION` and `<de_bai>` tags). Every new or changed prompt follows it. The exam reader and test suggester do not yet (OJ-29 PR B; playbook section 12).
 3. Parse every response with a zod schema; on failure use the rule-based fallback (`ExamParser`) or raise a `DomainError`. Never write unvalidated model output to the database; output that is stored also gets length limits.
 4. AI features are gated by the plan allowances (`shared/application/ai-quota.ts`; `ai.vip_required` when the plan has none, `ai.quota_exceeded` when the month is used up) and must work without a key (feature off or rule-based fallback, not crash).
 5. A prompt or model change ships with the before-and-after check in playbook section 6, recorded in the spec; add a fixture or test when a real input breaks a feature.

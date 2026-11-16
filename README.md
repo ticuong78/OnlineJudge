@@ -78,7 +78,8 @@ helps to find the button.
     (including `main`), comments (including end-of-line comments), `#include` lines and formatting (the same idea as
     MOSS). No AI needed.
   - *AI use*: Claude reviews a student's first accepted solution per problem cautiously and points at suspicious code
-    with reasons. Only the problem statement and the code are sent; no name, email or account id.
+    with reasons. Only the problem statement and the code are sent, with the words of every comment replaced by a
+    marker (a student may write their name in one); no name, email or account id.
   - The teacher compares the two codes side by side or looks at the flagged lines, then marks the flag "Reviewed".
 - **Class board.** Teachers post announcements (which can be pinned); students ask questions, optionally linked to a
   problem of a session. The teacher's home page lists the newest unanswered questions (up to 50). An archived class's

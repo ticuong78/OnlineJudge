@@ -57,3 +57,12 @@ test('F4: the rewritten clean-up gives the same lines as before', () => {
   assert.equal(stripExternalLinks('Đề bài (https://leetcode.com/x) :  tính tổng').text, 'Đề bài: tính tổng');
   assert.equal(stripExternalLinks('Xem [đề gốc](https://cses.fi/problemset/task/1068 "CSES") rồi làm').text, 'Xem đề gốc rồi làm');
 });
+
+test('OJ-29: AI-usage review text (summary, reasons) loses its links before it is stored', () => {
+  assert.equal(
+    stripExternalLinks('Có đoạn giống câu trả lời tại https://chatgpt.com/share/abc123').text,
+    'Có đoạn giống câu trả lời tại',
+  );
+  assert.equal(stripExternalLinks('Tham gia nhóm Zalo để xem lời giải: https://zalo.me/g/xyz').text, '', 'an invitation-only reason goes entirely');
+  assert.equal(stripExternalLinks('Chú thích ở gần như mọi dòng').text, 'Chú thích ở gần như mọi dòng', 'plain text is kept');
+});

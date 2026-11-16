@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Actor } from '../src/shared/application/actor.js';
 import { fingerprint, normalizedTokens, similarity } from '../src/modules/integrity/domain/fingerprint.js';
-import { IntegrityFlag } from '../src/modules/integrity/domain/integrity-flag.js';
+import { AI_REVIEW_LIMITS, IntegrityFlag } from '../src/modules/integrity/domain/integrity-flag.js';
 import { Thread } from '../src/modules/community/domain/thread.js';
 
 const original = `#include <bits/stdc++.h>
@@ -72,6 +72,57 @@ test('flags: thresholds, levels and acknowledging', () => {
   ai.acknowledge(teacher);
   assert.equal(ai.snapshot.status, 'ACKNOWLEDGED');
   assert.equal(ai.snapshot.acknowledgedByName, 'Cô Lan');
+});
+
+test('OJ-29: an AI-use flag is bounded and link-free, whatever the model wrote', () => {
+  const link = 'Xem https://chatgpt.com/share/abc\nTham gia nhóm zalo.me/g/xyz';
+  const ai = IntegrityFlag.aiUsage(ctx, an, {
+    risk: 'MEDIUM',
+    summary: `Nhiều dấu hiệu ${'rất '.repeat(1250)}rõ`,
+    reasons: [
+      'Tham gia nhóm Zalo: https://zalo.me/g/abc',
+      '   ',
+      ...Array.from({ length: 19 }, (_, i) => `Lý do ${i}: ${'x'.repeat(400)}\n${link}`),
+    ],
+    segments: Array.from({ length: 50 }, (_, i) => ({ startLine: i + 1, endLine: i + 1, reason: `${'y'.repeat(300)} https://example.com/${i}` })),
+  })!;
+  const { summary, reasons, segments } = ai.snapshot;
+  assert.ok(summary.length <= AI_REVIEW_LIMITS.summary, `summary ${summary.length}`);
+  assert.ok(summary.startsWith('Có nguy cơ dùng AI: ') && summary.endsWith('…'), 'cut, not rejected');
+  assert.equal(reasons.length, AI_REVIEW_LIMITS.reasons);
+  assert.ok(reasons[0].startsWith('Lý do 0:'), 'an invitation-only reason and a blank one are dropped before counting');
+  assert.ok(reasons.every((r) => r.length <= AI_REVIEW_LIMITS.reason && r.trim()));
+  assert.equal(segments.length, AI_REVIEW_LIMITS.segments);
+  assert.ok(segments.every((s) => s.reason.length <= AI_REVIEW_LIMITS.segmentReason));
+  const stored = JSON.stringify(ai.snapshot);
+  assert.doesNotMatch(stored, /https?:\/\/|zalo\.me|chatgpt\.com|example\.com/, 'no link in any field');
+
+  // Short, clean text is stored as written; blank reasons are dropped.
+  const plain = IntegrityFlag.aiUsage(ctx, an, { risk: 'HIGH', summary: 'chú thích từng dòng', reasons: ['r1', ' ', 'r2'], segments: [{ startLine: 2, endLine: 3, reason: 'văn bản thừa' }] })!;
+  assert.equal(plain.snapshot.summary, 'Có nguy cơ dùng AI: chú thích từng dòng');
+  assert.deepEqual(plain.snapshot.reasons, ['r1', 'r2']);
+  assert.deepEqual(plain.snapshot.segments, [{ startLine: 2, endLine: 3, reason: 'văn bản thừa' }]);
+});
+
+test('OJ-29 (verifier): segment lines are whole numbers from 1, blank segment reasons are dropped, cuts keep emoji whole', () => {
+  const ai = IntegrityFlag.aiUsage(ctx, an, {
+    risk: 'HIGH',
+    summary: `${'a'.repeat(AI_REVIEW_LIMITS.summary - 'Có nguy cơ dùng AI: '.length - 2)}😀😀`,
+    reasons: [],
+    segments: [
+      { startLine: -3, endLine: 2.6, reason: 'lùi dòng' },
+      { startLine: 9, endLine: 4, reason: 'ngược' },
+      { startLine: 1, endLine: 1, reason: '   ' },
+      { startLine: Number.NaN, endLine: Number.POSITIVE_INFINITY, reason: 'không phải số' },
+    ],
+  })!;
+  assert.deepEqual(ai.snapshot.segments, [
+    { startLine: 1, endLine: 3, reason: 'lùi dòng' },
+    { startLine: 9, endLine: 9, reason: 'ngược' },
+    { startLine: 1, endLine: 1, reason: 'không phải số' },
+  ]);
+  assert.doesNotMatch(ai.snapshot.summary, /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/, 'no half of a surrogate pair is left');
+  assert.ok(ai.snapshot.summary.length <= AI_REVIEW_LIMITS.summary);
 });
 
 test('thread: replies, deletion rights and pinning', () => {
