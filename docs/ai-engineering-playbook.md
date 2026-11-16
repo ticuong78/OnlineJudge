@@ -55,25 +55,25 @@ It applies to everyone who commits to this repository, with or without an AI ass
 | Import of a document, pasted text or photo | `importing/infrastructure/claude-exam-reader.ts` | `CLAUDE_MODEL` | The uploaded file or pasted text (no file name) | `DraftsSchema`; nothing saved before `POST /imports/confirm` | Documents: the rule-based `ExamParser`. Photos: an error (`import.image_needs_ai`, `import.ai_busy`, `import.image_unreadable`) | `IMPORT`, `IMAGE_IMPORT` | `ai-quota`, `image-import`, `exam-parser` (fallback only) |
 | Test-case suggestions | `catalog/infrastructure/claude-test-case-suggester.ts` | `CLAUDE_TESTGEN_MODEL`, else `CLAUDE_MODEL` | Problem, existing tests, the teacher's solution (run in Anthropic's code-execution tool), the teacher's `focus` text | `SuggestionsSchema`; not saved | `catalog.ai_unavailable`, `catalog.ai_failed` | `TESTS` | `test-suggestions` (fakes) |
 | Section and title rewrite | `catalog/infrastructure/claude-section-writer.ts` | `CLAUDE_MODEL` | Draft problem sections | `SectionSchema`; not saved | File-I/O sections: the rule-based `toStandardIo`; otherwise `catalog.ai_*` | `SECTION` | `test-suggestions` (including the prompt-shape test of v3) |
-| AI-usage review of a student's first accepted solution | `integrity/infrastructure/claude-ai-usage-reviewer.ts` | `CLAUDE_REVIEW_MODEL` (Haiku) | Problem statement, language, the student's code; no identity fields | `ReviewSchema`; **stored** in `IntegrityFlag.aiUsage` | Skipped; the claim is released and retried on the next accepted solution | `AI_USAGE_CHECK`, billed to the session owner; the session switch needs full AI | `ai-quota` (fake), `integrity.integration` |
+| AI-usage review of a student's first accepted solution | `integrity/infrastructure/claude-ai-usage-reviewer.ts` | `CLAUDE_REVIEW_MODEL` (Haiku) | Problem statement, language, the student's code with comments masked (`maskComments`, OJ-29); no identity fields | `ReviewSchema`; **stored** in `IntegrityFlag.aiUsage`, cut to `AI_REVIEW_LIMITS` and link-filtered | Skipped; the claim is released and retried on the next accepted solution | `AI_USAGE_CHECK`, billed to the session owner; the session switch needs full AI | `ai-usage-review` (prompt v1, masking, no identity), `code-comments`, `integrity-community` (limits), `ai-quota`, `integrity.integration` |
 
 **Rules:**
 1. **Prompts are code.**
    - They are a constant next to the adapter, with a version number, and reviewed like code.
    - Every new or changed prompt follows `claude-section-writer.ts`: `SECTION_PROMPT_VERSION` and user content inside its own tags (`<de_bai>`), with those tags removed from the content.
-   - Enforced by `test` for the section writer (`test-suggestions.test.ts`). For the other three adapters this is not met yet (section 12).
+   - Enforced by `test` for the section writer (`test-suggestions.test.ts`) and the AI-usage reviewer (`REVIEW_PROMPT_VERSION`, `<de_bai>` and `<bai_nop>`; `ai-usage-review.test.ts`, OJ-29). For the exam reader and the test suggester this is not met yet (OJ-29 PR B).
 2. **Untrusted input.**
    - Uploads, pasted text, the teacher's `focus` text and student code are data, never instructions.
    - Size limits sit on the DTOs (`imports.controller.ts`, `problem.dto.ts`).
-   - The prompts tell the model to ignore instructions and off-topic content in the input. (`convention`; tested only for the section writer)
-   - `shared/domain/external-links.ts` removes links and invitations from model output before a teacher sees it: import drafts and section and title rewrites. Test-suggester text is not filtered yet (section 12). (`test`: `external-links.test.ts`)
+   - The prompts tell the model to ignore instructions and off-topic content in the input. (`convention`; tested for the section writer and the AI-usage reviewer)
+   - `shared/domain/external-links.ts` removes links and invitations from model output before a teacher sees it: import drafts and section and title rewrites; and before the AI-usage review is stored (`IntegrityFlag.aiUsage`, OJ-29). Test-suggester text is not filtered yet (section 12). (`test`: `external-links.test.ts`)
    - A new AI path runs its text output through that filter and extends that test.
 3. **Schema validation.**
    - Every response is parsed with zod structured output (`betaZodOutputFormat`).
    - A refusal, a `max_tokens` stop or a missing parse throws, and the service maps the error to a `DomainError` or a fallback. (`convention`; enforced by tests only through fakes)
 4. **No unvalidated output in the database.**
    - Model output is shown to a teacher before anything is saved, except the AI-usage review.
-   - Output that is stored needs length limits and filtering. The review does not have them yet (section 12).
+   - Output that is stored needs length limits and filtering. The review has them: `IntegrityFlag.aiUsage` cuts the summary, reasons and segments to `AI_REVIEW_LIMITS` and removes links, for new flags (OJ-29). (`test`: `integrity-community.test.ts`)
 5. **Fallbacks.** Without a key, every feature either uses its rule-based path or returns a clear error. It never crashes. `GET /api/features` tells the frontend what is available. (`test`: no-key paths in `test-suggestions.test.ts`, `image-import.test.ts`, `ai-quota.test.ts`; the endpoint in `features.test.ts`)
 6. **Timeouts and retries.**
    - Today: 2 SDK retries and the SDK's default timeout. The test suggester runs at most 4 rounds (`MAX_ROUNDS`).
@@ -92,7 +92,7 @@ It applies to everyone who commits to this repository, with or without an AI ass
 
 ## 6. Evaluation
 
-1. **What exists today:** tests on fakes for gating, counting, refunds and fallbacks; the rule-based parser (`exam-parser.test.ts`); the link filter (`external-links.test.ts`); one prompt-shape test (`test-suggestions.test.ts`, section writer v3). **No test calls a model, and there is no golden set: this is not a repeatable eval.**
+1. **What exists today:** tests on fakes for gating, counting, refunds and fallbacks; the rule-based parser (`exam-parser.test.ts`); the link filter (`external-links.test.ts`); prompt-shape tests for the section writer v3 (`test-suggestions.test.ts`) and the AI-usage reviewer v1 (`ai-usage-review.test.ts`); 5 saved, labelled reviewer inputs with a runner that needs a key (`src/backend/test/eval/ai-usage-review/`, OJ-29). **No test calls a model, and there is no golden set: this is not a repeatable eval.**
 2. **Before-and-after check until the eval exists** (`convention`, recorded in the spec): run 5 saved inputs per feature, without personal data (documents, problems, anonymised solutions), with the old and the new prompt or model, and record schema failures, refusals, wrong or missing items, length and cost.
 3. **A regression is:** more schema failures or refusals; a problem, test or field lost or invented on an input that worked before; injected text followed; a cost per use more than 25% higher without a reason in the spec; for the AI-usage review, any changed verdict on the labelled examples.
 4. **Minimum repeatable eval: Planned, needs spec.** A golden set per feature in `src/backend/test/eval/`, a script that runs it against the configured models (outside CI, with a key), scoring by schema validity, item counts and expected labels, and results saved per prompt version and model.
@@ -105,8 +105,8 @@ It applies to everyone who commits to this repository, with or without an AI ass
 
 **Rules:**
 1. **What may go to a model:** only what the task needs: problem content, teachers' own documents and solutions, and a student's code for the AI-usage review only.
-2. **What never goes to a model:** student names, emails, phone numbers, account ids, class or school names, or anything else that identifies a minor. Today the reviewer sends only statement, language and code (`integrity.service.ts`). (`agent`: a blocking item for the `reviewer` agent and a `/review` check)
-3. **Free text inside student code** (comments) can still identify a student. Stripping comments before the review is Planned (section 12).
+2. **What never goes to a model:** student names, emails, phone numbers, account ids, class or school names, or anything else that identifies a minor. Today the reviewer sends only statement, language and code, with comments masked (rule 3; `integrity.service.ts`). (`agent`: a blocking item for the `reviewer` agent and a `/review` check)
+3. **Free text inside student code** (comments) can identify a student, so the review gets the code with every comment (and Python docstring) replaced by `[chú thích]`, line numbers kept (`integrity/domain/code-comments.ts`, OJ-29). String literals are still sent as written, and a few rare forms of comment are missed (listed in OJ-29). (`test`: `code-comments.test.ts`, `ai-usage-review.test.ts`)
 4. **Uploaded documents** may contain student data. Teachers are told to upload problems only (`convention`; the wording on the import page needs a spec).
 5. **Logging:**
    - Never log prompts, model outputs, tokens, OTP codes, passwords or full emails.
@@ -185,15 +185,15 @@ A change in any of these paths needs the `security-verifier` agent and a human r
 |---|---|---|
 | Protect `master`: no force push, required `verify` and `e2e`, one approval, squash only, CODEOWNERS for section 8 | needs spec (repo settings) | `<repo admin>` |
 | Add commitlint to CI (the e2e runner is pinned to `ubuntu-24.04` since 2026-11-16) | needs spec | `<owner>` |
-| Versioned, delimited prompts in the exam reader, test suggester and reviewer, with injection fixtures | needs spec | `<owner>` |
-| Length limits and filtering on stored review output; a `max_tokens` check in the reviewer | needs spec | `<owner>` |
-| Strip comments from student code before the review | needs spec | `<owner>` |
+| Versioned, delimited prompts in the exam reader and test suggester, with injection fixtures (the reviewer's is done) | OJ-29 (PR B) | `<owner>` |
+| Record the prompt version on stored AI-usage flags | needs spec (a migration) | `<owner>` |
+| Mask string literals and the rare comment forms the masker misses (OJ-29 Out) | needs spec | `<owner>` |
 | Minimum repeatable eval (section 6.4) | needs spec | `<owner>` |
 | Record tokens per call; count retries and rounds; a monthly spend ceiling with alerts; an admin cap | needs spec | `<owner>` |
 | A runtime AI kill switch per feature (no restart) | needs spec | `<owner>` |
 | Explicit timeouts per adapter | needs spec | `<owner>` |
 | An architecture test for layers, context direction and facade-only access | needs spec | `<owner>` |
-| Run test-suggester text (purpose, notes, refusals) through `external-links.ts` | needs spec | `<owner>` |
+| Run test-suggester text (purpose, notes, refusals) through `external-links.ts` | OJ-29 (PR B) | `<owner>` |
 | Decide the server-side fallback per task in config instead of by the `claude-haiku` name prefix (`claude.ts`) | needs spec | `<owner>` |
 | Correct stale spec statuses (OJ-1 to OJ-4, OJ-8) and decide ADR 0004 | needs spec (chore) | `<owner>` |
 | History rewrite and LICENSE | OJ-6 (draft) | Htet Oo Naing |
