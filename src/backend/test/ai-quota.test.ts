@@ -9,6 +9,7 @@ import { DisplayName, Email, User } from '../src/modules/identity/domain/user.js
 import { AiUsageController } from '../src/modules/identity/presentation/ai-usage.controller.js';
 import { ImportService } from '../src/modules/importing/application/import.service.js';
 import { IntegrityService } from '../src/modules/integrity/application/integrity.service.js';
+import type { AiReview, AiUsageReviewer } from '../src/modules/integrity/application/ports.js';
 import { quotaFor } from './support/ai-fakes.js';
 import { skipLogKey } from '../src/modules/integrity/application/integrity.service.js';
 
@@ -188,6 +189,16 @@ function integrity(quota: ReturnType<typeof quotaFor>['quota'], reviews: { n: nu
     { id: 'sub-3b', userId: 'hs3', userDisplayName: 'HS', sessionId: 's1', problemKey: 'A', language: 'python', code: 'print(3)', verdict: 'AC', createdAt: new Date() },
   ];
   const once = (k: string) => (checked.has(k) ? false : (checked.add(k), true));
+  // A real AiReview (OJ-29): MEDIUM, so a flag is built and saved, as for a review worth showing the teacher.
+  const reviewer: AiUsageReviewer = {
+    available: true,
+    review: async (input): Promise<AiReview> => {
+      reviews.n++;
+      reviews.ids?.push(input.code);
+      if (reviews.fail) throw new Error('down');
+      return { risk: 'MEDIUM', summary: 'chú thích từng dòng', reasons: ['r'], segments: [] };
+    },
+  };
   const flags = {
     markChecked: async (id: string, kind: string) => once(`${id}/${kind}`),
     claimFirstAiReview: async (s: string, p: string, u: string) => once(`${s}|${p}|${u}`),
@@ -198,7 +209,7 @@ function integrity(quota: ReturnType<typeof quotaFor>['quota'], reviews: { n: nu
     flags as never,
     { get: async (id: string) => subs.find((s) => s.id === id) ?? null, ofProblem: async () => subs } as never,
     { checkInfo: async () => ({ ownerId: 'owner', checkPlagiarism: false, checkAiUsage: true, sessionTitle: 'S', problemTitle: 'A', statement: '' }) } as never,
-    { available: true, review: async (input: { code: string }) => { reviews.n++; reviews.ids?.push(input.code); if (reviews.fail) throw new Error('down'); return { likely: false, confidence: 'LOW', reasons: [] }; } } as never,
+    reviewer,
     quota,
   );
 }
