@@ -1,5 +1,6 @@
 'use client';
 
+import { X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -21,6 +22,8 @@ function SubmissionsList() {
   const sessionId = params.get('sessionId') || '';
   // From a results-board cell (OJ-17, U4): that problem's submissions in the session.
   const problemKey = params.get('problemKey') || '';
+  // From a student's row on the results board (OJ-30): that student's submissions in the session.
+  const userId = params.get('userId') || '';
   const [mine, setMine] = useState(!isStaff || !sessionId);
   const [page, setPage] = useState(1);
 
@@ -41,12 +44,14 @@ function SubmissionsList() {
       api.listSubmissions({
         sessionId: sessionId || undefined,
         problemKey: problemKey || undefined,
-        mine: isStaff ? mine : true,
+        userId: userId || undefined,
+        mine: userId ? undefined : isStaff ? mine : true,
         page,
         pageSize: PAGE_SIZE,
       }),
-    [sessionId, problemKey, mine, page, isStaff],
+    [sessionId, problemKey, userId, mine, page, isStaff],
   );
+  const studentName = data?.items[0]?.userDisplayName;
 
   const pending = data?.items.some((s) => s.status !== 'DONE');
   useEffect(() => {
@@ -55,10 +60,19 @@ function SubmissionsList() {
     return () => clearTimeout(t);
   }, [pending, data, reload]);
 
+  const clearStudent = () => {
+    const sp = new URLSearchParams(params.toString());
+    sp.delete('userId');
+    setMine(false);
+    const qs = sp.toString();
+    router.replace(qs ? `/submissions?${qs}` : '/submissions');
+  };
+
   const setSession = (value: string) => {
     const sp = new URLSearchParams(params.toString());
     if (value) sp.set('sessionId', value);
     else sp.delete('sessionId');
+    sp.delete('userId'); // a student filter belongs to the session it came from
     if (value) setMine(false);
     const qs = sp.toString();
     router.replace(qs ? `/submissions?${qs}` : '/submissions');
@@ -88,7 +102,8 @@ function SubmissionsList() {
               </option>
             ))}
           </select>
-          <div className="inline-flex shrink-0 rounded-control bg-slate-100 p-1 text-sm whitespace-nowrap">
+          {/* One student's work already answers "everyone or mine": the chip below replaces the switch. */}
+          <div className={cn('inline-flex shrink-0 rounded-control bg-slate-100 p-1 text-sm whitespace-nowrap', userId && 'hidden')}>
             <button
               type="button"
               disabled={!canSeeAll}
@@ -109,6 +124,19 @@ function SubmissionsList() {
               {t('mine')}
             </button>
           </div>
+          {userId && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-ink-50 py-1 pr-1 pl-3 text-sm text-ink-700">
+              {t('studentFilter', { name: studentName ?? t('studentUnknown') })}
+              <button
+                type="button"
+                onClick={clearStudent}
+                className="rounded-full p-1 hover:bg-ink-100"
+                aria-label={t('clearStudent')}
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </span>
+          )}
         </Card>
       )}
 
@@ -130,7 +158,7 @@ function SubmissionsList() {
           </EmptyState>
         ) : (
           <>
-            <SubmissionsTable items={data.items} showUser={isStaff && !mine} />
+            <SubmissionsTable items={data.items} showUser={isStaff && !mine && !userId} />
             <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onChange={setPage} />
           </>
         )}

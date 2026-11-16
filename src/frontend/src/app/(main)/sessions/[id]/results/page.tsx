@@ -7,10 +7,12 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { RequireRole, STAFF } from '@/components/guards';
+import { StudentWorkPanel, type StudentWorkTarget } from '@/components/student-work';
 import { Button, Card, EmptyState, ErrorState, PageHeader, TableSkeleton } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAsync } from '@/lib/use-async';
 import { solvedByProblem, sortResults, type ResultSort, type SortDirection } from '@/lib/results';
+import { studentSubmissionsHref } from '@/lib/results-links';
 import { intlTag } from '@/i18n/runtime';
 import { cn, formatDateTime, formatPoints } from '@/lib/utils';
 
@@ -34,6 +36,9 @@ export default function SessionResultsPage() {
     }
   };
   const ariaSort = (col: ResultSort) => (sameSort(col, sort) ? (direction === 'asc' ? 'ascending' : 'descending') : 'none');
+
+  // One student's attempts (OJ-30): a score cell opens that problem, the name opens every problem.
+  const [work, setWork] = useState<StudentWorkTarget | null>(null);
 
   // Live while the session is open (U4): the board refreshes every 30 s while the tab is visible.
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
@@ -168,7 +173,14 @@ export default function SessionResultsPage() {
                     <tr key={r.userId} className="hover:bg-slate-50">
                       <td className="sticky left-0 bg-surface px-4 py-2 font-medium">
                         <span className="inline-flex items-center gap-1.5">
-                          {r.displayName}
+                          <button
+                            type="button"
+                            onClick={() => setWork({ userId: r.userId, displayName: r.displayName })}
+                            className="-mx-1 rounded px-1 text-left hover:bg-ink-50 hover:text-ink-700"
+                            title={t('results.studentLink', { name: r.displayName })}
+                          >
+                            {r.displayName}
+                          </button>
                           {r.completed && (
                             <CheckCircle2 className="h-4 w-4 shrink-0 text-chalk-600" aria-label={t('results.completed')} />
                           )}
@@ -177,7 +189,7 @@ export default function SessionResultsPage() {
                       <td className="px-3 py-2 text-center tabular-nums">
                         {r.solvedCount}/{data.problems.length}
                       </td>
-                      {data.problems.map((p) => {
+                      {data.problems.map((p, i) => {
                         const v = r.scores[p.key] ?? 0;
                         return (
                           <td
@@ -187,21 +199,22 @@ export default function SessionResultsPage() {
                               v >= p.points ? 'font-semibold text-chalk-700' : v > 0 ? 'text-slate-800' : 'text-slate-300',
                             )}
                           >
-                            {/* Opens this problem's submissions in the session (U4). */}
-                            <Link
-                              href={`/submissions?sessionId=${id}&problemKey=${encodeURIComponent(p.key)}`}
-                              className="-mx-1 rounded px-1 hover:bg-ink-50 hover:text-ink-700"
-                              title={t('results.cellLink', { n: data.problems.indexOf(p) + 1 })}
+                            {/* This student's attempts on this problem (OJ-30; before, every student's). */}
+                            <button
+                              type="button"
+                              onClick={() => setWork({ userId: r.userId, displayName: r.displayName, problem: { key: p.key, n: i + 1 } })}
+                              className="-mx-1 rounded px-1 tabular-nums hover:bg-ink-50 hover:text-ink-700"
+                              title={t('results.cellLink', { name: r.displayName, n: i + 1 })}
                             >
                               {formatPoints(v)}
-                            </Link>
+                            </button>
                           </td>
                         );
                       })}
                       <td className="px-4 py-2 text-right font-bold tabular-nums">{formatPoints(r.total)}</td>
                       <td className="hidden px-4 py-2 whitespace-nowrap text-slate-500 lg:table-cell">
                         {r.lastSubmissionAt ? (
-                          <Link href={`/submissions?sessionId=${id}`} className="hover:text-ink-700">
+                          <Link href={studentSubmissionsHref(id, r.userId)} className="hover:text-ink-700">
                             {formatDateTime(r.lastSubmissionAt)}
                           </Link>
                         ) : (
@@ -231,6 +244,7 @@ export default function SessionResultsPage() {
             </div>
           )}
         </Card>
+        <StudentWorkPanel sessionId={id} target={work} onClose={() => setWork(null)} />
       </Container>
     </RequireRole>
   );

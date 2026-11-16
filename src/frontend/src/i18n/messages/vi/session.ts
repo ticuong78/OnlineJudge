@@ -81,7 +81,17 @@ export const session = {
   results: {
     liveUpdated: 'Tự cập nhật mỗi 30 giây, lần cuối {time}',
     solvedBy: 'Số học sinh giải trọn',
-    cellLink: 'Xem các bài nộp của bài {n}',
+    cellLink: 'Xem bài làm của {name} ở bài {n}',
+    studentLink: 'Xem mọi bài làm của {name} trong phiên',
+    panel: {
+      titleProblem: '{name} · Bài {n}',
+      titleAll: '{name} · mọi bài',
+      count: '{count, plural, other {# lần nộp}}, mới nhất trước',
+      more: 'Còn {count, plural, other {# lần nộp}} cũ hơn trong danh sách đầy đủ.',
+      empty: 'Học sinh chưa nộp bài này.',
+      emptyAll: 'Học sinh chưa nộp bài nào trong phiên.',
+      all: 'Mọi bài nộp của học sinh trong phiên',
+    },
     back: 'Về phiên',
     title: 'Kết quả: {title}',
     public: 'Công khai',
@@ -119,6 +129,9 @@ export const session = {
     everyone: 'Mọi người',
     mine: 'Của tôi',
     chooseFirst: 'Chọn một phiên trước',
+    studentFilter: 'Học sinh: {name}',
+    studentUnknown: 'một học sinh',
+    clearStudent: 'Bỏ lọc theo học sinh',
     empty: 'Chưa có bài nộp nào',
   },
   detail: {

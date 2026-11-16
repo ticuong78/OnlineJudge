@@ -145,8 +145,8 @@ class FakeGateway extends SessionGateway {
   maxSubmissions: number | null = null;
   async prepareSubmission() { return target(this.maxSubmissions); }
   /** Who manages the session; everyone by default, as most tests here act as staff or do not care. */
-  reviews = (_actor: Actor) => true;
-  async canReview(actor: Actor) { return this.reviews(actor); }
+  reviews = (_actor: Actor, _sessionId?: string) => true;
+  async canReview(actor: Actor, sessionId: string) { return this.reviews(actor, sessionId); }
   async judgeTarget() { return target(null); }
   async trialTarget() { return target(null); }
   async visibility(_actor: Actor, ids: string[]) { return new Map<string, ResultVisibility>(ids.map((i) => [i, 'FULL'])); }
@@ -626,4 +626,85 @@ test('a submission never stores program output, even if an engine sent some (OJ-
   const stored = t.submissions.rows.get(id)!.snapshot.testResults;
   assert.equal(stored.length, 1);
   assert.equal('output' in stored[0], false);
+});
+
+// ---------------------------------------------------------------- OJ-30: one student's submissions, scoped to the actor
+
+/** Read side over the same rows, filtered like the TypeORM query. */
+class MemoryQueries extends SubmissionQueries {
+  constructor(private readonly store: MemorySubmissions) { super(); }
+  async list(f: { userId?: string; sessionId?: string; problemKey?: string; page: number; pageSize: number }) {
+    const items = [...this.store.rows.values()].filter((s) =>
+      (!f.userId || s.snapshot.userId === f.userId) &&
+      (!f.sessionId || s.snapshot.sessionId === f.sessionId) &&
+      (!f.problemKey || s.snapshot.problemKey === f.problemKey));
+    return { items: items.slice((f.page - 1) * f.pageSize, f.page * f.pageSize).map(copy), total: items.length };
+  }
+}
+
+const OTHER_SESSION = '4f9c1a52-0000-4000-8000-000000000002';
+const teacher: Actor = { id: 'teacher-1', role: 'TEACHER', name: 'Cô Lan' };
+const admin: Actor = { id: 'admin-1', role: 'ADMIN', name: 'Quản trị' };
+
+/** Two students with work on A and B in SESSION, and one submission in another session; the teacher manages SESSION only. */
+async function listSetup() {
+  const t = setup({ MAX_PENDING_SUBMISSIONS: 50 });
+  const queries = new MemoryQueries(t.submissions);
+  const service = new JudgingService(t.submissions, queries, t.gateway, t.queue, t.events, config({ MAX_PENDING_SUBMISSIONS: 50 }));
+  t.gateway.reviews = (a, sessionId) => a.role === 'ADMIN' || (a.id === teacher.id && sessionId === SESSION);
+  const send = (who: Actor, sessionId: string, problemKey: string) =>
+    service.submit(who, { sessionId, problemKey, language: 'python', sourceCode: 'print(3)' });
+  await send(student(1), SESSION, 'A');
+  await send(student(1), SESSION, 'A');
+  await send(student(1), SESSION, 'B');
+  await send(student(2), SESSION, 'A');
+  await send(student(1), OTHER_SESSION, 'A');
+  const list = (who: Actor, q: { sessionId?: string; problemKey?: string; userId?: string; mine?: boolean }) =>
+    service.list(who, { page: 1, pageSize: 50, ...q });
+  const code = (p: Promise<unknown>) => p.then(() => 'ok', (e: DomainError) => e.code);
+  return { list, code };
+}
+
+test('a session manager lists one student in that session, optionally one problem (OJ-30)', async () => {
+  const { list } = await listSetup();
+  const all = await list(teacher, { sessionId: SESSION, userId: student(1).id });
+  assert.equal(all.total, 3);
+  assert.ok(all.items.every((s) => s.userId === student(1).id && s.sessionId === SESSION));
+  const onA = await list(teacher, { sessionId: SESSION, problemKey: 'a', userId: student(1).id });
+  assert.equal(onA.total, 2);
+  assert.ok(onA.items.every((s) => s.problemKey === 'A'));
+});
+
+test('a userId filter wins over mine=true for a manager, instead of silently showing their own work (OJ-30)', async () => {
+  const { list } = await listSetup();
+  assert.equal((await list(teacher, { sessionId: SESSION, userId: student(2).id, mine: true })).total, 1);
+});
+
+test('an admin lists one student anywhere, with or without a session (OJ-30)', async () => {
+  const { list } = await listSetup();
+  assert.equal((await list(admin, { userId: student(1).id })).total, 4);
+  assert.equal((await list(admin, { sessionId: OTHER_SESSION, userId: student(1).id })).total, 1);
+});
+
+test('staff may not list a student outside a session they manage, or without a session (OJ-30)', async () => {
+  const { list, code } = await listSetup();
+  assert.equal(await code(list(teacher, { sessionId: OTHER_SESSION, userId: student(1).id })), 'judging.not_session_manager');
+  assert.equal(await code(list(teacher, { userId: student(1).id })), 'judging.not_session_manager');
+  const stranger: Actor = { id: 'teacher-2', role: 'TEACHER', name: 'Thầy Minh' };
+  assert.equal(await code(list(stranger, { sessionId: SESSION, userId: student(1).id })), 'judging.not_session_manager');
+});
+
+test("a student may filter by their own id only; another student's id is refused (OJ-30)", async () => {
+  const { list, code } = await listSetup();
+  const own = await list(student(2), { sessionId: SESSION, userId: student(2).id });
+  assert.equal(own.total, 1);
+  assert.equal(own.items[0].userId, student(2).id);
+  assert.equal(await code(list(student(2), { sessionId: SESSION, userId: student(1).id })), 'judging.not_owner');
+});
+
+test('without userId nothing changes: students see their own, managers the whole session (OJ-30 regression)', async () => {
+  const { list } = await listSetup();
+  assert.equal((await list(student(1), { sessionId: SESSION })).total, 3);
+  assert.equal((await list(teacher, { sessionId: SESSION })).total, 4);
+  assert.equal((await list(teacher, { sessionId: OTHER_SESSION })).total, 0, 'not a manager there: only own submissions');
 });
