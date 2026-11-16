@@ -6,6 +6,7 @@ import { IdentityModule } from '../identity/identity.module.js';
 import { ClassAccess, LearningRecordStore, ProblemCatalog } from './application/ports.js';
 import { ProblemSetService } from './application/problem-set.service.js';
 import { SessionFacade } from './application/session.facade.js';
+import { GradebookService } from './application/gradebook.service.js';
 import { SessionService } from './application/session.service.js';
 import { AttemptRepository, ProblemSetRepository, SessionRepository, LearningPathRepository } from './domain/repositories.js';
 import { CatalogProblemCatalog, ClassroomClassAccess, PublicSetsKeepProblemsPublic } from './infrastructure/adapters.js';
@@ -25,7 +26,7 @@ import {
   TypeOrmProblemSetRepository,
   TypeOrmSessionRepository,
 } from './infrastructure/repositories.js';
-import { LearningPathsController, PracticeController, ProblemSetsController, ProgressController, SessionsController } from './presentation/assessment.controllers.js';
+import { ClassGradebookController, LearningPathsController, PracticeController, ProblemSetsController, ProgressController, SessionsController } from './presentation/assessment.controllers.js';
 import { LearningPathService } from './application/learning-path.service.js';
 
 @Module({
@@ -43,10 +44,11 @@ import { LearningPathService } from './application/learning-path.service.js';
     ClassroomModule,
     IdentityModule,
   ],
-  controllers: [ProblemSetsController, SessionsController, ProgressController, PracticeController, LearningPathsController],
+  controllers: [ClassGradebookController, ProblemSetsController, SessionsController, ProgressController, PracticeController, LearningPathsController],
   providers: [
     ProblemSetService,
     SessionService,
+    GradebookService,
     SessionFacade,
     LearningPathService,
     { provide: LearningPathRepository, useClass: TypeOrmLearningPathRepository },

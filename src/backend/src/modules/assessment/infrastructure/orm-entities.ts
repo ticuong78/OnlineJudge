@@ -89,7 +89,8 @@ export class LearningSessionOrmEntity {
 @Entity('learning_progress')
 export class LearningProgressOrmEntity {
   @PrimaryColumn('uuid') userId: string;
-  @PrimaryColumn('uuid') sessionId: string;
+  // The key starts with userId, so reads by session (results, class gradebook OJ-31) need their own index.
+  @Index() @PrimaryColumn('uuid') sessionId: string;
   @PrimaryColumn({ type: 'varchar', length: 4 }) problemKey: string;
   @Column({ type: 'varchar', length: 80 }) userDisplayName: string;
   @Column('real', { default: 0 }) bestScore: number;

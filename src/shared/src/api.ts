@@ -842,6 +842,23 @@ export interface SessionResultsDto {
   }[];
 }
 
+/**
+ * Every student's score in every opened session of a class (OJ-31). Points follow the session results: each problem
+ * counts its best score. Sessions oldest first; rows by name.
+ */
+export interface ClassGradebookDto {
+  classId: string;
+  sessions: { id: string; title: string; type: ProblemSetType; opensAt: string | null; closesAt: string | null; maxPoints: number }[];
+  rows: {
+    userId: string;
+    displayName: string;
+    /** No longer in the class, kept because they have a score here. */
+    left: boolean;
+    /** sessionId -> earned points; null = never submitted in that session (counts as 0). */
+    scores: Record<string, number | null>;
+  }[];
+}
+
 // ---------- Judging ----------
 /**
  * `GET /submissions` filters. `userId` (OJ-30): one student's submissions; admins anywhere, managers only together with

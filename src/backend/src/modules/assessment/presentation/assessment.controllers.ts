@@ -32,6 +32,7 @@ import {
 import type { Actor } from '../../../shared/application/actor.js';
 import { CurrentActor, Roles } from '../../../shared/presentation/decorators.js';
 import { ProblemSetService } from '../application/problem-set.service.js';
+import { GradebookService } from '../application/gradebook.service.js';
 import { SessionService } from '../application/session.service.js';
 import { LearningPathService } from '../application/learning-path.service.js';
 
@@ -142,6 +143,17 @@ class UpdateSessionBody {
 class ListSessionsQuery {
   @IsOptional() @IsUUID() classId?: string;
   @IsOptional() @IsIn(['CLASS', 'PUBLIC']) audience?: SessionAudience;
+}
+
+/** Lives under /classes because it is read from the class page, but scores belong to assessment (OJ-31). */
+@Controller('classes')
+export class ClassGradebookController {
+  constructor(private readonly gradebooks: GradebookService) {}
+
+  @Get(':id/gradebook') @Roles('ADMIN', 'TEACHER')
+  gradebook(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string) {
+    return this.gradebooks.gradebook(actor, id);
+  }
 }
 
 @Controller('sessions')
