@@ -22,6 +22,8 @@ import { JudgeQueue, SessionGateway, type ResultVisibility, type SubmissionTarge
 export interface ListSubmissionsQuery {
   sessionId?: string;
   problemKey?: string;
+  /** One student's submissions (OJ-30): admin anywhere, managers only inside a session they manage. */
+  userId?: string;
   mine?: boolean;
   page: number;
   pageSize: number;
@@ -165,18 +167,35 @@ export class JudgingService {
 
   /** Students: own submissions. Staff: own, or every submission of a session they manage. Admin: anything. */
   async list(actor: Actor, query: ListSubmissionsQuery): Promise<Paginated<SubmissionDto>> {
-    let onlyMine = query.mine || actor.role === 'STUDENT';
-    if (!onlyMine && actor.role !== 'ADMIN') {
+    const forUser = await this.studentFilter(actor, query);
+    let onlyMine = !forUser && (query.mine || actor.role === 'STUDENT');
+    if (!onlyMine && actor.role !== 'ADMIN' && !forUser) {
       onlyMine = !query.sessionId || !(await this.sessions.canReview(actor, query.sessionId));
     }
     const { items, total } = await this.queries.list({
-      userId: onlyMine ? actor.id : undefined,
+      userId: onlyMine ? actor.id : forUser,
       sessionId: query.sessionId,
       problemKey: query.problemKey?.toUpperCase(),
       page: query.page,
       pageSize: query.pageSize,
     });
     return { items: await this.toDtos(actor, items), total, page: query.page, pageSize: query.pageSize };
+  }
+
+  /**
+   * Checks a `userId` filter (OJ-30). Refused rather than ignored: falling back to the caller's own submissions would
+   * show an empty list, which reads as "this student never submitted".
+   */
+  private async studentFilter(actor: Actor, query: ListSubmissionsQuery): Promise<string | undefined> {
+    const userId = query.userId;
+    if (!userId || userId === actor.id || actor.role === 'ADMIN') return userId;
+    if (actor.role === 'STUDENT') {
+      throw DomainError.forbidden('judging.not_owner', 'Bạn chỉ xem được bài nộp của mình.');
+    }
+    if (!query.sessionId || !(await this.sessions.canReview(actor, query.sessionId))) {
+      throw DomainError.forbidden('judging.not_session_manager', 'Chỉ giáo viên phụ trách phiên xem được bài nộp của học sinh.');
+    }
+    return userId;
   }
 
   private async enqueue(submission: Submission, target: SubmissionTarget) {

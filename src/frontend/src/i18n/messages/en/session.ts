@@ -83,7 +83,17 @@ export const session = {
   results: {
     liveUpdated: 'Updates every 30 s, last at {time}',
     solvedBy: 'Students with full points',
-    cellLink: 'See the submissions for problem {n}',
+    cellLink: 'See {name}’s work on problem {n}',
+    studentLink: 'See all of {name}’s work in this session',
+    panel: {
+      titleProblem: '{name} · Problem {n}',
+      titleAll: '{name} · all problems',
+      count: '{count, plural, one {# submission} other {# submissions}}, newest first',
+      more: '{count, plural, one {# older submission is} other {# older submissions are}} in the full list.',
+      empty: 'This student has not submitted this problem.',
+      emptyAll: 'This student has not submitted anything in this session.',
+      all: 'All of this student’s submissions in the session',
+    },
     back: 'Back to session',
     title: 'Results: {title}',
     public: 'Public',
@@ -121,6 +131,9 @@ export const session = {
     everyone: 'Everyone',
     mine: 'Mine',
     chooseFirst: 'Choose a session first',
+    studentFilter: 'Student: {name}',
+    studentUnknown: 'one student',
+    clearStudent: 'Remove the student filter',
     empty: 'No submissions yet',
   },
   detail: {

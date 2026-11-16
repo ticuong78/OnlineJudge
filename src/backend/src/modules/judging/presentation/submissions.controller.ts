@@ -33,6 +33,7 @@ class TrialBody {
 class ListQuery extends PaginationQuery {
   @IsOptional() @IsUUID() sessionId?: string;
   @IsOptional() @Matches(KEY) problemKey?: string;
+  @IsOptional() @IsUUID() userId?: string;
   @IsOptional() @Transform(({ value }) => value === 'true' || value === true) @IsBoolean() mine?: boolean;
 }
 

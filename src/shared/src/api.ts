@@ -843,6 +843,19 @@ export interface SessionResultsDto {
 }
 
 // ---------- Judging ----------
+/**
+ * `GET /submissions` filters. `userId` (OJ-30): one student's submissions; admins anywhere, managers only together with
+ * a `sessionId` they manage, students only their own id. Anything else is a 403.
+ */
+export interface SubmissionQuery {
+  sessionId?: string;
+  problemKey?: string;
+  userId?: string;
+  mine?: boolean;
+  page?: number;
+  pageSize?: number;
+}
+
 export interface SubmitRequest {
   sessionId: string;
   problemKey: string;

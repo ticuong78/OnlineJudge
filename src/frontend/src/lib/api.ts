@@ -58,6 +58,7 @@ import type {
   SolutionDto,
   SubmissionDetailDto,
   SubmissionDto,
+  SubmissionQuery,
   SubmitRequest,
   CreateTrialRunRequest,
   TrialRunDto,
@@ -203,14 +204,6 @@ export interface ProblemQuery {
   tags?: string[];
   /** `organization` scope: one of the viewer's organizations (all of them when absent). */
   organizationId?: string;
-  page?: number;
-  pageSize?: number;
-}
-
-export interface SubmissionQuery {
-  sessionId?: string;
-  problemKey?: string;
-  mine?: boolean;
   page?: number;
   pageSize?: number;
 }
