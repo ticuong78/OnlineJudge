@@ -1,6 +1,6 @@
 # OJ-8: Organization plan for the pilot
 
-Status: approved (Htet Oo Naing, 2026-11-08)
+Status: done; L3 (Low) still open (see Status check)
 Owner: Htet Oo Naing (build), Cường Lê (review, pilot)
 Risky area: yes (identity, class management used by assessment/judging/integrity/community, catalog sharing, AI access)
 
@@ -59,19 +59,19 @@ moving a class out of an organization; contest mode (bulk student accounts, anon
 
 ## Done when
 
-- [ ] Admin: `POST/GET/PUT /organizations`, members and org admins; the Users page shows each teacher's organizations.
-- [ ] Org admin: `GET /organizations` (own), `GET /organizations/:id`, invitations (create, cancel), members (remove,
+- [x] Admin: `POST/GET/PUT /organizations`, members and org admins; the Users page shows each teacher's organizations.
+- [x] Org admin: `GET /organizations` (own), `GET /organizations/:id`, invitations (create, cancel), members (remove,
       promote/demote), `GET /organizations/:id/classes`; existing teacher: `GET /organization-invitations/mine`,
       accept, decline, leave (`DELETE /organizations/:id/members/<own id>`).
-- [ ] Invite beyond seats: 409 `organization.no_seats`; after active-until: 409 `organization.inactive`.
-- [ ] An org admin opens, edits and manages (sessions, results, rejudge, flags) a class of their organization taught
+- [x] Invite beyond seats: 409 `organization.no_seats`; after active-until: 409 `organization.inactive`.
+- [x] An org admin opens, edits and manages (sessions, results, rejudge, flags) a class of their organization taught
       by another teacher; for a class of another organization or a personal class they get 404/403 as today.
-- [ ] A teacher in organizations A and B: A's org admin sees only the teacher's A classes and A-shared problems.
-- [ ] Organization sharing: visible to members of the chosen organizations, 404 for everyone else, students included.
-- [ ] Non-VIP member of an active organization with AI included can use AI; after active-until: 403 `ai.vip_required`.
-- [ ] Leaving: seat freed, organization classes reassigned to the org admin, shared problems unshared from that
+- [x] A teacher in organizations A and B: A's org admin sees only the teacher's A classes and A-shared problems.
+- [x] Organization sharing: visible to members of the chosen organizations, 404 for everyone else, students included.
+- [x] Non-VIP member of an active organization with AI included can use AI; after active-until: 403 `ai.vip_required`.
+- [x] Leaving: seat freed, organization classes reassigned to the org admin, shared problems unshared from that
       organization with copies in the org admin's bank.
-- [ ] `pnpm build:shared && pnpm typecheck && pnpm test` pass; `docs/API.md` and `README.md` updated.
+- [x] `pnpm build:shared && pnpm typecheck && pnpm test` pass; `docs/API.md` and `README.md` updated.
 
 ## Contexts and contracts
 
@@ -132,3 +132,27 @@ L1 rate limit on organization invitations; L2 adding a member withdraws their pe
 overwrites a membership; L4 a failed invitation email no longer leaves an unusable account invitation; L5
 `organizationIds` is required when sharing. M2 decided by the owner (2026-11-08: "archive only"): org admins archive and restore organization classes but
 cannot delete them for good (scheduled or immediate); only the class teacher and the administrator can. Open: L3 (the last-org-admin check and duplicate invitations are not serialized under concurrent requests).
+
+## Status check (19 Nov 2026)
+
+Checked against master `2deb25b`. Each item is covered by tests that pass:
+- `organization.test.ts` and `organization-access.test.ts` (22/22): manage only your own organization's classes,
+  managed class ids for sessions, results and integrity, seats, invitations, accepting and declining, several
+  organizations per teacher, AI through an active organization and off after expiry, leaving (successor, unsharing
+  and copies), organization sharing.
+- `organization.integration.test.ts` (PostgreSQL, in CI): parallel seats and accepts, round trips.
+- The routes: organizations, members and invitations in `identity/presentation/organization.controllers.ts`;
+  `GET /organizations/:id/classes` in `classroom/presentation/classrooms.controller.ts`; organization sharing through
+  `catalog/presentation/problems.controller.ts`. `docs/API.md` and `README.md` describe them.
+- Browser e2e: `organization.spec.ts`.
+
+Still open: L3 (Low, from the review above), kept open by the owner on 19 Nov 2026. Two gaps, both check-then-write
+without serialization:
+- The last-org-admin check (`removeMember`, `ensureAnotherAdmin`): two org admins demoting, removing or leaving at the
+  same moment could both pass it and leave the organization with no org admin.
+- Duplicate invitations: `invite` (`organization.service.ts`) checks for a pending invitation to the address, then
+  inserts. Two requests at once, even one admin submitting the form twice, can create two pending invitations.
+  Pending invitations count towards seats, so this holds two seats for one teacher until one is cancelled.
+
+The fix is a row lock on the organization, or a unique partial index on pending invitations by address (a schema
+change), in a later spec.

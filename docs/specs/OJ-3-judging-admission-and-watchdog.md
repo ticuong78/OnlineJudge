@@ -1,6 +1,6 @@
 # OJ-3: Atomic submission admission and judge watchdog
 
-Status: approved 2026-11-07 by Htet Oo Naing (retroactive; still needs a second human reviewer before the PR)
+Status: approved; open: NF-6 (Low) and the second human review (see Status check)
 Owner: Htet Oo Naing
 Risky area: yes (judging)
 
@@ -65,3 +65,13 @@ The new query is scoped by `userId` through the advisory lock. The watchdog is a
 ## Rollout and risks
 
 Check that the new column exists before the watchdog starts. Watch the IE count, because a high count means the stale threshold is too short for the exam backlog.
+
+## Status check (19 Nov 2026)
+
+Checked against master `2deb25b`:
+- NF-6 (Low) is still open. The watchdog's queue calls have a 5 s timeout (`withTimeout` in `judge-watchdog.ts`), but
+  its database calls (`submissions.findStale` and `submissions.failIfUnfinished`) do not, and no `statement_timeout`
+  is set. A hung query keeps `sweeping` true, so later passes are skipped until it returns. This is judging code, so
+  a fix needs the security-verifier.
+- The second human review is not recorded: the OJ-3 commit (`47f4de3`) came in through PR #1, which records no
+  review.
