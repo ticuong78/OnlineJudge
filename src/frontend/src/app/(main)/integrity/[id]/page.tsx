@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { Container } from '@/components/app-shell';
+import { Container, INTEGRITY_CHANGED } from '@/components/app-shell';
 import { CodeBlock } from '@/components/code-block';
 import { RequireRole, STAFF } from '@/components/guards';
 import { FlagKindBadge, FlagLevel, FlagStatus } from '@/components/integrity';
@@ -31,6 +31,7 @@ export default function IntegrityFlagPage() {
     try {
       const r = await api.acknowledgeIntegrityFlag(f.id);
       setData({ ...f, ...r });
+      window.dispatchEvent(new Event(INTEGRITY_CHANGED)); // the menu badge counts open flags (OJ-32)
       toast.success(td('acknowledged'));
     } catch (e) {
       toast.error(errorMessage(e));
@@ -78,7 +79,7 @@ export default function IntegrityFlagPage() {
                 )
               }
             />
-            <div className="mb-5">
+            <div className="mb-6">
               <InlineAlert kind="info">
                 {f.summary} {td('advice')}
               </InlineAlert>

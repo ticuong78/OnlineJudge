@@ -62,9 +62,6 @@ export const classes = {
     added: 'Đã thêm vào lớp {name}',
   },
   gradebook: {
-    open: 'Bảng điểm',
-    title: 'Bảng điểm: {name}',
-    back: 'Về lớp',
     subtitle: 'Điểm mỗi phiên là tổng điểm cao nhất của từng bài, như trang kết quả. Chưa nộp tính 0.',
     loadFailed: 'Không tải được bảng điểm',
     emptyTitle: 'Chưa có phiên nào đã mở',
@@ -83,14 +80,22 @@ export const classes = {
     max: 'tối đa {points}',
     closes: 'đóng {date}',
     openNow: 'đang mở',
-    notSubmitted: 'Chưa nộp',
-    cellLink: 'Xem bài làm của {name} trong phiên {title}',
+    cellScore: '{name}, phiên {title}: {score}/{max} điểm. Bấm để xem bài nộp',
+    cellEmpty: '{name}, phiên {title}: chưa nộp bài',
     count: '{students, plural, other {# học sinh}} · {sessions, plural, other {# phiên}}',
     csv: { index: 'STT', possible: 'Tối đa', fileName: 'bang-diem-{name}.csv' },
   },
   detail: {
     notFound: 'Không tìm thấy lớp',
     back: 'Lớp',
+    tabs: {
+      sessions: 'Phiên',
+      gradebook: 'Bảng điểm',
+      board: 'Bảng tin',
+      students: 'Học sinh ({count})',
+      waitingQuestions: '{count, plural, other {# câu hỏi chờ trả lời}}',
+      waitingRequests: '{count, plural, other {# yêu cầu chờ duyệt}}',
+    },
     header: {
       nameRequired: 'Nhập tên lớp.',
       codeChangeHint: 'Đổi mã thì mã cũ không dùng được để xin vào lớp nữa.',
@@ -101,6 +106,7 @@ export const classes = {
       personal: 'Lớp cá nhân',
       size: 'Sĩ số',
       edit: 'Sửa lớp',
+      details: 'Chi tiết lớp',
     },
     moveOrg: {
       label: 'Tổ chức',

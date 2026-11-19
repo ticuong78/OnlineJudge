@@ -1,7 +1,7 @@
 'use client';
 
 import { LanguageLabels, type Language } from '@oj/contracts';
-import { ChevronLeft, ChevronRight, FlaskConical, Lock, RotateCcw, Send, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, FlaskConical, Lock, RotateCcw, Send, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -31,7 +31,17 @@ const LANG_KEY = 'oj:lang';
 
 type LeftTab = 'statement' | 'mine';
 
-function MySubmissions({ sessionId, problemKey, refreshKey }: { sessionId: string; problemKey: string; refreshKey: number }) {
+function MySubmissions({
+  sessionId,
+  problemKey,
+  refreshKey,
+  points,
+}: {
+  sessionId: string;
+  problemKey: string;
+  refreshKey: number;
+  points?: number;
+}) {
   const { data, error, loading, reload } = useAsync(
     () => api.listSubmissions({ sessionId, problemKey, mine: true, pageSize: 50 }),
     [sessionId, problemKey, refreshKey],
@@ -42,7 +52,12 @@ function MySubmissions({ sessionId, problemKey, refreshKey }: { sessionId: strin
   if (!data || data.items.length === 0) return <EmptyState title={t('noSubmissions')} />;
   return (
     <div className="-mx-5">
-      <SubmissionsTable items={data.items} showProblem={false} dim={loading} />
+      <SubmissionsTable
+        items={data.items}
+        showProblem={false}
+        dim={loading}
+        maxPoints={points === undefined ? undefined : { sessionId, points: { [problemKey]: points } }}
+      />
     </div>
   );
 }
@@ -90,6 +105,15 @@ export default function SolvePage() {
   const [confirmReset, setConfirmReset] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const resultPanel = useRef<HTMLDivElement>(null);
+  // Phones (below lg): the editor sits under the whole statement (OJ-33). A floating "Viết code" jumps down while the
+  // editor is still below the screen; once it shows (or the student scrolled past it to the result) the button goes
+  // away, so it never covers code or points the wrong way. "Đề bài" in the toolbar jumps back.
+  const statementTop = useRef<HTMLDivElement>(null);
+  const editorColumn = useRef<HTMLDivElement>(null);
+  const languageSelect = useRef<HTMLSelectElement>(null);
+  // A callback ref, so the observer attaches when the editor area first renders (after the data loads).
+  const [editorArea, setEditorArea] = useState<HTMLDivElement | null>(null);
+  const [editorBelow, setEditorBelow] = useState(true);
   // Editor comfort (OJ-17): font size and the statement/editor split, remembered on this computer.
   const [fontSize, setFontSize] = useState(14);
   const [split, setSplit] = useState(SPLIT_DEFAULT);
@@ -132,6 +156,12 @@ export default function SolvePage() {
       return next;
     });
   };
+  /** Scrolls to `target` and moves focus there too: the button that was pressed may disappear or scroll away. */
+  const jumpTo = (target: HTMLElement | null, focus: HTMLElement | null) => {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    target?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    focus?.focus({ preventScroll: true });
+  };
   const { data: result, error: pollError } = useSubmissionPolling(submissionId);
   const { data: trial, error: trialError, slow: trialSlow } = useTrialPolling(trialId);
 
@@ -153,6 +183,18 @@ export default function SolvePage() {
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     resultPanel.current.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'nearest' });
   }, [judged]);
+
+  // Whether the floating "Viết code" shows: only while the editor is entirely below the screen. The top margin leaves out
+  // the fixed header (3.5rem), which hides what is under it.
+  useEffect(() => {
+    if (!editorArea || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setEditorBelow(!entry.isIntersecting && entry.boundingClientRect.top > 0),
+      { rootMargin: '-56px 0px 0px 0px' },
+    );
+    observer.observe(editorArea);
+    return () => observer.disconnect();
+  }, [editorArea]);
 
   const allowedKey = allowed.join(',');
   useEffect(() => {
@@ -296,11 +338,11 @@ export default function SolvePage() {
   return (
     <div
       ref={grid}
-      className="grid grid-cols-1 lg:h-[calc(100vh-3.5rem)] lg:[grid-template-columns:var(--split)_6px_minmax(0,1fr)]"
+      className="grid grid-cols-1 pb-20 lg:h-[calc(100vh-3.5rem)] lg:pb-0 lg:[grid-template-columns:var(--split)_6px_minmax(0,1fr)]"
       style={{ '--split': `${split}%` } as React.CSSProperties}
     >
       {/* Left: statement */}
-      <div className="flex min-h-0 flex-col border-slate-200 bg-surface lg:border-r">
+      <div ref={statementTop} tabIndex={-1} className="flex min-h-0 scroll-mt-14 flex-col border-slate-200 bg-surface focus:outline-none lg:border-r">
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 px-5 pt-3 pb-2">
           <Link
             href={sessionHref(s.id)}
@@ -363,7 +405,7 @@ export default function SolvePage() {
               )}
             </>
           )}
-          {tab === 'mine' && <MySubmissions sessionId={s.id} problemKey={key} refreshKey={refreshKey} />}
+          {tab === 'mine' && <MySubmissions sessionId={s.id} problemKey={key} refreshKey={refreshKey} points={p.points} />}
         </div>
       </div>
 
@@ -386,11 +428,12 @@ export default function SolvePage() {
       />
 
       {/* Right: editor */}
-      <div className="flex min-h-0 flex-col bg-surface">
+      <div ref={editorColumn} className="flex min-h-0 scroll-mt-14 flex-col bg-surface">
         {/* Below lg the columns stack, so the toolbar (with the exam clock) sticks under the header while the student
             scrolls to and through the editor (UAT M2). One timer only: it also plays the chimes. */}
         <div className="sticky top-14 z-20 flex flex-wrap items-center gap-2 border-b border-slate-200 bg-surface px-3 py-2 lg:static">
           <select
+            ref={languageSelect}
             className={cn(inputClass, 'w-auto py-1.5')}
             value={language}
             onChange={(e) => changeLanguage(e.target.value as Language)}
@@ -411,6 +454,17 @@ export default function SolvePage() {
           >
             <RotateCcw className="h-4 w-4 shrink-0" />
             <span className="hidden sm:inline">{t('solve.template')}</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="lg:hidden"
+            onClick={() => jumpTo(statementTop.current, statementTop.current)}
+            title={t('solve.jumpToStatement')}
+            aria-label={t('solve.jumpToStatement')}
+          >
+            <ArrowUp className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="hidden sm:inline">{t('solve.jumpToStatement')}</span>
           </Button>
           <span className="flex items-center" role="group" aria-label={t('solve.fontSize')}>
             <Button variant="ghost" size="sm" onClick={() => changeFont(-1)} disabled={fontSize <= FONT_SIZES[0]} aria-label={t('solve.fontSmaller')} title={t('solve.fontSmaller')}>
@@ -468,7 +522,7 @@ export default function SolvePage() {
           </div>
         )}
         {/* Shorter than the screen on phones so there is page above and below it to scroll by (UAT M3). */}
-        <div className="h-[50vh] min-h-0 sm:h-[60vh] lg:h-auto lg:flex-1">
+        <div ref={setEditorArea} className="h-[50vh] min-h-0 sm:h-[60vh] lg:h-auto lg:flex-1">
           {ready && (
             <CodeEditor
               value={code}
@@ -550,6 +604,19 @@ export default function SolvePage() {
           </div>
         )}
       </div>
+
+      {/* Below lg, only while the editor is below the screen (OJ-33). Under the phone menu's scrim (z-30); bottom-left
+          from sm up, where toasts take the bottom-right corner. */}
+      {editorBelow && (
+        <button
+          type="button"
+          onClick={() => jumpTo(editorColumn.current, languageSelect.current)}
+          className="fixed right-4 bottom-4 z-[25] sm:right-auto sm:left-4 inline-flex min-h-11 items-center gap-1.5 rounded-full bg-ink-solid px-4 text-sm font-semibold text-white shadow-lg hover:bg-ink-solid-hover lg:hidden"
+        >
+          <ArrowDown className="h-4 w-4 shrink-0" aria-hidden="true" />
+          {t('solve.jumpToCode')}
+        </button>
+      )}
 
       <ConfirmDialog
         open={confirmReset}

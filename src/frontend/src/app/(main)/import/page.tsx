@@ -17,6 +17,7 @@ import {
   FileUp,
   Sparkles,
   Upload,
+  Download,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState, type DragEvent } from 'react';
@@ -33,7 +34,7 @@ import { TestListEditor } from '@/components/admin/test-list-editor';
 import { AiUsesLeft, useAiNotConfigured } from '@/components/ai-access';
 import { RequireRole, STAFF } from '@/components/guards';
 import { useToast } from '@/components/toast';
-import { Badge, Button, Card, Field, InlineAlert, inputClass, LinkButton, PageHeader, Spinner } from '@/components/ui';
+import { Badge, Button, buttonClass, Card, Field, InlineAlert, inputClass, LinkButton, PageHeader, Spinner } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { intlTag } from '@/i18n/runtime';
@@ -123,6 +124,33 @@ function Dropzone({ onFile, busy }: { onFile: (f: File) => void; busy: boolean }
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * What makes an exam split well, and a sample to try (OJ-34). The page was a lone drop zone, so a first-time teacher had
+ * no idea what layout works until a draft came back with warnings.
+ */
+function FormatTips() {
+  const t = useTranslations('authoring.import.tips');
+  return (
+    <Card className="p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold">{t('title')}</h2>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
+            <li>{t('header')}</li>
+            <li>{t('sections')}</li>
+            <li>{t('examples')}</li>
+            <li>{t('scan')}</li>
+          </ul>
+        </div>
+        <a href="/samples/de-mau.docx" download className={buttonClass('secondary', 'sm', 'shrink-0')}>
+          <Download className="h-4 w-4 shrink-0" />
+          {t('sample')}
+        </a>
+      </div>
+    </Card>
   );
 }
 
@@ -465,6 +493,7 @@ export default function ImportPage() {
             </div>
             {source === 'file' ? <Dropzone onFile={onFile} busy={parsing} /> : <PasteBox onSubmit={onText} busy={parsing} ai={canUseAi && !aiNotConfigured} />}
             {error && <InlineAlert>{error}</InlineAlert>}
+            {!parsing && <FormatTips />}
           </div>
         ) : (
           <div className="space-y-4">

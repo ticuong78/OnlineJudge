@@ -35,6 +35,39 @@ async function docx(file, blocks) {
   writeFileSync(out('exams', file), await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
 }
 
+// ---------------------------------------------------------------- 0. the sample teachers download from "Nhập đề" (OJ-34)
+// Clean and in the layout the rule-based reader splits best; with AI off it gives 2 problems and no warnings. Also
+// copied to the frontend's public folder. `node samples/make-samples.mjs de-mau` rebuilds only this file.
+
+await docx('de-mau.docx', [
+  '# ĐỀ MẪU: NHẬP ĐỀ VÀO ONLINE JUDGE',
+  '# Bài 1. TỔNG HAI SỐ (5 điểm)',
+  'Độ khó: Dễ',
+  'Thời gian: 1 giây. Bộ nhớ: 256 MB',
+  'Cho hai số nguyên a và b. Hãy in ra tổng a + b.',
+  'Dữ liệu vào: Một dòng gồm hai số nguyên a, b (|a|, |b| ≤ 10^9).',
+  'Kết quả: In ra một số nguyên là a + b.',
+  'Ví dụ',
+  { table: [['Input', 'Output'], ['1 2', '3'], ['-5 7', '2']] },
+  '# Bài 2. SỐ LỚN NHẤT (5 điểm)',
+  'Độ khó: Trung bình',
+  'Thời gian: 1 giây. Bộ nhớ: 256 MB',
+  'Cho dãy gồm n số nguyên. Hãy tìm số lớn nhất trong dãy.',
+  'Dữ liệu vào:',
+  'Dòng đầu chứa số nguyên n (1 ≤ n ≤ 10^5).',
+  'Dòng thứ hai chứa n số nguyên, mỗi số có trị tuyệt đối không quá 10^9.',
+  'Kết quả: In ra số lớn nhất trong dãy.',
+  'Ví dụ',
+  'Input',
+  '5',
+  '3 9 -1 9 4',
+  'Output',
+  '9',
+]);
+mkdirSync(path.join(root, 'src/frontend/public/samples'), { recursive: true });
+writeFileSync(path.join(root, 'src/frontend/public/samples/de-mau.docx'), (await import('node:fs')).readFileSync(out('exams', 'de-mau.docx')));
+if (process.argv[2] === 'de-mau') process.exit(0);
+
 // ---------------------------------------------------------------- 1. a normal class test (Word), with noise to filter
 
 await docx('de-kiem-tra-vong-lap.docx', [

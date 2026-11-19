@@ -19,6 +19,7 @@ export const session = {
     progress: 'Đã giải {solved}/{total}, {earned}/{max} điểm',
     submittedTimes: 'Đã nộp {count} lần',
     notStarted: 'Chưa làm',
+    classSolved: '{solved}/{total} giải trọn',
     best: 'Cao nhất {earned}/{max} điểm',
     deleteTitle: 'Xóa phiên này?',
     deleteMessage:
@@ -51,6 +52,8 @@ export const session = {
     fontSmaller: 'Chữ nhỏ hơn',
     fontLarger: 'Chữ to hơn',
     submitShortcut: 'Nộp bài (Ctrl/⌘ + Enter)',
+    jumpToCode: 'Viết code',
+    jumpToStatement: 'Đề bài',
     submitKeys: 'Ctrl ↵',
     submitKeysMac: '⌘ ↵',
     noSubmissions: 'Bạn chưa nộp bài này trong phiên',
@@ -81,7 +84,13 @@ export const session = {
   results: {
     liveUpdated: 'Tự cập nhật mỗi 30 giây, lần cuối {time}',
     solvedBy: 'Số học sinh giải trọn',
-    cellLink: 'Xem bài làm của {name} ở bài {n}',
+    cellScore: '{name}, bài {n}: {score}/{max} điểm. Bấm để xem bài làm',
+    legend: {
+      full: 'Đủ điểm',
+      partial: 'Một phần',
+      none: 'Chưa có điểm',
+      hint: 'Bấm vào điểm để xem bài nộp',
+    },
     studentLink: 'Xem mọi bài làm của {name} trong phiên',
     panel: {
       titleProblem: '{name} · Bài {n}',

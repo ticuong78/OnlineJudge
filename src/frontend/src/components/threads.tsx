@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslations } from 'use-intl';
 import { api, errorMessage } from '@/lib/api';
+import { awaitingQuestions } from '@/lib/threads';
 import { useAsync } from '@/lib/use-async';
 import { cn, formatDateTime } from '@/lib/utils';
 import { MarkdownField } from './form-fields';
@@ -246,15 +247,21 @@ export function ClassBoard({
   archived,
   isManager,
   canPost = true,
+  onAwaiting,
 }: {
   classId: string;
   archived: boolean;
   isManager: boolean;
   /** false for classes the student has left. */
   canPost?: boolean;
+  /** Called with the number of questions awaiting an answer whenever it changes, for the class page's tab badge (OJ-32). */
+  onAwaiting?: (count: number) => void;
 }) {
   const t = useTranslations('classes.threads.board');
   const { data, error, loading, reload, setData } = useAsync(() => api.listThreads(classId), [classId]);
+  useEffect(() => {
+    if (data) onAwaiting?.(awaitingQuestions(data));
+  }, [data, onAwaiting]);
   const [creating, setCreating] = useState(false);
   const writable = !archived && canPost;
   return (

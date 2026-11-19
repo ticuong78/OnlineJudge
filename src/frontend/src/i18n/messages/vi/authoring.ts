@@ -112,6 +112,14 @@ export const authoring = {
     unverified: 'AI tự tính, hãy kiểm tra',
   },
   import: {
+    tips: {
+      title: 'Đề được tách tốt nhất khi…',
+      header: 'Mỗi bài bắt đầu bằng "Bài 1", "Câu 2"… (có thể kèm tên bài).',
+      sections: 'Có các mục Dữ liệu vào, Kết quả, Ràng buộc, Ví dụ; thời gian và bộ nhớ ghi rõ (vd. "Thời gian: 1 giây").',
+      examples: 'Ví dụ viết thành các dòng Input/Output, hoặc bảng hai cột Input | Output.',
+      scan: 'File scan hoặc ảnh chụp cần AI để đọc; file Word là chắc chắn nhất.',
+      sample: 'Tải đề mẫu (.docx)',
+    },
     title: 'Nhập đề',
     subtitle:
       'Tải lên file đề (.docx/.pdf) hoặc dán nội dung đề, kiểm tra các bài được tách tự động rồi xác nhận để thêm vào ngân hàng của bạn (ở chế độ riêng tư).',

@@ -26,7 +26,7 @@ export function BankTabs() {
     </Link>
   );
   return (
-    <div className="mb-4 flex gap-1 border-b border-slate-200">
+    <div className="mb-6 flex gap-1 border-b border-slate-200">
       {tab('/bank', t('problems'), !onSets)}
       {tab('/bank/sets', t('sets'), onSets)}
     </div>

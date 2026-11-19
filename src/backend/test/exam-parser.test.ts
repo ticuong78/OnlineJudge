@@ -164,3 +164,23 @@ test('F4 follow-up: blank lines in a table cell and unclosed Word equations are 
     'a well-formed equation is still converted',
   );
 });
+
+test('OJ-34: the sample teachers download from "Nhập đề" splits into 2 clean problems with no warnings', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { MammothPdfDocumentReader } = await import('../src/modules/importing/infrastructure/document-reader.js');
+  const buffer = readFileSync(join(__dirname, '../../../samples/exams/de-mau.docx'));
+  const doc = await new MammothPdfDocumentReader().read({ originalName: 'de-mau.docx', mimeType: 'application/octet-stream', buffer });
+  const drafts = new ExamParser().parse(doc);
+  assert.deepEqual(
+    drafts.map((d) => [d.title, d.difficulty, d.timeLimitMs, d.memoryLimitMb, d.tests.filter((x) => x.isSample).length]),
+    [
+      ['TỔNG HAI SỐ', 'EASY', 1000, 256, 2],
+      ['SỐ LỚN NHẤT', 'MEDIUM', 1000, 256, 1],
+    ],
+  );
+  for (const d of drafts) assert.deepEqual(d.warnings, [], d.title);
+  assert.equal(drafts[1].tests[0].input.trim(), '5\n3 9 -1 9 4');
+  // The copy served to teachers is the same file.
+  assert.ok(buffer.equals(readFileSync(join(__dirname, '../../frontend/public/samples/de-mau.docx'))));
+});

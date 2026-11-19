@@ -112,18 +112,18 @@ function Organization() {
       />
 
       {!o.active && (
-        <div className="mb-4">
+        <div className="mb-6">
           <InlineAlert kind="warning">{t('expiredAlert')}</InlineAlert>
         </div>
       )}
 
-      <Card className="mb-5 grid grid-cols-1 gap-4 p-5 sm:grid-cols-3">
+      <Card className="mb-6 grid grid-cols-1 gap-4 p-5 sm:grid-cols-3">
         <Stat label={t('statSeats')}><SeatsMeter used={o.seatsUsed} seats={o.seats} /></Stat>
         <Stat label={t('statTeachers')}>{o.memberCount}</Stat>
         <Stat label={t('statPending')}>{manager ? o.invitations.length : '—'}</Stat>
       </Card>
 
-      <Card className="mb-5">
+      <Card className="mb-6">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-3">
           <h2 className="font-semibold">{t('membersTitle')}</h2>
           {isAdmin && (
@@ -252,7 +252,7 @@ function Invitations({ org, onChange }: { org: OrganizationDetailDto; onChange: 
     }
   };
   return (
-    <Card className="mb-5">
+    <Card className="mb-6">
       <h2 className="border-b border-slate-100 px-5 py-3 font-semibold">{t('title')}</h2>
       <ul className="divide-y divide-slate-100">
         {org.invitations.map((inv) => (

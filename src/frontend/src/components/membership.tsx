@@ -2,7 +2,7 @@
 
 import type { ClassroomDto, ClassStudentDto, MembershipRequestDto, MembershipRequestKind, MembershipRequestStatus } from '@oj/contracts';
 import { Check, LogOut, UserMinus, UserPlus, X } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslations } from 'use-intl';
 import { api, errorMessage } from '@/lib/api';
 import { normalizeClassCode } from '@/lib/classes';
@@ -261,7 +261,16 @@ export function MyRequestList({
 // ---------- Teacher / admin side ----------
 
 /** Pending join and leave requests of one class, with approve / reject. Read-only while the class is archived. */
-export function ClassRequestsPanel({ cls, onDecided }: { cls: ClassroomDto; onDecided: () => void }) {
+export function ClassRequestsPanel({
+  cls,
+  onDecided,
+  onCount,
+}: {
+  cls: ClassroomDto;
+  onDecided: () => void;
+  /** Called with the number of waiting requests whenever it changes, for the class page's tab badge (OJ-32). */
+  onCount?: (count: number) => void;
+}) {
   const t = useTranslations('classes.membership.panel');
   const tm = useTranslations('classes.membership');
   const toast = useToast();
@@ -270,6 +279,9 @@ export function ClassRequestsPanel({ cls, onDecided }: { cls: ClassroomDto; onDe
   const archived = cls.status === 'ARCHIVED';
   const list = data ?? [];
   const joins = list.filter((r) => r.kind === 'JOIN').length;
+  useEffect(() => {
+    if (data) onCount?.(data.length);
+  }, [data, onCount]);
 
   // Hidden when there is nothing to decide, so the class page stays quiet.
   if (!loading && !error && list.length === 0) return null;

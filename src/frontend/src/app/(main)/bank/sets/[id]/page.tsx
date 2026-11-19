@@ -1,7 +1,7 @@
 'use client';
 
 import type { ProblemSetDto } from '@oj/contracts';
-import { BookmarkPlus, FileKey2, Globe2, Lock, Pencil, Printer, Send, Trash2 } from 'lucide-react';
+import { BookmarkPlus, FileKey2, Globe2, Lock, Pencil, Printer, Send } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -12,7 +12,7 @@ import { RequireRole, STAFF } from '@/components/guards';
 import { Markdown } from '@/components/markdown';
 import { CreateSessionDialog } from '@/components/sessions';
 import { useToast } from '@/components/toast';
-import { Button, Card, ConfirmDialog, DifficultyBadge, EmptyState, ErrorState, InlineAlert, LinkButton, PageHeader, PageSkeleton, ProblemSetTypeBadge } from '@/components/ui';
+import { Button, Card, ConfirmDialog, DeleteButton, DifficultyBadge, EmptyState, ErrorState, InlineAlert, LinkButton, PageHeader, PageSkeleton, ProblemSetTypeBadge } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAsync } from '@/lib/use-async';
 
@@ -133,9 +133,7 @@ export default function BankSetPage() {
                   <Pencil className="h-4 w-4 shrink-0" />
                   {tc('edit')}
                 </LinkButton>
-                <Button variant="ghost" className="text-mark-600 hover:bg-mark-50" onClick={() => setConfirmDelete(true)} aria-label={t('set.delete')}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <DeleteButton onClick={() => setConfirmDelete(true)} />
               </>
             ) : (
               <Button onClick={copy} loading={copying}>
@@ -149,7 +147,7 @@ export default function BankSetPage() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
           <div className="space-y-5">
             {set.description?.trim() && (
-              <Card className="px-5 py-4">
+              <Card className="p-5">
                 <Markdown className="max-w-[72ch]">{set.description}</Markdown>
               </Card>
             )}

@@ -66,9 +66,6 @@ export const classes = {
     added: 'Added to class {name}',
   },
   gradebook: {
-    open: 'Gradebook',
-    title: 'Gradebook: {name}',
-    back: 'Back to class',
     subtitle: 'Each session counts the best score on each problem, as on its results page. Not submitted counts as 0.',
     loadFailed: 'Could not load the gradebook',
     emptyTitle: 'No session has opened yet',
@@ -87,14 +84,22 @@ export const classes = {
     max: 'max {points}',
     closes: 'closes {date}',
     openNow: 'open',
-    notSubmitted: 'Not submitted',
-    cellLink: 'See {name}’s work in {title}',
+    cellScore: '{name}, {title}: {score}/{max} points. Click to see the submissions',
+    cellEmpty: '{name}, {title}: not submitted',
     count: '{students, plural, one {# student} other {# students}} · {sessions, plural, one {# session} other {# sessions}}',
     csv: { index: 'No.', possible: 'Max', fileName: 'gradebook-{name}.csv' },
   },
   detail: {
     notFound: 'Class not found',
     back: 'Classes',
+    tabs: {
+      sessions: 'Sessions',
+      gradebook: 'Gradebook',
+      board: 'Board',
+      students: 'Students ({count})',
+      waitingQuestions: '{count, plural, one {# question awaiting an answer} other {# questions awaiting an answer}}',
+      waitingRequests: '{count, plural, one {# request waiting} other {# requests waiting}}',
+    },
     header: {
       nameRequired: 'Enter a class name.',
       codeChangeHint: 'After a change, the old code can no longer be used to ask to join.',
@@ -105,6 +110,7 @@ export const classes = {
       personal: 'Personal class',
       size: 'Students',
       edit: 'Edit class',
+      details: 'Class details',
     },
     moveOrg: {
       label: 'Organization',

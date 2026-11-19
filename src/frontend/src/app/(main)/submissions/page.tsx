@@ -10,6 +10,7 @@ import { Card, EmptyState, ErrorState, inputClass, LinkButton, LoadingState, Pag
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useAsync } from '@/lib/use-async';
+import { sessionPoints } from '@/lib/score-tone';
 import { cn } from '@/lib/utils';
 
 const PAGE_SIZE = 20;
@@ -52,6 +53,12 @@ function SubmissionsList() {
     [sessionId, problemKey, userId, mine, page, isStaff],
   );
   const studentName = data?.items[0]?.userDisplayName;
+  // One session picked: its problems' points, so scores read as points like the results board (OJ-33).
+  const session = useAsync(() => api.getSession(sessionId), [sessionId], !!sessionId);
+  const maxPoints = useMemo(() => (sessionId ? sessionPoints(sessionId, session.data) : undefined), [sessionId, session.data]);
+  // Hold the table until the session's points are known (or failed: then the percent), so the column does not change
+  // format under the reader.
+  const pointsPending = !!sessionId && !maxPoints && !session.error;
 
   const pending = data?.items.some((s) => s.status !== 'DONE');
   useEffect(() => {
@@ -141,7 +148,7 @@ function SubmissionsList() {
       )}
 
       <Card>
-        {loading && !data ? (
+        {(loading && !data) || pointsPending ? (
           <TableSkeleton />
         ) : error ? (
           <div className="p-4">
@@ -158,7 +165,7 @@ function SubmissionsList() {
           </EmptyState>
         ) : (
           <>
-            <SubmissionsTable items={data.items} showUser={isStaff && !mine && !userId} />
+            <SubmissionsTable items={data.items} showUser={isStaff && !mine && !userId} maxPoints={maxPoints} />
             <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onChange={setPage} />
           </>
         )}

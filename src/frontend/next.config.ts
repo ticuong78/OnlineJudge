@@ -25,6 +25,8 @@ const nextConfig: NextConfig = {
       { source: '/admin/import', destination: '/import', permanent: false },
       { source: '/admin/problems', destination: '/bank', permanent: false },
       { source: '/admin/problems/:path*', destination: '/bank/problems/:path*', permanent: false },
+      // The gradebook became a tab of the class page (OJ-32).
+      { source: '/classes/:id/gradebook', destination: '/classes/:id?tab=gradebook', permanent: false },
     ];
   },
 };
