@@ -181,6 +181,20 @@ describe('migrations', { skip }, () => {
 
   const connectionsNamed = async (name: string) =>
     ((await admin.query('SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name = $1', [name])) as { n: number }[])[0].n;
+  /**
+   * Connections left after `within` ms. Postgres drops a closed session from pg_stat_activity a moment after the client
+   * disconnects, so reading it straight away could still count a pool that was already closed (seen once in CI: 2
+   * instead of 0). A real leak stays open and still fails.
+   */
+  const connectionsLeft = async (name: string, within = 3_000) => {
+    const until = Date.now() + within;
+    let n = await connectionsNamed(name);
+    while (n > 0 && Date.now() < until) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      n = await connectionsNamed(name);
+    }
+    return n;
+  };
   const lockIsFree = async () => {
     const [{ ok }] = (await admin.query('SELECT pg_try_advisory_lock($1) AS ok', [MIGRATION_LOCK])) as { ok: boolean }[];
     if (ok) await admin.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK]);
@@ -214,7 +228,7 @@ describe('migrations', { skip }, () => {
     assert.match((failure as Error).message, /definitely_not_a_function/);
     assert.equal(retryDatabaseError(failure), false, 'Nest must not retry it');
     assert.equal(retryDatabaseError(new Error('connect ECONNREFUSED')), true, 'a database not up yet is still retried');
-    assert.equal(await connectionsNamed(name), 0, 'the pool was closed');
+    assert.equal(await connectionsLeft(name), 0, 'the pool was closed');
     assert.equal(await lockIsFree(), true, 'the lock was released');
     // One transaction: nothing of the failed run stayed. (TypeORM creates its own bookkeeping table before the
     // transaction starts, so that table may exist, but it records nothing.)
