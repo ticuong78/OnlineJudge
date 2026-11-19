@@ -1,6 +1,6 @@
 # OJ-2: Sandbox supervisor (oj-run) and container hardening
 
-Status: approved 2026-11-07 by Htet Oo Naing (retroactive; still needs a second human reviewer before the PR)
+Status: done; the second human review is not recorded (see Status check)
 Owner: Htet Oo Naing
 Risky area: yes (engine sandbox, runner Dockerfile; CLAUDE.md security rule 5)
 
@@ -74,3 +74,9 @@ The container now runs as root with three capabilities, so every path to untrust
 ## Rollout and risks
 
 Deploy order: build and push the runner image with label version 2 first, then the engine, which refuses to start against an old image. Rollback is both together. Watch for unexpected MLE verdicts (review nit N5) and IE rates after deploy.
+
+## Status check (19 Nov 2026)
+
+Checked against master `2deb25b`: every item is met except "Second human reviewer signs off". The sandbox
+tests pass in CI with live Docker (`verify` job: engine 169/169, none skipped). The sign-off is required for sandbox
+changes (CLAUDE.md security rule 5); the OJ-2 commit (`5f753bd`) came in through PR #1, which records no review.

@@ -1,6 +1,6 @@
 # OJ-1: Identity hardening, rate limits and startup checks
 
-Status: approved 2026-11-07 by Htet Oo Naing (retroactive: the code exists as uncommitted work on top of dbb5168)
+Status: done; the second human review is not recorded (see Status check)
 Owner: Htet Oo Naing
 Risky area: yes (identity, `.env.example`)
 
@@ -53,7 +53,10 @@ The limiter is custom rather than `@nestjs/throttler`. This is accepted because 
   - N2: the decoy hash is made at start-up, with a test.
   - N3: forgot password now does the same lookup and save on both paths.
   - N4: see above.
-- [ ] PostgreSQL cases for `saveReissued`, `deleteExpired` and the email unique violation are written but have not run here (running against the local database was not permitted in the session). Run: `TEST_DATABASE_URL=postgres://oj:oj@localhost:5432/online_judge pnpm --filter @oj/backend test`.
+- [x] PostgreSQL cases for `saveReissued`, `deleteExpired` and the email unique violation run in CI with
+      `TEST_DATABASE_URL` and pass (run 44515230832 on master: backend 444/444, 0 skipped). Locally:
+      `pnpm infra:test:up` then `pnpm test:integration`, which uses the throwaway test services, never the dev
+      database.
 - [x] security-verifier run on this diff (2026-11-07). Results are in `docs/security/audit-2026-11-07.md`, "Re-verification of the OJ-1 changes".
 - [x] R2-F1 (Medium): approved and fixed 2026-11-07. `RedisRateLimiter` (`shared/infrastructure/redis-rate-limiter.ts`) is a Lua sliding window per key with its own expiry and no eviction to make room; it is wired as the app's `RateLimiter`. The in-memory limiter is for tests only. Tests:
   - the limiter contract, run against both implementations (`test/support/rate-limiter-contract.ts`);
@@ -86,9 +89,10 @@ The limiter is custom rather than `@nestjs/throttler`. This is accepted because 
   - R4-N2 / R3-N8 (reissues make the reset link stale): the attacker must email the victim every minute from two IPs, indefinitely, and the owner's usual addresses stay exempt from the login cap. A proper fix needs several live links per ticket (a schema change); revisit if it is seen in practice.
   - R2-F8 (two live tickets from parallel first requests): already capped at 2 per mailbox per minute by the guard.
   - R3-N7 (windows use the backend clock, not Redis `TIME`): one backend instance today. Switch to Redis `TIME` before running several instances.
-- [x] Production Redis must run with `maxmemory-policy noeviction`: documented in the README deployment section, together with the manual `linkHash` column.
-- [ ] Production Redis must run with `maxmemory-policy noeviction`. Document it in the README deployment section.
-- [ ] Schema: `verifications.linkHash` is a new nullable column. `DB_SYNC` adds it; without sync run `ALTER TABLE verifications ADD COLUMN "linkHash" varchar(255);`, and add it to the OJ-5 baseline.
+- [x] Production Redis must run with `maxmemory-policy noeviction`: documented in the README deployment section. (The
+      manual `linkHash` column it also documented is now added by the migration, see below.)
+- [x] Schema: the nullable `verifications.linkHash` column is in the migration `1794528000000-oj1-to-oj24.ts`
+      (ADR 0003), so no manual `ALTER` is needed.
 - [x] Live API runs on 2026-11-07, both against a fresh build on :4100 using the dev PostgreSQL and Redis. Second run, after R3-N1 and R3-N2: 16/16 passed (sign-up email has no link and a token is refused; reset email has no code and a typed code is refused; after 6 wrong links the real link resets, once). First run: 14/14 passed, against a fresh build on :4100 using the dev PostgreSQL and Redis:
   - limiter counters land in Redis with their own expiry;
   - a sign-up completes via the emailed link, while a wrong or reused link is refused;
@@ -100,8 +104,9 @@ The limiter is custom rather than `@nestjs/throttler`. This is accepted because 
   Test account left in the dev database: `live-verify-fwokvdpb@truong.test`. Not covered live:
   - the browser pages, because the dev frontend still talks to the old backend on :4000;
   - the multi-IP cap (one client address only).
-- [ ] Redis and PostgreSQL integration suites written but not run in this session: `TEST_REDIS_URL=redis://localhost:6379 TEST_DATABASE_URL=postgres://oj:oj@localhost:5432/online_judge pnpm --filter @oj/backend test`.
-- [ ] R2-F4 to R2-F9 (Low): SMTP error text, admin email log, decoy-hash failure, `TRUST_PROXY=true` in production, parallel first tickets, sweep at start-up.
+- [x] The Redis and PostgreSQL integration suites run in CI and pass, the limiter contract and the 60,000-key flood
+      included. Locally: `pnpm infra:test:up` then `pnpm test:integration`.
+- [x] R2-F4 to R2-F9 (Low): fixed or accepted, see "Remaining Lows" and "Accepted" above.
 - [ ] Second human reviewer (Cuong Le).
 - [x] `pnpm build:shared && pnpm typecheck && pnpm test` pass (2026-11-07, latest after the remaining Lows: backend 177/177, engine 147/147, all four packages typecheck; the PostgreSQL and Redis suites skipped without their URLs).
 
@@ -120,3 +125,9 @@ This spec is the security change. The limiter is in process memory, so limits re
 ## Rollout and risks
 
 Set `TRUST_PROXY` correctly behind the production proxy. Otherwise every student shares the proxy's IP and a whole class hits the per-IP limit. Watch 429 counts in the first exam session.
+
+## Status check (19 Nov 2026)
+
+Checked against master `2deb25b`: every item is met except the second human reviewer. The OJ-1 commit
+(`ec8caf6`) reached master through PR #1, which records no GitHub review, so the sign-off cannot be confirmed from the
+repository. Record it here once Cường has reviewed it.
