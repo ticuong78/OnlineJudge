@@ -4,7 +4,8 @@ import { LanguageLabels, type SubmissionDto } from '@oj/contracts';
 import Link from 'next/link';
 import { useTranslations } from 'use-intl';
 import { sessionHref, solveHref } from '@/lib/sessions';
-import { cn, formatDateTime, formatMemory, formatTime, formatPoints } from '@/lib/utils';
+import { submissionScore, type SessionPoints } from '@/lib/score-tone';
+import { cn, formatDateTime, formatMemory, formatTime } from '@/lib/utils';
 import { Badge, VerdictBadge } from './ui';
 
 export function SubmissionsTable({
@@ -12,11 +13,14 @@ export function SubmissionsTable({
   showUser,
   showProblem = true,
   dim,
+  maxPoints,
 }: {
   items: SubmissionDto[];
   showUser?: boolean;
   showProblem?: boolean;
   dim?: boolean;
+  /** One session's problem points: its rows show points, like the results board; other rows keep the percent. */
+  maxPoints?: SessionPoints;
 }) {
   const t = useTranslations('session.table');
   const ts = useTranslations('session');
@@ -63,7 +67,9 @@ export function SubmissionsTable({
                   )}
                 </Link>
               </td>
-              <td className="px-4 py-2.5 text-right font-medium whitespace-nowrap">{s.status === 'DONE' && !s.resultsHidden ? `${formatPoints(s.score)}%` : '—'}</td>
+              <td className="px-4 py-2.5 text-right font-medium whitespace-nowrap">
+                <ScoreCell sub={s} points={maxPoints} />
+              </td>
               <td className="hidden px-4 py-2.5 whitespace-nowrap text-slate-600 sm:table-cell">{LanguageLabels[s.language] ?? s.language}</td>
               <td className="hidden px-4 py-2.5 text-right whitespace-nowrap text-slate-600 md:table-cell">{formatTime(s.maxTimeMs)}</td>
               <td className="hidden px-4 py-2.5 text-right whitespace-nowrap text-slate-600 md:table-cell">{formatMemory(s.maxMemoryKb)}</td>
@@ -72,5 +78,25 @@ export function SubmissionsTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** "13.33/40" with "33.33%" under it, or "33.33%" alone; read aloud as one phrase ("13.33 trên 40 điểm"). */
+function ScoreCell({ sub, points }: { sub: SubmissionDto; points: SessionPoints | undefined }) {
+  const score = submissionScore(sub, points);
+  if (!score) return <>—</>;
+  return (
+    <>
+      <span className="sr-only">{score.spoken}</span>
+      <span aria-hidden="true" className="tabular-nums">
+        {score.value}
+        {score.unit}
+      </span>
+      {score.percent && (
+        <span aria-hidden="true" className="block text-xs font-normal text-slate-500 tabular-nums">
+          {score.percent}
+        </span>
+      )}
+    </>
   );
 }

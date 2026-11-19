@@ -1,6 +1,6 @@
 'use client';
 
-import { BarChart3, CheckCircle2, ChevronRight, Pencil, Trash2 } from 'lucide-react';
+import { BarChart3, CheckCircle2, ChevronRight, Pencil } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -8,20 +8,22 @@ import { useTranslations } from 'use-intl';
 import { Container } from '@/components/app-shell';
 import { ExamTimer, SettingsInfo, StartScreen, useServerOffset } from '@/components/exam';
 import { Markdown } from '@/components/markdown';
-import { RejudgeTools } from '@/components/rejudge';
+import { RejudgeMenu } from '@/components/rejudge';
 import { SessionIntegrity } from '@/components/integrity';
 import { SessionSyncButton } from '@/components/session-sync';
 import { AudienceLabel, EditSessionDialog, ProgressCells, SessionStateBadge, SessionWindow } from '@/components/sessions';
 import { useToast } from '@/components/toast';
 import { TopicBadges } from '@/components/topics';
-import { Button, Card, ConfirmDialog, DifficultyBadge, ErrorState, InlineAlert, LinkButton, PageHeader, PageSkeleton, ProblemSetTypeBadge } from '@/components/ui';
+import { Button, Card, ConfirmDialog, DeleteButton, DifficultyBadge, ErrorState, InlineAlert, LinkButton, PageHeader, PageSkeleton, ProblemSetTypeBadge } from '@/components/ui';
 import { useNow } from '@/components/verification';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { integritySummary, isExamLike, timerTarget } from '@/lib/exam';
 import { cannotSubmitReason, solveHref } from '@/lib/sessions';
 import { useAsync } from '@/lib/use-async';
-import { cn, earnedPoints, formatPoints } from '@/lib/utils';
+import { cn, formatPoints } from '@/lib/utils';
+import { problemStatus } from '@/lib/session-status';
+import { solvedByProblem } from '@/lib/results';
 
 export default function SessionPage() {
   const { id } = useParams<{ id: string }>();
@@ -33,7 +35,10 @@ export default function SessionPage() {
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [rejudgeNote, setRejudgeNote] = useState<string | null>(null);
   const offset = useServerOffset(s?.serverNow);
+  // Managers: the class's progress per problem, from the results board (OJ-34).
+  const results = useAsync(() => api.getSessionResults(id), [id], !!s?.canManage);
   const t = useTranslations('session');
   const tc = useTranslations('common');
 
@@ -53,6 +58,10 @@ export default function SessionPage() {
   const limit = s.settings?.maxSubmissionsPerProblem ?? null;
   const solved = new Set(s.myProgress?.solvedKeys ?? []);
   const best = s.myProgress?.bestScores ?? {};
+  const classSolved =
+    s.canManage && results.data
+      ? { solved: solvedByProblem(results.data.rows, results.data.problems), total: results.data.rows.length }
+      : undefined;
   const back =
     s.audience === 'PUBLIC'
       ? { href: '/practice', label: t('page.backPractice') }
@@ -99,14 +108,18 @@ export default function SessionPage() {
                 <Pencil className="h-4 w-4 shrink-0" />
                 {tc('edit')}
               </Button>
-              <Button variant="ghost" className="text-mark-600 hover:bg-mark-50" onClick={() => setConfirmDelete(true)}>
-                <Trash2 className="h-4 w-4 shrink-0" />
-                {tc('delete')}
-              </Button>
+              <RejudgeMenu session={s} onSession={(n) => setData(n)} onNote={setRejudgeNote} />
+              <DeleteButton onClick={() => setConfirmDelete(true)} />
             </>
           )
         }
       />
+
+      {rejudgeNote && (
+        <div className="mb-6">
+          <InlineAlert kind="info">{rejudgeNote}</InlineAlert>
+        </div>
+      )}
 
       {(target || (s.settings && (isExamLike(s.settings) || (s.canManage && integritySummary(s.settings).length > 0)))) && (
         <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -129,13 +142,13 @@ export default function SessionPage() {
       ) : (
       <>
       {!s.canSubmit && !s.canManage && (
-        <div className="mb-4">
+        <div className="mb-6">
           <InlineAlert kind={s.state === 'UPCOMING' ? 'warning' : 'info'}>{cannotSubmitReason(s)}</InlineAlert>
         </div>
       )}
 
       {s.description?.trim() && (
-        <Card className="mb-5 px-5 py-4">
+        <Card className="mb-6 p-5">
           <Markdown className="max-w-[72ch]">{s.description}</Markdown>
         </Card>
       )}
@@ -175,6 +188,15 @@ export default function SessionPage() {
             const isSolved = !hidden && solved.has(p.key);
             const b = hidden ? undefined : best[p.key];
             const n = counts[p.key] ?? 0;
+            const status = problemStatus({
+              manager: s.canManage,
+              classProgress: classSolved ? { solved: classSolved.solved[p.key] ?? 0, total: classSolved.total } : undefined,
+              hidden,
+              solved: isSolved,
+              best: b,
+              submissions: n,
+              points: p.points,
+            });
             return (
               <li key={p.key}>
                 <Link href={solveHref(s.id, p.key)} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3.5 hover:bg-slate-50">
@@ -192,23 +214,31 @@ export default function SessionPage() {
                       <TopicBadges tags={p.tags ?? []} />
                     </div>
                   </div>
-                  <span
-                    className={cn(
-                      'ml-16 text-sm tabular-nums sm:ml-0',
-                      isSolved ? 'font-semibold text-chalk-700' : b !== undefined ? 'font-medium text-mark-700' : 'text-slate-400',
-                    )}
-                  >
-                    {hidden
-                      ? n > 0
-                        ? t('page.submittedTimes', { count: n })
-                        : t('page.notStarted')
-                      : isSolved
-                        ? t('solvedMark')
-                        : b !== undefined
-                          ? // In this problem's points, as on the teacher's results board (b is a percentage).
-                            t('page.best', { earned: formatPoints(earnedPoints(b, p.points)), max: formatPoints(p.points) })
-                          : t('page.notStarted')}
-                  </span>
+                  {status && (
+                    <span
+                      className={cn(
+                        'ml-16 text-sm tabular-nums sm:ml-0',
+                        status.kind === 'class'
+                          ? 'text-slate-600'
+                          : status.kind === 'solved'
+                            ? 'font-semibold text-chalk-700'
+                            : status.kind === 'best'
+                              ? 'font-medium text-mark-700'
+                              : 'text-slate-500',
+                      )}
+                    >
+                      {status.kind === 'class'
+                        ? t('page.classSolved', { solved: status.solved, total: status.total })
+                        : status.kind === 'hidden'
+                          ? t('page.submittedTimes', { count: status.submissions })
+                          : status.kind === 'solved'
+                            ? t('solvedMark')
+                            : status.kind === 'best'
+                              ? // In this problem's points, as on the teacher's results board.
+                                t('page.best', { earned: formatPoints(status.earned), max: formatPoints(status.max) })
+                              : t('page.notStarted')}
+                    </span>
+                  )}
                   {limit && !s.canManage && s.state === 'OPEN' && (
                     <span className="text-xs whitespace-nowrap text-slate-500 tabular-nums">
                       {t('attemptsLeft', { left: Math.max(0, limit - n), limit })}
@@ -227,11 +257,6 @@ export default function SessionPage() {
       </>
       )}
 
-      {s.canManage && (
-        <div className="mt-6">
-          <RejudgeTools session={s} onSession={(n) => setData(n)} />
-        </div>
-      )}
       {s.canManage && (
         <SessionIntegrity sessionId={s.id} enabled={!!(s.settings?.checkPlagiarism || s.settings?.checkAiUsage)} />
       )}

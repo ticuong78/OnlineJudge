@@ -18,19 +18,20 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type Ref } from 'react';
 import { useTranslations } from 'use-intl';
 import { usePageTitle } from '@/lib/page-title';
 import { Container } from '@/components/app-shell';
 import type { Messages } from '@/i18n/messages';
 import { ClassCode, PendingRequestsBadge } from '@/components/classes';
 import { OrganizationInvitationsInbox } from '@/components/organization-invitations';
-import { ProgressCells, SessionList } from '@/components/sessions';
+import { AssignFromBankDialog, ProgressCells, SessionList } from '@/components/sessions';
 import { ThreadList } from '@/components/threads';
-import { Card, InlineAlert, ListSkeleton, Skeleton } from '@/components/ui';
+import { Card, InlineAlert, ListSkeleton, Modal, Skeleton } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { splitStudentClasses } from '@/lib/classes';
+import { assignEntry } from '@/lib/home-actions';
 import { isClosingSoon, solveHref, sortSessions, studentOpenSessions } from '@/lib/sessions';
 import { useAsync } from '@/lib/use-async';
 import type { LastProblem } from '@/lib/utils';
@@ -39,21 +40,68 @@ import { AiUsageCard } from '@/components/ai-access';
 
 interface QuickAction {
   href: string;
+  /** When set, the card is a button that runs this instead of a link (OJ-33: assign opens a dialog). */
+  onClick?: () => void;
   title: string;
   desc: string;
   icon: LucideIcon;
 }
 
-function PrimaryAction({ a }: { a: QuickAction }) {
-  return (
-    <Link href={a.href} className="flex items-center gap-4 rounded-panel bg-ink-solid px-5 py-5 text-white transition-colors hover:bg-ink-solid-hover">
+function PrimaryAction({ a, buttonRef }: { a: QuickAction; buttonRef?: Ref<HTMLButtonElement> }) {
+  const className =
+    'flex w-full items-center gap-4 rounded-panel bg-ink-solid px-5 py-5 text-left text-white transition-colors hover:bg-ink-solid-hover';
+  const body = (
+    <>
       <a.icon className="h-7 w-7 shrink-0 text-ink-200" aria-hidden="true" />
       <div className="min-w-0 flex-1">
         <div className="text-lg font-semibold">{a.title}</div>
         <p className="truncate text-sm text-white/90">{a.desc}</p>
       </div>
       <ArrowRight className="h-5 w-5 shrink-0 text-ink-200" aria-hidden="true" />
+    </>
+  );
+  return a.onClick ? (
+    <button ref={buttonRef} type="button" onClick={a.onClick} className={className} aria-haspopup="dialog">
+      {body}
+    </button>
+  ) : (
+    <Link href={a.href} className={className}>
+      {body}
     </Link>
+  );
+}
+
+/** "Giao cho lớp nào?": the first step of assigning from the home page when the teacher has several classes (OJ-33). */
+function ClassPickerDialog({
+  open,
+  classes,
+  onPick,
+  onClose,
+}: {
+  open: boolean;
+  classes: ClassroomDto[];
+  onPick: (classId: string) => void;
+  onClose: () => void;
+}) {
+  const t = useTranslations('student.staffHome');
+  return (
+    <Modal open={open} onClose={onClose} title={t('pickClass')}>
+      <ul className="max-h-[60vh] divide-y divide-slate-100 overflow-y-auto rounded-control border border-rule">
+        {classes.map((c) => (
+          <li key={c.id}>
+            <button
+              type="button"
+              onClick={() => onPick(c.id)}
+              className="flex min-h-11 w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-ink-50"
+            >
+              <School className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate font-medium">{c.name}</span>
+              <span className="shrink-0 text-sm whitespace-nowrap text-slate-500">{t('classMeta', { count: c.studentCount })}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Modal>
   );
 }
 
@@ -172,7 +220,14 @@ function StaffHome() {
   const classes = useAsync(() => api.listClasses(), []);
   const sessions = useAsync(() => api.listSessions({ audience: 'CLASS' }), []);
   const isAdmin = user?.role === 'ADMIN';
-  const hasNoClass = !!classes.data && classes.data.filter((c) => c.status === 'ACTIVE').length === 0;
+  const activeClasses = (classes.data ?? []).filter((c) => c.status === 'ACTIVE');
+  const entry = assignEntry(classes.data, isAdmin);
+  // Assigning from home: pick the class (when there are several), then the bank dialog the class page uses (OJ-33).
+  const [picking, setPicking] = useState(false);
+  const [assignClassId, setAssignClassId] = useState<string | null>(null);
+  // The dialog that opened the assign dialog (the class picker) is gone by the time it closes, so focus would be lost:
+  // hand it back to "Giao bài" ourselves.
+  const assignButton = useRef<HTMLButtonElement>(null);
   const t = useTranslations('student.staffHome');
   const action = (key: keyof Messages['student']['staffHome']['actions'], href: string, icon: LucideIcon): QuickAction => ({
     href,
@@ -182,10 +237,15 @@ function StaffHome() {
   });
 
   const actions: QuickAction[] = [];
-  if (hasNoClass && !isAdmin) {
+  if (entry.kind === 'firstClass') {
     actions.push(action('firstClass', '/classes?create=1', School));
+  } else if (entry.kind === 'bank') {
+    actions.push(action('assignBank', '/bank/sets', Send));
   } else {
-    actions.push(action('assign', '/bank/sets', Send));
+    actions.push({
+      ...action('assign', '/bank/sets', Send),
+      onClick: () => (entry.kind === 'class' ? setAssignClassId(entry.classId) : setPicking(true)),
+    });
   }
   actions.push(
     action('import', '/import', FileUp),
@@ -206,7 +266,7 @@ function StaffHome() {
       <OrganizationInvitationsInbox />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
         <div className="space-y-4">
-          {classes.data || classes.error ? <PrimaryAction a={actions[0]} /> : <PrimaryActionSkeleton />}
+          {classes.data || classes.error ? <PrimaryAction a={actions[0]} buttonRef={assignButton} /> : <PrimaryActionSkeleton />}
           <SecondaryActions items={actions.slice(1)} />
           {/* In the left column (U1): below the full-width grid it left an empty band under the short action list. */}
           <Card className="mt-2">
@@ -224,7 +284,7 @@ function StaffHome() {
                 showAudience
                 managerProgress
                 emptyTitle={t('emptyTitle')}
-                emptyHint={t('emptyHint')}
+                emptyHint={t(entry.kind === 'firstClass' ? 'emptyHintNoClass' : entry.kind === 'bank' ? 'emptyHintBank' : 'emptyHint')}
               />
             )}
           </Card>
@@ -247,6 +307,25 @@ function StaffHome() {
           )}
         </div>
       </div>
+      <ClassPickerDialog
+        open={picking}
+        classes={activeClasses}
+        onClose={() => setPicking(false)}
+        onPick={(classId) => {
+          setPicking(false);
+          setAssignClassId(classId);
+        }}
+      />
+      {assignClassId && (
+        <AssignFromBankDialog
+          open
+          onClose={() => {
+            setAssignClassId(null);
+            requestAnimationFrame(() => assignButton.current?.focus());
+          }}
+          classId={assignClassId}
+        />
+      )}
     </>
   );
 }
@@ -441,7 +520,7 @@ export default function HomePage() {
   if (!user) return null;
   return (
     <Container>
-      <div className="mb-4">
+      <div className="mb-6">
         <h1 className="text-[1.75rem] leading-tight font-bold text-slate-900">{t('greeting', { name: user.displayName })}</h1>
         {isStaff && <p className="text-sm text-slate-500">{tr(user.role)}</p>}
       </div>

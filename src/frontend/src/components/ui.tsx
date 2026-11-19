@@ -6,13 +6,15 @@ import {
   type SubmissionStatus,
   type Verdict,
 } from '@oj/contracts';
-import { AlertTriangle, ChevronLeft, ChevronRight, Inbox, Loader2, X } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Inbox, Loader2, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { focusables, trackOpener, trapTarget, type OpenerState } from '@/lib/focus';
 import { usePageTitle } from '@/lib/page-title';
 import { usePresence } from '@/lib/presence';
+import { badgeText, nextTabIndex } from '@/lib/tabs';
+import { containerClass, PAGE_GUTTER } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 
 // ---------- Buttons ----------
@@ -147,7 +149,10 @@ export function PageHeader({
         </Link>
       )}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
+        {/* Grows and lets its subtitle wrap, so the actions stay beside the title on wide screens (OJ-34): at its natural
+            width a long subtitle pushed four buttons under the title at 1280 px. On phones (below 20rem of room) the
+            actions still go under it. */}
+        <div className="min-w-0 flex-1 basis-80">
           <h1 className="text-[1.75rem] leading-tight font-bold text-slate-900">{title}</h1>
           {subtitle && <div className="mt-1 text-sm text-slate-500">{subtitle}</div>}
         </div>
@@ -267,10 +272,25 @@ export function TableSkeleton({ rows = 5, cols = 4, label }: { rows?: number; co
   );
 }
 
+/**
+ * The page-level delete (OJ-35): the same quiet red button with an icon and a label everywhere (a session, a problem, a
+ * set, a thread). It only opens the page's confirm dialog. Row-level deletes inside lists stay icon buttons with an
+ * accessible name.
+ */
+export function DeleteButton({ onClick, label, disabled }: { onClick: () => void; label?: string; disabled?: boolean }) {
+  const t = useTranslations('common');
+  return (
+    <Button variant="ghost" className="text-mark-600 hover:bg-mark-50" onClick={onClick} disabled={disabled}>
+      <Trash2 className="h-4 w-4 shrink-0" />
+      {label ?? t('delete')}
+    </Button>
+  );
+}
+
 /** A page while its route or data loads: title, subtitle and one panel of rows. */
 export function PageSkeleton({ label, inset }: { label?: string; /** Already inside a Container. */ inset?: boolean }) {
   return (
-    <SkeletonFrame label={label} className={inset ? undefined : 'mx-auto w-full max-w-6xl px-4 py-6'}>
+    <SkeletonFrame label={label} className={inset ? undefined : containerClass(false)}>
       <Skeleton className="h-8 w-64 max-w-full" />
       <Skeleton className="mt-3 h-4 w-96 max-w-full" />
       <div className="mt-6 rounded-panel border border-rule bg-surface">
@@ -295,7 +315,7 @@ export function ShellSkeleton({ label }: { label?: string }) {
   return (
     <div className="flex min-h-screen flex-col">
       <div className="h-14 border-b border-slate-200 bg-surface/90" aria-hidden="true">
-        <div className="mx-auto flex h-14 max-w-[1400px] items-center gap-4 px-4">
+        <div className={cn('mx-auto flex h-14 max-w-7xl items-center gap-4', PAGE_GUTTER)}>
           <span className="h-8 w-8 rounded-lg bg-ink-solid" />
           <Skeleton className="hidden h-4 w-72 sm:block" />
           <Skeleton className="ml-auto h-6 w-24" />
@@ -581,21 +601,44 @@ export function ConfirmDialog({
   );
 }
 
+// ---------- Count badge ----------
+/** A small count next to a tab or menu item (OJ-32): nothing at 0, "99+" above 99, the meaning in `label`. */
+export function CountBadge({ count, label }: { count: number; label: string }) {
+  const text = badgeText(count);
+  if (!text) return null;
+  // The number is hidden from screen readers and the sentence is read instead: aria-label on a plain span is ignored,
+  // so a tab would otherwise be announced without its count.
+  return (
+    <>
+      <span aria-hidden="true" className="rounded-full bg-mark-600 px-1.5 text-[11px] leading-[18px] font-semibold text-white tabular-nums">
+        {text}
+      </span>
+      <span className="sr-only">, {label}</span>
+    </>
+  );
+}
+
 // ---------- Tabs ----------
+/** How a tab was chosen, so a page can keep history for clicks and not for every arrow press (OJ-32). */
+export type TabChangeSource = 'pointer' | 'keyboard';
+
 /**
  * Tab bar (OJ-17): real tab roles for screen readers, and an underline that slides to the selected tab instead of
- * jumping. The underline is measured from the selected button, so labels of any length work.
+ * jumping. The underline is measured from the selected button, so labels of any length work. With `idPrefix`, each
+ * tab is `<prefix>-tab-<value>` and controls `<prefix>-panel-<value>`, which the page gives to the matching panel.
  */
 export function Tabs<T extends string>({
   tabs,
   value,
   onChange,
   className,
+  idPrefix,
 }: {
   tabs: { value: T; label: ReactNode }[];
   value: T;
-  onChange: (v: T) => void;
+  onChange: (v: T, source: TabChangeSource) => void;
   className?: string;
+  idPrefix?: string;
 }) {
   const list = useRef<HTMLDivElement>(null);
   const [bar, setBar] = useState<{ left: number; width: number } | null>(null);
@@ -604,24 +647,53 @@ export function Tabs<T extends string>({
     if (!root) return;
     const measure = () => {
       const selected = root.querySelector<HTMLElement>('[aria-selected="true"]');
-      setBar(selected ? { left: selected.offsetLeft, width: selected.offsetWidth } : null);
+      const next = selected ? { left: selected.offsetLeft, width: selected.offsetWidth } : null;
+      setBar((prev) => (prev && next && prev.left === next.left && prev.width === next.width ? prev : next));
     };
     measure();
+    // Bring the selected tab into view when the bar scrolls sideways (a phone opening on the last tab).
+    const selected = root.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (selected) {
+      const left = selected.offsetLeft;
+      const right = left + selected.offsetWidth;
+      if (left < root.scrollLeft) root.scrollLeft = left;
+      else if (right > root.scrollLeft + root.clientWidth) root.scrollLeft = right - root.clientWidth;
+    }
+    // Each tab is watched too: a count badge or a changed label widens a tab without resizing the bar.
     const observer = new ResizeObserver(measure);
     observer.observe(root);
+    root.querySelectorAll('[role="tab"]').forEach((b) => observer.observe(b));
     return () => observer.disconnect();
   }, [value, tabs.length]);
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const next = nextTabIndex(e, tabs.findIndex((t) => t.value === value), tabs.length);
+    if (next < 0) return;
+    e.preventDefault();
+    onChange(tabs[next].value, 'keyboard');
+    list.current?.querySelectorAll<HTMLElement>('[role="tab"]')[next]?.focus();
+  };
   return (
-    <div ref={list} role="tablist" className={cn('relative flex gap-1 border-b border-slate-200', className)}>
+    <div
+      ref={list}
+      role="tablist"
+      onKeyDown={onKeyDown}
+      // The rule under the tabs is an inset shadow, not a border, so the tabs can scroll sideways on a phone without the
+      // underline being clipped or a vertical scrollbar appearing.
+      className={cn('relative flex gap-1 overflow-x-auto shadow-[inset_0_-1px_0_var(--color-slate-200)] [scrollbar-width:none]', className)}
+    >
       {tabs.map((t) => (
         <button
           key={t.value}
           type="button"
           role="tab"
+          id={idPrefix ? `${idPrefix}-tab-${t.value}` : undefined}
+          aria-controls={idPrefix ? `${idPrefix}-panel-${t.value}` : undefined}
           aria-selected={value === t.value}
-          onClick={() => onChange(t.value)}
+          tabIndex={value === t.value ? 0 : -1}
+          onClick={() => onChange(t.value, 'pointer')}
           className={cn(
-            '-mb-px px-3 py-2 text-sm font-medium transition-colors',
+            // The focus outline is drawn inside the button (globals.css): the scrolling bar would clip one outside it.
+            'flex shrink-0 items-center gap-1.5 px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors',
             value === t.value ? 'text-ink-700' : 'text-slate-500 hover:text-slate-800',
           )}
         >
@@ -631,7 +703,7 @@ export function Tabs<T extends string>({
       {bar && (
         <span
           aria-hidden="true"
-          className="absolute -bottom-px h-0.5 bg-ink-solid transition-[left,width] duration-[var(--duration-2)] ease-[var(--ease-standard)]"
+          className="absolute bottom-0 h-0.5 bg-ink-solid transition-[left,width] duration-[var(--duration-2)] ease-[var(--ease-standard)]"
           style={{ left: bar.left, width: bar.width }}
         />
       )}

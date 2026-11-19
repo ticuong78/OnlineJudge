@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'use-intl';
 import { SubmissionsTable } from '@/components/submissions-table';
+import type { SessionPoints } from '@/lib/score-tone';
 import { EmptyState, ErrorState, LinkButton, Modal, TableSkeleton } from '@/components/ui';
 import { api } from '@/lib/api';
 import { studentSubmissionsHref } from '@/lib/results-links';
@@ -24,10 +25,13 @@ export function StudentWorkPanel({
   sessionId,
   target,
   onClose,
+  maxPoints,
 }: {
   sessionId: string;
   target: StudentWorkTarget | null;
   onClose: () => void;
+  /** This session's problem points, so the attempts show points as the board does (OJ-33). */
+  maxPoints?: SessionPoints;
 }) {
   const t = useTranslations('session.results.panel');
   const { data, error, loading, reload } = useAsync(
@@ -69,7 +73,7 @@ export function StudentWorkPanel({
       ) : (
         <div className="-mx-5 flex flex-col gap-2">
           <p className="px-5 text-sm text-slate-500">{t('count', { count: data.total })}</p>
-          <SubmissionsTable items={data.items} showProblem={!target?.problem} />
+          <SubmissionsTable items={data.items} showProblem={!target?.problem} maxPoints={maxPoints} />
           {more > 0 && <p className="px-5 text-sm text-slate-500">{t('more', { count: more })}</p>}
         </div>
       )}

@@ -95,7 +95,7 @@ function OrganizationRow({ org }: { org: OrganizationDto }) {
   const tRole = useTranslations('admin.orgRole');
   return (
     <Link href={`/organizations/${org.id}`} className="block focus-visible:outline-2">
-      <Card className="flex flex-wrap items-center gap-4 px-5 py-4 transition-colors hover:bg-slate-50">
+      <Card className="flex flex-wrap items-center gap-4 p-5 transition-colors hover:bg-slate-50">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ink-50 text-ink-700">
           <OrganizationIcon className="h-5 w-5" />
         </span>

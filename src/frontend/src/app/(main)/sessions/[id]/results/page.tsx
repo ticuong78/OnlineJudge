@@ -14,7 +14,10 @@ import { csvFile } from '@/lib/csv';
 import { useAsync } from '@/lib/use-async';
 import { solvedByProblem, sortResults, type ResultSort, type SortDirection } from '@/lib/results';
 import { studentSubmissionsHref } from '@/lib/results-links';
+import { scoreTone, sessionPoints } from '@/lib/score-tone';
+import { CLICKABLE, PartialDot, ScoreLegend, TONE_TEXT } from '@/components/score-tone';
 import { intlTag } from '@/i18n/runtime';
+import { resultsWide } from '@/lib/layout';
 import { cn, formatDateTime, formatPoints } from '@/lib/utils';
 
 export default function SessionResultsPage() {
@@ -27,6 +30,7 @@ export default function SessionResultsPage() {
   const [sort, setSort] = useState<ResultSort>({ by: 'total' });
   const [direction, setDirection] = useState<SortDirection>('desc');
   const rows = useMemo(() => sortResults(data?.rows ?? [], sort, direction), [data, sort, direction]);
+  const maxPoints = useMemo(() => (data ? sessionPoints(id, { id, problems: data.problems }) : undefined), [id, data]);
   const solvedBy = useMemo(() => solvedByProblem(data?.rows ?? [], data?.problems ?? []), [data]);
   const sameSort = (a: ResultSort, b: ResultSort) => a.by === b.by && (a.by !== 'problem' || (b.by === 'problem' && a.key === b.key));
   const sortBy = (next: ResultSort) => {
@@ -88,7 +92,7 @@ export default function SessionResultsPage() {
 
   return (
     <RequireRole roles={STAFF}>
-      <Container wide>
+      <Container wide={resultsWide(data?.problems.length ?? session.data?.problems.length ?? 0)}>
         <PageHeader
           back={{ href: `/sessions/${id}`, label: t('results.back') }}
           title={t('results.title', { title: session.data?.title ?? '' })}
@@ -176,7 +180,11 @@ export default function SessionResultsPage() {
                           <button
                             type="button"
                             onClick={() => setWork({ userId: r.userId, displayName: r.displayName })}
-                            className="-mx-1 rounded px-1 text-left hover:bg-ink-50 hover:text-ink-700"
+                            className={cn(
+                              // One line; below sm a very long name is cut so the score columns keep room (full name in title).
+                              '-mx-1 block max-w-[45vw] truncate rounded px-1 text-left whitespace-nowrap hover:bg-ink-50 hover:text-ink-700 sm:max-w-none',
+                              CLICKABLE,
+                            )}
                             title={t('results.studentLink', { name: r.displayName })}
                           >
                             {r.displayName}
@@ -191,21 +199,25 @@ export default function SessionResultsPage() {
                       </td>
                       {data.problems.map((p, i) => {
                         const v = r.scores[p.key] ?? 0;
+                        const tone = scoreTone(v, p.points);
+                        const label = t('results.cellScore', {
+                          name: r.displayName,
+                          n: i + 1,
+                          score: formatPoints(v),
+                          max: formatPoints(p.points),
+                        });
                         return (
-                          <td
-                            key={p.key}
-                            className={cn(
-                              'px-3 py-2 text-right tabular-nums',
-                              v >= p.points ? 'font-semibold text-chalk-700' : v > 0 ? 'text-slate-800' : 'text-slate-300',
-                            )}
-                          >
+                          <td key={p.key} className={cn('px-3 py-2 text-right tabular-nums', TONE_TEXT[tone])}>
                             {/* This student's attempts on this problem (OJ-30; before, every student's). */}
                             <button
                               type="button"
                               onClick={() => setWork({ userId: r.userId, displayName: r.displayName, problem: { key: p.key, n: i + 1 } })}
-                              className="-mx-1 rounded px-1 tabular-nums hover:bg-ink-50 hover:text-ink-700"
-                              title={t('results.cellLink', { name: r.displayName, n: i + 1 })}
+                              className={cn('-mx-1 inline-flex items-center gap-1 rounded px-1 tabular-nums hover:bg-ink-50 hover:text-ink-700', CLICKABLE)}
+                              // One text for the tooltip and the accessible name, so a screen reader does not say it twice.
+                              title={label}
+                              aria-label={label}
                             >
+                              {tone === 'partial' && <PartialDot />}
                               {formatPoints(v)}
                             </button>
                           </td>
@@ -243,8 +255,9 @@ export default function SessionResultsPage() {
               </table>
             </div>
           )}
+          {!error && data && rows.length > 0 && <ScoreLegend />}
         </Card>
-        <StudentWorkPanel sessionId={id} target={work} onClose={() => setWork(null)} />
+        <StudentWorkPanel sessionId={id} target={work} onClose={() => setWork(null)} maxPoints={maxPoints} />
       </Container>
     </RequireRole>
   );

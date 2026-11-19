@@ -115,6 +115,14 @@ export const authoring = {
     unverified: 'Computed by AI, please check',
   },
   import: {
+    tips: {
+      title: 'Exams split best when…',
+      header: 'Each problem starts with its number, e.g. "Problem 1" (Vietnamese headings work too); a title may follow.',
+      sections: 'It has Input, Output, Constraints and Examples sections, with the time and memory limits stated.',
+      examples: 'Examples are Input/Output lines, or a two-column Input | Output table.',
+      scan: 'Scans and photos need AI to be read; a Word file is the most reliable.',
+      sample: 'Download a sample (.docx)',
+    },
     title: 'Import',
     subtitle:
       'Upload a document (.docx/.pdf) or paste its text, check the problems that were split out automatically, then confirm to add them to your bank (as private).',

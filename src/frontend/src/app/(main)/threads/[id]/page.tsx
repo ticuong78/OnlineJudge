@@ -1,7 +1,7 @@
 'use client';
 
 import type { ThreadReplyDto } from '@oj/contracts';
-import { Pin, PinOff, Send, Trash2 } from 'lucide-react';
+import { Pin, PinOff, Send } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
@@ -11,7 +11,7 @@ import { MarkdownField } from '@/components/form-fields';
 import { Markdown } from '@/components/markdown';
 import { AuthorName, ThreadKindBadge } from '@/components/threads';
 import { useToast } from '@/components/toast';
-import { Button, Card, ConfirmDialog, ErrorState, InlineAlert, PageHeader, PageSkeleton } from '@/components/ui';
+import { Button, Card, ConfirmDialog, DeleteButton, ErrorState, InlineAlert, PageHeader, PageSkeleton } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { sessionHref, solveHref } from '@/lib/sessions';
@@ -130,16 +130,13 @@ export default function ThreadPage() {
               </Button>
             )}
             {t.canDelete && (
-              <Button variant="ghost" className="text-mark-600 hover:bg-mark-50" onClick={() => setDeleting({ kind: 'thread' })}>
-                <Trash2 className="h-4 w-4 shrink-0" />
-                {tc('delete')}
-              </Button>
+              <DeleteButton onClick={() => setDeleting({ kind: 'thread' })} />
             )}
           </>
         }
       />
 
-      <Card className="mb-6 px-6 py-5">
+      <Card className="mb-6 p-5">
         <Markdown className="max-w-[72ch]">{t.body}</Markdown>
       </Card>
 
@@ -150,7 +147,7 @@ export default function ThreadPage() {
           return (
             <li
               key={r.id}
-              className={cn('rounded-panel border px-5 py-4', staff ? 'border-ink-200 bg-ink-50/60' : 'border-rule bg-surface')}
+              className={cn('rounded-panel border p-5', staff ? 'border-ink-200 bg-ink-50/60' : 'border-rule bg-surface')}
             >
               <div className="mb-2 flex flex-wrap items-center gap-x-3 text-sm">
                 <AuthorName name={r.authorName} role={r.authorRole} />

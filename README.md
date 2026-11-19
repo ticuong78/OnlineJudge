@@ -279,7 +279,7 @@ pnpm dev:frontend
   unavailable. For Sonnet and Opus the server-side *refusal fallback* is on (`fallbacks: "default"`); Haiku does not
   support it, so it is not sent. The rules for AI code are in [the playbook](docs/ai-engineering-playbook.md).
 - Teachers create a class and set its code on the **Classes** page. Students use the code to ask to join (when signing
-  up or on **My classes**), and the teacher approves on the class page.
+  up or on **My classes**), and the teacher approves on the class page's **Students** tab, which shows a count of waiting requests.
 - **Database**: the backend creates and updates its tables with migrations at startup (see *Upgrading*).
 - After changing engine code, rebuild the runner image with `pnpm runner:build` (the engine does not start with an old
   image).

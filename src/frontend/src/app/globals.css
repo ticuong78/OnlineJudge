@@ -237,6 +237,11 @@ select:not([multiple]) {
   outline: 2px solid var(--color-ink);
   outline-offset: 2px;
 }
+/* Tabs: the outline goes inside the button, because the tab bar scrolls sideways and clips anything drawn outside it
+   (OJ-32). Here rather than as a utility class: this unlayered rule would win over one. */
+[role='tab']:focus-visible {
+  outline-offset: -2px;
+}
 
 /* Score mark: the circle is drawn once when a verdict arrives. */
 .score-ring {

@@ -151,7 +151,7 @@ export default function ProgressPage() {
 
   return (
     <Container>
-      <header className="mb-8">
+      <header className="mb-6">
         <h1 className="text-[1.75rem] leading-tight font-bold text-slate-900">{tp('title')}</h1>
         <p className="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-2 text-lg text-slate-700">
           <span>

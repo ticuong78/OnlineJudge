@@ -50,35 +50,46 @@ export function TestResultsTable({ sub }: { sub: SubmissionDetailDto }) {
   const t = useTranslations('session.result');
   const tv = useTranslations('enums.verdict');
   if (!sub.testResults || sub.testResults.length === 0) return null;
+  // Below sm (OJ-34) it fits a 375 px phone without sideways scrolling: the verdict shows as its code (the full name stays
+  // for screen readers), and memory goes under the time instead of in its own column.
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200">
       <table className="w-full text-sm">
         <thead className="bg-slate-50 text-left text-xs font-semibold whitespace-nowrap text-slate-500">
           <tr>
-            <th className="px-3 py-2 w-16">{t('colTest')}</th>
-            <th className="px-3 py-2">{t('colResult')}</th>
-            <th className="px-3 py-2 w-24 text-right">{t('colTime')}</th>
-            <th className="px-3 py-2 w-24 text-right">{t('colMemory')}</th>
-            <th className="px-3 py-2 w-16 text-right">{t('colPoints')}</th>
+            <th className="w-12 px-2 py-2 sm:w-16 sm:px-3">{t('colTest')}</th>
+            <th className="px-2 py-2 sm:px-3">{t('colResult')}</th>
+            <th className="px-2 py-2 text-right sm:w-24 sm:px-3">
+              {t('colTime')}
+              <span className="font-normal sm:hidden"> · {t('colMemory')}</span>
+            </th>
+            <th className="hidden w-24 px-3 py-2 text-right sm:table-cell">{t('colMemory')}</th>
+            <th className="w-14 px-2 py-2 text-right sm:w-16 sm:px-3">{t('colPoints')}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {sub.testResults.map((r, i) => (
             <tr key={r.testCaseId || i}>
-              <td className="px-3 py-1.5 text-xs tabular-nums text-slate-500">#{i + 1}</td>
-              <td className="px-3 py-1.5">
+              <td className="px-2 py-1.5 text-xs tabular-nums text-slate-500 sm:px-3">#{i + 1}</td>
+              <td className="px-2 py-1.5 sm:px-3">
                 <span
                   className={cn('font-medium', r.verdict === 'AC' ? 'text-chalk-600' : 'text-mark-600')}
                   title={tv(r.verdict)}
+                  aria-hidden="true"
                 >
                   {r.verdict}
                 </span>
-                <span className="ml-2 text-xs text-slate-500">{tv(r.verdict)}</span>
+                <span className="sr-only text-xs text-slate-500 sm:not-sr-only sm:ml-2">{tv(r.verdict)}</span>
                 {r.message && <div className="mt-0.5 truncate font-mono text-xs text-slate-500">{r.message}</div>}
               </td>
-              <td className="px-3 py-1.5 text-right text-xs whitespace-nowrap text-slate-600">{formatTime(r.timeMs)}</td>
-              <td className="px-3 py-1.5 text-right text-xs whitespace-nowrap text-slate-600">{formatMemory(r.memoryKb)}</td>
-              <td className="px-3 py-1.5 text-right text-xs text-slate-600">{r.points}</td>
+              <td className="px-2 py-1.5 text-right text-xs whitespace-nowrap text-slate-600 sm:px-3">
+                {formatTime(r.timeMs)}
+                <span className="block text-slate-500 sm:hidden">{formatMemory(r.memoryKb)}</span>
+              </td>
+              <td className="hidden px-3 py-1.5 text-right text-xs whitespace-nowrap text-slate-600 sm:table-cell">
+                {formatMemory(r.memoryKb)}
+              </td>
+              <td className="px-2 py-1.5 text-right text-xs text-slate-600 sm:px-3">{r.points}</td>
             </tr>
           ))}
         </tbody>

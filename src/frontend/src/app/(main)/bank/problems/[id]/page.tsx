@@ -1,7 +1,7 @@
 'use client';
 
 import { LanguageLabels, type ProblemDetailDto } from '@oj/contracts';
-import { BookmarkPlus, Send, Trash2 } from 'lucide-react';
+import { BookmarkPlus, Send } from 'lucide-react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -17,7 +17,7 @@ import { ProblemStatement } from '@/components/problem-statement';
 import { CreateSessionDialog } from '@/components/sessions';
 import { SharingPanel } from '@/components/sharing-panel';
 import { useToast } from '@/components/toast';
-import { Button, Card, ConfirmDialog, ErrorState, InlineAlert, LoadingState, PageHeader, PageSkeleton, Tabs } from '@/components/ui';
+import { Button, Card, ConfirmDialog, DeleteButton, ErrorState, InlineAlert, LoadingState, PageHeader, PageSkeleton, Tabs } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useAsync } from '@/lib/use-async';
@@ -168,7 +168,21 @@ function ProblemPage() {
         back={{ href: '/bank', label: t('title') }}
         title={title}
         docTitle={`${data.code} ${data.title}`}
-        subtitle={subtitle}
+        subtitle={
+          // "Thay đổi chia sẻ" sits next to the sharing badge it changes (OJ-35), instead of a band of its own.
+          <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            {subtitle}
+            <button
+              type="button"
+              onClick={() => setSharingOpen((o) => !o)}
+              aria-expanded={sharingOpen}
+              aria-controls="problem-sharing"
+              className="-my-1 inline-flex min-h-8 items-center gap-1 rounded px-1 font-medium text-ink-600 hover:underline"
+            >
+              {sharingOpen ? t('sharing.hide') : t('sharing.change')}
+            </button>
+          </span>
+        }
         actions={
           <>
             {(isAdmin || data.canEdit) && (
@@ -189,38 +203,21 @@ function ProblemPage() {
                 </Button>
               </span>
             )}
-            <Button variant="secondary" className="text-mark-600" onClick={() => setConfirmDelete(true)}>
-              <Trash2 className="h-4 w-4 shrink-0" />
-              {t('problem.delete')}
-            </Button>
+            <DeleteButton onClick={() => setConfirmDelete(true)} />
           </>
         }
       />
 
-      <div className="mb-5">
-        {/* One line; the switches open on demand (U3). Open, the full panel pushed the editor below the fold
-            although sharing changes rarely. */}
-        <div className="text-sm">
-          {/* The current state is the badge in the header above. */}
-          <button
-            type="button"
-            onClick={() => setSharingOpen((o) => !o)}
-            aria-expanded={sharingOpen}
-            aria-controls="problem-sharing"
-            className="-my-1 inline-flex min-h-8 items-center gap-1 rounded px-1 font-medium text-ink-600 hover:underline"
-          >
-            {sharingOpen ? t('sharing.hide') : t('sharing.change')}
-          </button>
+      {/* The switches open on demand (U3): open all the time, the panel pushed the editor below the fold although
+          sharing changes rarely. */}
+      {sharingOpen && (
+        <div id="problem-sharing" className="motion-rise mb-6">
+          <SharingPanel problem={data} onChange={(p) => setData((prev) => ({ ...p, testCases: p.testCases ?? prev?.testCases ?? [] }))} />
         </div>
-        {sharingOpen && (
-          <div id="problem-sharing" className="motion-rise mt-3">
-            <SharingPanel problem={data} onChange={(p) => setData((prev) => ({ ...p, testCases: p.testCases ?? prev?.testCases ?? [] }))} />
-          </div>
-        )}
-      </div>
+      )}
 
       <Tabs
-        className="mb-5"
+        className="mb-6"
         value={tab}
         onChange={changeTab}
         tabs={[

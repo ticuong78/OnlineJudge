@@ -145,6 +145,7 @@ Results below were checked against the running app with the pattern reader (a no
 
 | File | What it contains | Expected result |
 |---|---|---|
+| `de-mau.docx` | The sample teachers download from "Nhập đề" (also `src/frontend/public/samples/`): clean layout, examples as a table and as Input/Output lines | 2 problems: "TỔNG HAI SỐ" (Dễ, 2 examples), "SỐ LỚN NHẤT" (Trung bình, 1 example); 1000 ms, 256 MB; no warnings |
 | `de-kiem-tra-vong-lap.docx` | Class test: "Bài 1.", "Bài 2:", "Câu 3."; examples as Input/Output lines and as a table; limits and difficulty; Zalo, Facebook and LeetCode lines | 3 problems: "TỔNG CÁC CHỮ SỐ" (Dễ, 2 examples), "ĐẾM SỐ CHẴN" (Trung bình, 2 from the table), "SỐ LỚN THỨ HAI" (Khó, 2000 ms); no warnings; all links and adverts removed |
 | `de-thi-hsg-file-io.docx` | Provincial HSG style: `BAI1.INP`/`BAI1.OUT` wording, examples in `BAI1.INP | BAI1.OUT` tables | 3 problems (the third "Rất khó", 2000 ms); file-I/O blocker on each until "Chuyển sang nhập/xuất chuẩn"; warnings for missing difficulty/time where absent |
 | `de-luyen-tap.pdf` | PDF with a text layer, 128 MB memory limit in the preamble | 2 problems ("Chia kẹo", "Năm nhuận"), 128 MB, 1 and 2 examples |

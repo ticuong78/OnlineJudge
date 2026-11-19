@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openAccountMenu } from './menu.js';
 import { signIn, state } from './state.js';
 
 test.describe.serial('organization plan in the browser', () => {
@@ -18,13 +19,15 @@ test.describe.serial('organization plan in the browser', () => {
   test('the invited teacher joins from the home page and gets the organization menu', async ({ page }) => {
     const s = state();
     await signIn(page, s.minh);
-    const nav = page.locator('header nav');
-    await expect(nav.getByRole('link', { name: 'Tổ chức' })).toHaveCount(0);
+    // OJ-32: the organization link lives in the account menu.
+    await expect((await openAccountMenu(page)).getByRole('link', { name: 'Tổ chức' })).toHaveCount(0);
+    await page.keyboard.press('Escape');
     await expect(page.getByText('Lời mời vào tổ chức')).toBeVisible();
     await page.getByRole('button', { name: 'Tham gia' }).click();
     await expect(page.getByText('Lời mời vào tổ chức')).toHaveCount(0);
-    await expect(nav.getByRole('link', { name: 'Tổ chức' })).toBeVisible();
-    await nav.getByRole('link', { name: 'Tổ chức' }).click();
+    const menu = await openAccountMenu(page);
+    await expect(menu.getByRole('link', { name: 'Tổ chức' })).toBeVisible();
+    await menu.getByRole('link', { name: 'Tổ chức' }).click();
     await expect(page.getByText('Trung tâm Tin học Sao Mai')).toBeVisible();
   });
 
@@ -38,6 +41,6 @@ test.describe.serial('organization plan in the browser', () => {
     await page.getByLabel('Nhập lại mật khẩu').fill('mat-khau-giao-vien');
     await page.getByRole('button', { name: 'Kích hoạt tài khoản' }).click();
     await expect(page.getByRole('heading', { name: `Xin chào, ${s.newTeacher.name}` })).toBeVisible();
-    await expect(page.locator('header nav').getByRole('link', { name: 'Tổ chức' })).toBeVisible();
+    await expect((await openAccountMenu(page)).getByRole('link', { name: 'Tổ chức' })).toBeVisible();
   });
 });

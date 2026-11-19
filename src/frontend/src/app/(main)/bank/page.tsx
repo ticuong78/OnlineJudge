@@ -1,7 +1,7 @@
 'use client';
 
 import { Difficulties, type BankScope, type Difficulty } from '@oj/contracts';
-import { BookOpenCheck, Clock, Cpu, FileUp, Plus, Search, X } from 'lucide-react';
+import { BookOpenCheck, Clock, Cpu, FileUp, Plus, Search, SlidersHorizontal, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -12,7 +12,8 @@ import { RequireRole, STAFF } from '@/components/guards';
 import { useAuth } from '@/lib/auth';
 import { rowClick } from '@/lib/row-link';
 import { TopicPicker, useTagLabel } from '@/components/topics';
-import { Badge, Card, DifficultyBadge, EmptyState, ErrorState, inputClass, LinkButton, PageHeader, Pagination, TableSkeleton } from '@/components/ui';
+import { Badge, Button, Card, DifficultyBadge, EmptyState, ErrorState, inputClass, LinkButton, Modal, PageHeader, Pagination, TableSkeleton } from '@/components/ui';
+import { activeFilterCount } from '@/lib/bank-filters';
 import { api } from '@/lib/api';
 import { useAsync } from '@/lib/use-async';
 import { cn, storageGet, storageSet } from '@/lib/utils';
@@ -62,6 +63,29 @@ export default function BankProblemsPage() {
   const router = useRouter();
   const openRow = (href: string, newTab: boolean) => (newTab ? window.open(href, '_blank', 'noopener') : router.push(href));
   const hasFilter = !!(search || difficulty || tags.length);
+  // Phones (OJ-34): difficulty and topics sit behind "Lọc (n)" so the list starts on the first screen.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filterCount = activeFilterCount({ difficulty, tags });
+  const clearFilters = () => {
+    setSearchInput('');
+    setTags([]);
+    setDifficulty('');
+  };
+  const difficultySelect = (extra?: string) => (
+    <select
+      className={cn(inputClass, extra)}
+      value={difficulty}
+      onChange={(e) => setDifficulty(e.target.value as Difficulty | '')}
+      aria-label={t('filters.difficulty')}
+    >
+      <option value="">{t('filters.anyDifficulty')}</option>
+      {Difficulties.map((d) => (
+        <option key={d} value={d}>
+          {tDifficulty(d)}
+        </option>
+      ))}
+    </select>
+  );
 
   return (
     <RequireRole roles={STAFF}>
@@ -87,38 +111,28 @@ export default function BankProblemsPage() {
         <Card className="mb-4 p-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
             <ScopeSwitch value={scope} onChange={setScope} withOrganization />
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                className={cn(inputClass, 'pl-9')}
-                placeholder={t('filters.searchProblems')}
-                aria-label={t('filters.searchProblems')}
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-              />
+            <div className="flex gap-2 lg:flex-1">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  className={cn(inputClass, 'pl-9')}
+                  placeholder={t('filters.searchProblems')}
+                  aria-label={t('filters.searchProblems')}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                />
+              </div>
+              <Button variant="secondary" className="shrink-0 sm:hidden" onClick={() => setFiltersOpen(true)} aria-haspopup="dialog">
+                <SlidersHorizontal className="h-4 w-4 shrink-0" />
+                {filterCount > 0 ? t('filters.openCount', { count: filterCount }) : t('filters.open')}
+              </Button>
             </div>
-            <select
-              className={cn(inputClass, 'lg:w-36')}
-              value={difficulty}
-              onChange={(e) => setDifficulty(e.target.value as Difficulty | '')}
-              aria-label={t('filters.difficulty')}
-            >
-              <option value="">{t('filters.anyDifficulty')}</option>
-              {Difficulties.map((d) => (
-                <option key={d} value={d}>
-                  {tDifficulty(d)}
-                </option>
-              ))}
-            </select>
+            {difficultySelect('hidden sm:block lg:w-36')}
             {hasFilter && (
               <button
                 type="button"
-                className="flex shrink-0 items-center gap-1 text-sm whitespace-nowrap text-slate-500 hover:text-slate-800"
-                onClick={() => {
-                  setSearchInput('');
-                  setTags([]);
-                  setDifficulty('');
-                }}
+                className="hidden shrink-0 items-center gap-1 text-sm whitespace-nowrap text-slate-500 hover:text-slate-800 sm:flex"
+                onClick={clearFilters}
               >
                 <X className="h-4 w-4 shrink-0" />
                 {t('filters.clear')}
@@ -127,9 +141,45 @@ export default function BankProblemsPage() {
           </div>
           {/* Topics in this scope, most used first (OJ-20). Kept while reloading, so the bar does not jump. */}
           {tagCounts.data && tagCounts.data.length > 0 && (
-            <TopicPicker counts={tagCounts.data} value={tags} onChange={setTags} className="mt-3 border-t border-slate-100 pt-3" />
+            <TopicPicker
+              counts={tagCounts.data}
+              value={tags}
+              onChange={setTags}
+              className="mt-3 hidden border-t border-slate-100 pt-3 sm:block"
+            />
           )}
         </Card>
+        <Modal
+          open={filtersOpen}
+          onClose={() => setFiltersOpen(false)}
+          title={t('filters.title')}
+          footer={
+            <>
+              {/* Only what the sheet holds: the search box outside it keeps its text. */}
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setTags([]);
+                  setDifficulty('');
+                }}
+                disabled={filterCount === 0}
+              >
+                {t('filters.clear')}
+              </Button>
+              <Button onClick={() => setFiltersOpen(false)}>{t('filters.show')}</Button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <label className="block text-sm font-medium">
+              {t('filters.difficulty')}
+              <span className="mt-1 block font-normal">{difficultySelect()}</span>
+            </label>
+            {tagCounts.data && tagCounts.data.length > 0 && (
+              <TopicPicker counts={tagCounts.data} value={tags} onChange={setTags} />
+            )}
+          </div>
+        </Modal>
 
         <Card>
           {loading && !data ? (

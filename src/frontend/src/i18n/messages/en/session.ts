@@ -21,6 +21,7 @@ export const session = {
     progress: 'Solved {solved}/{total}, {earned}/{max} points',
     submittedTimes: '{count, plural, one {Submitted once} other {Submitted # times}}',
     notStarted: 'Not started',
+    classSolved: '{solved}/{total} with full points',
     best: 'Best {earned}/{max} points',
     deleteTitle: 'Delete this session?',
     deleteMessage:
@@ -53,6 +54,8 @@ export const session = {
     fontSmaller: 'Smaller text',
     fontLarger: 'Larger text',
     submitShortcut: 'Submit (Ctrl/⌘ + Enter)',
+    jumpToCode: 'Write code',
+    jumpToStatement: 'Statement',
     submitKeys: 'Ctrl ↵',
     submitKeysMac: '⌘ ↵',
     noSubmissions: 'You have not submitted this problem in this session yet',
@@ -83,7 +86,13 @@ export const session = {
   results: {
     liveUpdated: 'Updates every 30 s, last at {time}',
     solvedBy: 'Students with full points',
-    cellLink: 'See {name}’s work on problem {n}',
+    cellScore: '{name}, problem {n}: {score}/{max} points. Click to see the work',
+    legend: {
+      full: 'Full points',
+      partial: 'Some points',
+      none: 'No points yet',
+      hint: 'Click a score to see the submissions',
+    },
     studentLink: 'See all of {name}’s work in this session',
     panel: {
       titleProblem: '{name} · Problem {n}',

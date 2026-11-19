@@ -19,6 +19,8 @@ export default async function globalSetup() {
     const [request] = await lan.api.get<{ id: string }[]>(`/classes/${cls.id}/requests`);
     await lan.api.post(`/membership-requests/${request.id}/approve`);
     const problem = await createProblem(lan);
+    // Not assigned anywhere: the home page's assign flow gives it to the class (OJ-33).
+    await createProblem(lan, 'Hiệu hai số');
     const session = await lan.api.post<{ id: string; problems: { key: string }[] }>('/sessions', {
       source: { kind: 'PROBLEM', problemId: problem.id }, classId: cls.id, opensAt: null, closesAt: null,
     });
